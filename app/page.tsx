@@ -15,15 +15,23 @@ import {
   Play,
   Settings,
   Sparkles,
+  Upload,
   User,
   X,
   ZoomIn,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 type NavSection = "Dashboard" | "Courses" | "Library";
 type Modal = "analysis" | "shortcuts" | "end-session" | null;
 type Popover = "settings" | "profile" | null;
+type UploadedDocument = {
+  content?: string;
+  name: string;
+  type: "markdown" | "pdf";
+  url: string;
+};
 
 const takeaways = [
   "Wave functions describe probability, not exact position.",
@@ -40,9 +48,46 @@ export default function Home() {
   const [timerRunning, setTimerRunning] = useState(true);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [zoom, setZoom] = useState(100);
-  const [highlightsVisible, setHighlightsVisible] = useState(true);
   const [compactLesson, setCompactLesson] = useState(false);
   const [toast, setToast] = useState("");
+  const [activeDocument, setActiveDocument] =
+    useState<UploadedDocument | null>(null);
+  const [documentLoading, setDocumentLoading] = useState(true);
+  const [documentError, setDocumentError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadDocument() {
+      try {
+        const response = await fetch("/api/document", {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("The saved document could not be loaded.");
+        }
+
+        const data = (await response.json()) as {
+          document: UploadedDocument | null;
+        };
+        setActiveDocument(data.document);
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setDocumentError(error.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setDocumentLoading(false);
+        }
+      }
+    }
+
+    loadDocument();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -103,20 +148,57 @@ export default function Home() {
     showToast(`Lesson zoom set to ${nextZoom}%.`);
   }
 
-  function downloadNotes() {
-    const notes = [
-      "Aura Learning — Introduction to Wave Mechanics",
-      "",
-      "1.1 The Schrödinger Equation",
-      ...takeaways,
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([notes], { type: "text/plain" }));
+  function downloadDocument() {
+    if (!activeDocument) {
+      return;
+    }
+
     const link = document.createElement("a");
-    link.href = url;
-    link.download = "wave-mechanics-notes.txt";
+    link.href = `${activeDocument.url}?download=1`;
     link.click();
-    URL.revokeObjectURL(url);
-    showToast("Lesson notes downloaded.");
+    showToast("Document download started.");
+  }
+
+  async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setDocumentError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/document", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await response.json()) as {
+        document?: UploadedDocument;
+        message?: string;
+      };
+
+      if (!response.ok || !data.document) {
+        throw new Error(data.message ?? "The document could not be uploaded.");
+      }
+
+      setActiveDocument(data.document);
+      setZoom(100);
+      showToast(`${data.document.name} is ready.`);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "The document could not be uploaded.";
+      setDocumentError(message);
+      showToast(message);
+    } finally {
+      setUploading(false);
+    }
   }
 
   function confirmEndSession() {
@@ -134,10 +216,6 @@ export default function Home() {
     showToast("A new learning session has started.");
   }
 
-  const highlightClassName = highlightsVisible
-    ? undefined
-    : "hidden-highlight";
-
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -147,7 +225,8 @@ export default function Home() {
           </a>
           <span className="brand-divider" aria-hidden="true" />
           <p className="active-session">
-            <span>Active Session:</span> Quantum Physics 101
+            <span>Active Session:</span>{" "}
+            {activeDocument?.name ?? "No document selected"}
           </p>
         </div>
 
@@ -189,13 +268,6 @@ export default function Home() {
             {popover === "settings" && (
               <div className="popover">
                 <p className="popover-title">Learning settings</p>
-                <button
-                  type="button"
-                  onClick={() => setHighlightsVisible((visible) => !visible)}
-                >
-                  <span>Concept highlights</span>
-                  <strong>{highlightsVisible ? "On" : "Off"}</strong>
-                </button>
                 <button
                   type="button"
                   onClick={() => setCompactLesson((compact) => !compact)}
@@ -244,86 +316,101 @@ export default function Home() {
           <div className="lesson-toolbar">
             <div>
               <FileText size={25} aria-hidden="true" />
-              <h2 id="lesson-title">Introduction to Wave Mechanics</h2>
+              <h2 id="lesson-title">
+                {activeDocument?.name ?? "Your learning document"}
+              </h2>
             </div>
             <div className="lesson-actions">
-              <span className="zoom-level" aria-live="polite">
-                {zoom}%
-              </span>
-              <button
-                className="icon-button small"
-                type="button"
-                onClick={cycleZoom}
-                aria-label="Change lesson zoom"
-              >
-                <ZoomIn size={21} />
-              </button>
-              <button
-                className="icon-button small"
-                type="button"
-                onClick={downloadNotes}
-                aria-label="Download lesson notes"
-              >
-                <Download size={21} />
-              </button>
+              {activeDocument?.type === "markdown" && (
+                <>
+                  <span className="zoom-level" aria-live="polite">
+                    {zoom}%
+                  </span>
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={cycleZoom}
+                    aria-label="Change document zoom"
+                  >
+                    <ZoomIn size={21} />
+                  </button>
+                </>
+              )}
+              {activeDocument && (
+                <>
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={downloadDocument}
+                    aria-label="Download document"
+                  >
+                    <Download size={21} />
+                  </button>
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Replace document"
+                    disabled={uploading}
+                  >
+                    <Upload size={21} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          <article
-            className={`lesson-content${compactLesson ? " compact" : ""}`}
-            style={{ fontSize: `${zoom}%` }}
-          >
-            <h1>1.1 The Schrödinger Equation</h1>
-            <p>
-              In quantum mechanics, the Schrödinger equation is a linear partial
-              differential equation that governs the wave function of a
-              quantum-mechanical system.
-            </p>
+          <input
+            ref={fileInputRef}
+            className="document-input"
+            type="file"
+            accept=".pdf,.md,.markdown,application/pdf,text/markdown,text/plain"
+            onChange={uploadDocument}
+          />
 
-            <div className="equation" aria-label="Time-dependent Schrödinger equation">
-              <span>iℏ ∂/∂t Ψ(r,t) = [ -ℏ²/2m ∇² + V(r,t) ] Ψ(r,t)</span>
+          {documentLoading ? (
+            <div className="document-state" aria-live="polite">
+              <FileText size={38} aria-hidden="true" />
+              <h1>Loading your document…</h1>
             </div>
-
-            <p>
-              The{" "}
-              <mark className={highlightClassName}>
-                Wave Function (Ψ)
-              </mark>{" "}
-              represents the quantum state of a system. It is a complex-valued
-              probability amplitude, and the probabilities for the results of
-              measurements made on the system can be derived from it.
-            </p>
-
-            <p>
-              Crucially, the{" "}
-              <mark className={highlightClassName}>
-                Principle of Superposition
-              </mark>{" "}
-              states that any two (or more) quantum states can be added together
-              (&quot;superposed&quot;) and the result will be another valid
-              quantum state; and conversely, that every quantum state can be
-              represented as a sum of two or more other distinct states.
-            </p>
-
-            <p>
-              When the AI Tutor explains the{" "}
-              <mark className={highlightClassName}>
-                Probability Density
-              </mark>
-              , it refers to the squared absolute value of the wave function,
-              which gives the likelihood of finding a particle at a specific
-              point in space-time.
-            </p>
-
-            <div className="quantum-visual" aria-label="Abstract visualization of a quantum wave">
-              <div className="wave" />
-              <div className="wave wave-two" />
-              <span className="particle particle-one" />
-              <span className="particle particle-two" />
-              <span className="particle particle-three" />
-              <p>Probability waves reveal where matter is most likely to appear.</p>
+          ) : activeDocument?.type === "markdown" ? (
+            <article
+              className={`lesson-content markdown-content${compactLesson ? " compact" : ""}`}
+              style={{ fontSize: `${zoom}%` }}
+            >
+              <ReactMarkdown>{activeDocument.content ?? ""}</ReactMarkdown>
+            </article>
+          ) : activeDocument?.type === "pdf" ? (
+            <div className="pdf-content">
+              <iframe src={activeDocument.url} title={activeDocument.name} />
             </div>
-          </article>
+          ) : (
+            <div className="document-state">
+              <span className="document-state-icon">
+                <Upload size={34} aria-hidden="true" />
+              </span>
+              <p className="document-state-eyebrow">Start learning</p>
+              <h1>Upload your first document</h1>
+              <p>
+                Choose a PDF or Markdown file up to 10 MB. It will be saved
+                locally on this machine.
+              </p>
+              {documentError && (
+                <p className="document-error" role="alert">
+                  {documentError}
+                </p>
+              )}
+              <button
+                className="primary-button upload-button"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                <Upload size={20} />
+                {uploading ? "Uploading…" : "Choose document"}
+              </button>
+            </div>
+          )}
         </section>
 
         <aside className="insights-column" aria-label="Learning insights">
