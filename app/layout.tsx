@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Aura Learning | AI-Powered Education",
+  title: "NextLearning | AI-Powered Education",
   description:
     "An interactive AI learning dashboard for focused, insight-driven study sessions.",
 };

@@ -146,7 +146,7 @@ export default function Home() {
 
   function toggleListening() {
     setIsListening((listening) => !listening);
-    showToast(isListening ? "Aura paused listening." : "Aura is listening.");
+    showToast(isListening ? "Listening paused." : "Listening resumed.");
   }
 
   function cycleZoom() {
@@ -252,14 +252,12 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-group">
-          <a className="brand" href="#lesson" aria-label="Aura Learning home">
-            Aura Learning
+          <a className="brand" href="#lesson" aria-label="NextLearning home">
+            <span className="brand-mark" aria-hidden="true">
+              N
+            </span>
+            NextLearning
           </a>
-          <span className="brand-divider" aria-hidden="true" />
-          <p className="active-session">
-            <span>Active Session:</span>{" "}
-            {activeDocument?.name ?? "No document selected"}
-          </p>
         </div>
 
         <nav className="main-nav" aria-label="Primary navigation">
@@ -460,20 +458,22 @@ export default function Home() {
               <span>Understanding</span>
               <Sparkles size={21} aria-hidden="true" />
             </div>
-            <div
-              className="progress-ring"
-              role="progressbar"
-              aria-label="Understanding score"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={70}
-            >
-              <div>
-                <strong>70%</strong>
-                <span>Optimal</span>
+            <div className="understanding-summary">
+              <div
+                className="progress-ring"
+                role="progressbar"
+                aria-label="Understanding score"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={70}
+              >
+                <div>
+                  <strong>70%</strong>
+                  <span>Optimal</span>
+                </div>
               </div>
+              <p>You&apos;re grasping wave mechanics faster than 82% of peers.</p>
             </div>
-            <p>You&apos;re grasping wave mechanics faster than 82% of peers.</p>
           </section>
 
           <section className="insight-card takeaways-card" id="key-takeaways">
@@ -531,7 +531,7 @@ export default function Home() {
                 <i />
                 <i />
               </span>
-              <strong>{isListening ? "Aura is listening…" : "Aura is paused"}</strong>
+              <strong>{isListening ? "Listening…" : "Paused"}</strong>
             </>
           )}
         </div>
@@ -625,7 +625,7 @@ export default function Home() {
                 <h2 id="modal-title">Keyboard shortcuts</h2>
                 <div className="shortcut-list">
                   <p>
-                    <span>Pause or resume Aura</span>
+                    <span>Pause or resume listening</span>
                     <kbd>Space</kbd>
                   </p>
                   <p>
