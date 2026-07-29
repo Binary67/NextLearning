@@ -31,6 +31,21 @@ export async function readDocumentFile(document: StoredDocument) {
   return fs.readFile(path.join(documentsDirectory, document.fileName));
 }
 
+export async function deleteStoredDocument() {
+  const document = await readStoredDocument();
+
+  if (!document) {
+    return false;
+  }
+
+  await fs.rm(metadataPath, { force: true });
+  await fs.rm(path.join(documentsDirectory, document.fileName), {
+    force: true,
+  });
+
+  return true;
+}
+
 export async function saveDocument(
   file: File,
   type: DocumentType,

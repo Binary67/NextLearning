@@ -176,9 +176,19 @@ a:focus-visible {
 }
 
 .icon-button:disabled,
-.primary-button:disabled {
+.primary-button:disabled,
+.secondary-button:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+.danger-icon-button {
+  color: #a6342a;
+}
+
+.danger-icon-button:hover {
+  background: #fff0ee;
+  color: #8f241c;
 }
 
 .avatar {
@@ -717,6 +727,16 @@ a:focus-visible {
   background: #004b98;
   box-shadow: 0 8px 18px rgba(0, 80, 166, 0.2);
   transform: translateY(-1px);
+}
+
+.primary-button.danger-button {
+  border-color: #9f2d24;
+  background: #b8382e;
+}
+
+.primary-button.danger-button:hover {
+  background: #9f2d24;
+  box-shadow: 0 8px 18px rgba(159, 45, 36, 0.2);
 }
 
 .primary-button:active,

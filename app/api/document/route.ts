@@ -1,4 +1,5 @@
 import {
+  deleteStoredDocument,
   MAX_DOCUMENT_SIZE,
   readDocumentFile,
   readStoredDocument,
@@ -49,6 +50,12 @@ export async function POST(request: Request) {
   return Response.json({
     document: await toDocumentResponse(document),
   });
+}
+
+export async function DELETE() {
+  const deleted = await deleteStoredDocument();
+
+  return Response.json({ deleted });
 }
 
 function getDocumentType(file: File): DocumentType | null {

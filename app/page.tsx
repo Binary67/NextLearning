@@ -15,6 +15,7 @@ import {
   Play,
   Settings,
   Sparkles,
+  Trash2,
   Upload,
   User,
   X,
@@ -24,7 +25,12 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 type NavSection = "Dashboard" | "Courses" | "Library";
-type Modal = "analysis" | "shortcuts" | "end-session" | null;
+type Modal =
+  | "analysis"
+  | "shortcuts"
+  | "end-session"
+  | "remove-document"
+  | null;
 type Popover = "settings" | "profile" | null;
 type UploadedDocument = {
   content?: string;
@@ -55,6 +61,7 @@ export default function Home() {
   const [documentLoading, setDocumentLoading] = useState(true);
   const [documentError, setDocumentError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [removingDocument, setRemovingDocument] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -198,6 +205,31 @@ export default function Home() {
       showToast(message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function removeDocument() {
+    setRemovingDocument(true);
+
+    try {
+      const response = await fetch("/api/document", { method: "DELETE" });
+
+      if (!response.ok) {
+        throw new Error("The document could not be removed.");
+      }
+
+      setActiveDocument(null);
+      setDocumentError("");
+      setModal(null);
+      showToast("Document removed from this machine.");
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "The document could not be removed.",
+      );
+    } finally {
+      setRemovingDocument(false);
     }
   }
 
@@ -354,6 +386,15 @@ export default function Home() {
                     disabled={uploading}
                   >
                     <Upload size={21} />
+                  </button>
+                  <button
+                    className="icon-button small danger-icon-button"
+                    type="button"
+                    onClick={() => setModal("remove-document")}
+                    aria-label="Remove document"
+                    disabled={removingDocument}
+                  >
+                    <Trash2 size={20} />
                   </button>
                 </>
               )}
@@ -632,6 +673,39 @@ export default function Home() {
                   >
                     <Check size={19} />
                     End Session
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modal === "remove-document" && (
+              <>
+                <div className="modal-icon danger">
+                  <Trash2 size={23} />
+                </div>
+                <p className="modal-eyebrow">Document management</p>
+                <h2 id="modal-title">Remove this document?</h2>
+                <p className="modal-copy">
+                  <strong>{activeDocument?.name}</strong> will be permanently
+                  deleted from this machine.
+                </p>
+                <div className="modal-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setModal(null)}
+                    disabled={removingDocument}
+                  >
+                    Keep Document
+                  </button>
+                  <button
+                    className="primary-button danger-button"
+                    type="button"
+                    onClick={removeDocument}
+                    disabled={removingDocument}
+                  >
+                    <Trash2 size={19} />
+                    {removingDocument ? "Removing…" : "Remove Document"}
                   </button>
                 </div>
               </>
