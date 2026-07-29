@@ -81,6 +81,22 @@ export default function Home() {
     }
   }
 
+  function toggleTimer() {
+    setTimerRunning((running) => !running);
+    showToast(timerRunning ? "Focus timer paused." : "Focus timer resumed.");
+  }
+
+  function togglePopover(nextPopover: "settings" | "profile") {
+    setPopover((currentPopover) =>
+      currentPopover === nextPopover ? null : nextPopover,
+    );
+  }
+
+  function toggleListening() {
+    setIsListening((listening) => !listening);
+    showToast(isListening ? "Aura paused listening." : "Aura is listening.");
+  }
+
   function cycleZoom() {
     const nextZoom = zoom >= 120 ? 90 : zoom + 10;
     setZoom(nextZoom);
@@ -92,9 +108,7 @@ export default function Home() {
       "Aura Learning — Introduction to Wave Mechanics",
       "",
       "1.1 The Schrödinger Equation",
-      "Wave functions describe probability, not exact position.",
-      "Superposition allows multiple states to exist simultaneously.",
-      "Tunneling occurs due to the wave-like property of matter.",
+      ...takeaways,
     ].join("\n");
     const url = URL.createObjectURL(new Blob([notes], { type: "text/plain" }));
     const link = document.createElement("a");
@@ -112,6 +126,17 @@ export default function Home() {
     setModal(null);
     showToast("Session ended. Your progress has been saved locally.");
   }
+
+  function startNewSession() {
+    setSessionEnded(false);
+    setIsListening(true);
+    setTimerRunning(true);
+    showToast("A new learning session has started.");
+  }
+
+  const highlightClassName = highlightsVisible
+    ? undefined
+    : "hidden-highlight";
 
   return (
     <main className="app-shell">
@@ -146,10 +171,7 @@ export default function Home() {
           <button
             className="icon-button"
             type="button"
-            onClick={() => {
-              setTimerRunning((running) => !running);
-              showToast(timerRunning ? "Focus timer paused." : "Focus timer resumed.");
-            }}
+            onClick={toggleTimer}
             aria-label={timerRunning ? "Pause focus timer" : "Resume focus timer"}
           >
             {timerRunning ? <Clock3 size={24} /> : <Play size={23} />}
@@ -158,16 +180,14 @@ export default function Home() {
             <button
               className="icon-button"
               type="button"
-              onClick={() =>
-                setPopover(popover === "settings" ? null : "settings")
-              }
+              onClick={() => togglePopover("settings")}
               aria-label="Open learning settings"
               aria-expanded={popover === "settings"}
             >
               <Settings size={25} />
             </button>
             {popover === "settings" && (
-              <div className="popover settings-popover">
+              <div className="popover">
                 <p className="popover-title">Learning settings</p>
                 <button
                   type="button"
@@ -190,7 +210,7 @@ export default function Home() {
             <button
               className="avatar"
               type="button"
-              onClick={() => setPopover(popover === "profile" ? null : "profile")}
+              onClick={() => togglePopover("profile")}
               aria-label="Open profile menu"
               aria-expanded={popover === "profile"}
             >
@@ -266,7 +286,7 @@ export default function Home() {
 
             <p>
               The{" "}
-              <mark className={highlightsVisible ? "" : "hidden-highlight"}>
+              <mark className={highlightClassName}>
                 Wave Function (Ψ)
               </mark>{" "}
               represents the quantum state of a system. It is a complex-valued
@@ -276,7 +296,7 @@ export default function Home() {
 
             <p>
               Crucially, the{" "}
-              <mark className={highlightsVisible ? "" : "hidden-highlight"}>
+              <mark className={highlightClassName}>
                 Principle of Superposition
               </mark>{" "}
               states that any two (or more) quantum states can be added together
@@ -287,7 +307,7 @@ export default function Home() {
 
             <p>
               When the AI Tutor explains the{" "}
-              <mark className={highlightsVisible ? "" : "hidden-highlight"}>
+              <mark className={highlightClassName}>
                 Probability Density
               </mark>
               , it refers to the squared absolute value of the wave function,
@@ -296,7 +316,7 @@ export default function Home() {
             </p>
 
             <div className="quantum-visual" aria-label="Abstract visualization of a quantum wave">
-              <div className="wave wave-one" />
+              <div className="wave" />
               <div className="wave wave-two" />
               <span className="particle particle-one" />
               <span className="particle particle-two" />
@@ -367,10 +387,7 @@ export default function Home() {
         <button
           className={`dock-icon${isListening ? " listening" : ""}`}
           type="button"
-          onClick={() => {
-            setIsListening((listening) => !listening);
-            showToast(isListening ? "Aura paused listening." : "Aura is listening.");
-          }}
+          onClick={toggleListening}
           aria-label={isListening ? "Pause microphone" : "Resume microphone"}
           disabled={sessionEnded}
         >
@@ -391,7 +408,7 @@ export default function Home() {
           )}
         </div>
         <button
-          className="dock-icon keyboard-button"
+          className="dock-icon"
           type="button"
           onClick={() => setModal("shortcuts")}
           aria-label="View keyboard shortcuts"
@@ -402,12 +419,7 @@ export default function Home() {
           <button
             className="primary-button end-button"
             type="button"
-            onClick={() => {
-              setSessionEnded(false);
-              setIsListening(true);
-              setTimerRunning(true);
-              showToast("A new learning session has started.");
-            }}
+            onClick={startNewSession}
           >
             <Play size={20} />
             New Session

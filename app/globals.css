@@ -1094,15 +1094,12 @@ kbd {
     grid-template-columns: 56px 1fr 56px;
     min-height: 76px;
     padding: 8px 9px;
+    border-radius: 28px;
   }
 
   .listening-status {
     min-width: 0;
     font-size: 0.71rem;
-  }
-
-  .keyboard-button {
-    border-right: 0;
   }
 
   .end-button {
@@ -1112,11 +1109,7 @@ kbd {
     margin-top: 8px;
   }
 
-  .session-dock {
-    border-radius: 28px;
-  }
-
-  .session-dock .dock-icon {
+  .dock-icon {
     width: 48px;
     height: 48px;
   }
