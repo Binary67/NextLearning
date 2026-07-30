@@ -56,7 +56,7 @@ export async function generateDocumentModel(
               type: "input_file",
               filename: file.name,
               file_data: `data:application/pdf;base64,${fileData}`,
-              detail: "auto",
+              detail: "high",
             },
             {
               type: "input_text",
