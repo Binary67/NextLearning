@@ -413,49 +413,104 @@ export default function Home() {
             onChange={uploadDocument}
           />
 
-          {documentLoading ? (
-            <div className="document-state" aria-live="polite">
-              <FileText size={38} aria-hidden="true" />
-              <h1>Loading your document…</h1>
-            </div>
-          ) : activeDocument?.type === "markdown" ? (
-            <article
-              className={`lesson-content markdown-content${compactLesson ? " compact" : ""}`}
-              style={{ fontSize: `${zoom}%` }}
-            >
-              <ReactMarkdown>{activeDocument.content ?? ""}</ReactMarkdown>
-            </article>
-          ) : activeDocument?.type === "pdf" ? (
-            <div className="pdf-content">
-              <iframe src={activeDocument.url} title={activeDocument.name} />
-            </div>
-          ) : (
-            <div className="document-state">
-              <span className="document-state-icon">
-                <Upload size={34} aria-hidden="true" />
-              </span>
-              <p className="document-state-eyebrow">Start learning</p>
-              <h1>Upload your first document</h1>
-              <p>
-                Choose a PDF or Markdown file up to 10 MB. It will be saved
-                locally on this machine.
-              </p>
-              {documentError && (
-                <p className="document-error" role="alert">
-                  {documentError}
-                </p>
-              )}
-              <button
-                className="primary-button upload-button"
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+          <div className="document-viewport">
+            {documentLoading ? (
+              <div className="document-state" aria-live="polite">
+                <FileText size={38} aria-hidden="true" />
+                <h1>Loading your document…</h1>
+              </div>
+            ) : activeDocument?.type === "markdown" ? (
+              <article
+                className={`lesson-content markdown-content${compactLesson ? " compact" : ""}`}
+                style={{ fontSize: `${zoom}%` }}
               >
-                <Upload size={20} />
-                {uploading ? "Uploading…" : "Choose document"}
-              </button>
+                <ReactMarkdown>{activeDocument.content ?? ""}</ReactMarkdown>
+              </article>
+            ) : activeDocument?.type === "pdf" ? (
+              <div className="pdf-content">
+                <iframe src={activeDocument.url} title={activeDocument.name} />
+              </div>
+            ) : (
+              <div className="document-state">
+                <span className="document-state-icon">
+                  <Upload size={34} aria-hidden="true" />
+                </span>
+                <p className="document-state-eyebrow">Start learning</p>
+                <h1>Upload your first document</h1>
+                <p>
+                  Choose a PDF or Markdown file up to 10 MB. It will be saved
+                  locally on this machine.
+                </p>
+                {documentError && (
+                  <p className="document-error" role="alert">
+                    {documentError}
+                  </p>
+                )}
+                <button
+                  className="primary-button upload-button"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Upload size={20} />
+                  {uploading ? "Uploading…" : "Choose document"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className={`session-dock${sessionEnded ? " ended" : ""}`}>
+            <button
+              className={`dock-icon${isListening ? " listening" : ""}`}
+              type="button"
+              onClick={toggleListening}
+              aria-label={isListening ? "Pause microphone" : "Resume microphone"}
+              disabled={sessionEnded}
+            >
+              {isListening ? <Mic size={23} /> : <MicOff size={23} />}
+            </button>
+            <div className="listening-status" aria-live="polite">
+              {sessionEnded ? (
+                <span>Session complete</span>
+              ) : (
+                <>
+                  <span className="sound-bars" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <strong>{isListening ? "Listening…" : "Paused"}</strong>
+                </>
+              )}
             </div>
-          )}
+            <button
+              className="dock-icon"
+              type="button"
+              onClick={() => setModal("shortcuts")}
+              aria-label="View keyboard shortcuts"
+            >
+              <Keyboard size={24} />
+            </button>
+            {sessionEnded ? (
+              <button
+                className="primary-button end-button"
+                type="button"
+                onClick={startNewSession}
+              >
+                <Play size={20} />
+                New Session
+              </button>
+            ) : (
+              <button
+                className="primary-button end-button"
+                type="button"
+                onClick={() => setModal("end-session")}
+              >
+                <LogOut size={21} />
+                End Session
+              </button>
+            )}
+          </div>
         </section>
 
         <div className="insights-panel">
@@ -535,59 +590,6 @@ export default function Home() {
             </section>
           </aside>
         </div>
-      </div>
-
-      <div className={`session-dock${sessionEnded ? " ended" : ""}`}>
-        <button
-          className={`dock-icon${isListening ? " listening" : ""}`}
-          type="button"
-          onClick={toggleListening}
-          aria-label={isListening ? "Pause microphone" : "Resume microphone"}
-          disabled={sessionEnded}
-        >
-          {isListening ? <Mic size={23} /> : <MicOff size={23} />}
-        </button>
-        <div className="listening-status" aria-live="polite">
-          {sessionEnded ? (
-            <span>Session complete</span>
-          ) : (
-            <>
-              <span className="sound-bars" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              <strong>{isListening ? "Listening…" : "Paused"}</strong>
-            </>
-          )}
-        </div>
-        <button
-          className="dock-icon"
-          type="button"
-          onClick={() => setModal("shortcuts")}
-          aria-label="View keyboard shortcuts"
-        >
-          <Keyboard size={24} />
-        </button>
-        {sessionEnded ? (
-          <button
-            className="primary-button end-button"
-            type="button"
-            onClick={startNewSession}
-          >
-            <Play size={20} />
-            New Session
-          </button>
-        ) : (
-          <button
-            className="primary-button end-button"
-            type="button"
-            onClick={() => setModal("end-session")}
-          >
-            <LogOut size={21} />
-            End Session
-          </button>
-        )}
       </div>
 
       {modal && (
