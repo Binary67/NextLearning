@@ -3,6 +3,7 @@
 import {
   BrainCircuit,
   Check,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   Download,
@@ -20,31 +21,33 @@ import {
   Upload,
   User,
   X,
-  ZoomIn,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+
+import type {
+  DocumentMapSummary,
+  PageLearningContext,
+} from "@/lib/document-model";
 
 type NavSection = "Dashboard" | "Courses" | "Library";
 type Modal =
   | "analysis"
   | "shortcuts"
   | "end-session"
+  | "prepare-document"
   | "remove-document"
   | null;
 type Popover = "settings" | "profile" | null;
 type UploadedDocument = {
-  content?: string;
+  id: string;
   name: string;
-  type: "markdown" | "pdf";
+  type: "pdf";
   url: string;
+  map: DocumentMapSummary;
 };
 
-const takeaways = [
-  "Wave functions describe probability, not exact position.",
-  "Superposition allows multiple states to exist simultaneously.",
-  "Tunneling occurs due to the wave-like property of matter.",
-];
+const BYTES_PER_MEGABYTE = 1024 * 1024;
+const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
 
 export default function Home() {
   const [activeSection, setActiveSection] =
@@ -55,15 +58,19 @@ export default function Home() {
   const [timerRunning, setTimerRunning] = useState(true);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [insightsVisible, setInsightsVisible] = useState(true);
-  const [zoom, setZoom] = useState(100);
-  const [compactLesson, setCompactLesson] = useState(false);
   const [toast, setToast] = useState("");
   const [activeDocument, setActiveDocument] =
     useState<UploadedDocument | null>(null);
   const [documentLoading, setDocumentLoading] = useState(true);
   const [documentError, setDocumentError] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [removingDocument, setRemovingDocument] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageContext, setPageContext] =
+    useState<PageLearningContext | null>(null);
+  const [pageContextLoading, setPageContextLoading] = useState(false);
+  const [pageContextError, setPageContextError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -99,12 +106,65 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!activeDocument) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadPageContext() {
+      setPageContextLoading(true);
+      setPageContextError("");
+
+      try {
+        const response = await fetch(
+          `/api/document/context?page=${currentPage}`,
+          { signal: controller.signal },
+        );
+        const data = (await response.json()) as {
+          context?: PageLearningContext;
+          message?: string;
+        };
+
+        if (!response.ok || !data.context) {
+          throw new Error(
+            data.message ?? "The page context could not be loaded.",
+          );
+        }
+
+        setPageContext(data.context);
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setPageContextError(error.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setPageContextLoading(false);
+        }
+      }
+    }
+
+    loadPageContext();
+    return () => controller.abort();
+  }, [activeDocument, currentPage]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
 
       const key = event.key.toLowerCase();
+
+      if (modal === "prepare-document") {
+        if (key === "escape" && !uploading) {
+          setPendingFile(null);
+          setDocumentError("");
+          setModal(null);
+        }
+
+        return;
+      }
 
       if (key === "escape") {
         setModal(null);
@@ -121,7 +181,7 @@ export default function Home() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [modal, sessionEnded]);
+  }, [modal, sessionEnded, uploading]);
 
   function showToast(message: string) {
     setToast(message);
@@ -151,12 +211,6 @@ export default function Home() {
     showToast(isListening ? "Listening paused." : "Listening resumed.");
   }
 
-  function cycleZoom() {
-    const nextZoom = zoom >= 120 ? 90 : zoom + 10;
-    setZoom(nextZoom);
-    showToast(`Lesson zoom set to ${nextZoom}%.`);
-  }
-
   function downloadDocument() {
     if (!activeDocument) {
       return;
@@ -168,7 +222,7 @@ export default function Home() {
     showToast("Document download started.");
   }
 
-  async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
+  function selectDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
 
@@ -176,12 +230,37 @@ export default function Home() {
       return;
     }
 
+    if (!isPdf(file)) {
+      const message = "Only PDF files are supported.";
+      setDocumentError(message);
+      showToast(message);
+      return;
+    }
+
+    if (file.size > MAX_PDF_SIZE) {
+      const message = "The document must be 10 MB or smaller.";
+      setDocumentError(message);
+      showToast(message);
+      return;
+    }
+
+    setPendingFile(file);
+    setDocumentError("");
+    setModal("prepare-document");
+  }
+
+  async function prepareDocument() {
+    if (!pendingFile) {
+      return;
+    }
+
     setUploading(true);
     setDocumentError("");
+    showToast("Reading the full PDF and building its concept map…");
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", pendingFile);
       const response = await fetch("/api/document", {
         method: "POST",
         body: formData,
@@ -196,8 +275,10 @@ export default function Home() {
       }
 
       setActiveDocument(data.document);
-      setZoom(100);
-      showToast(`${data.document.name} is ready.`);
+      setCurrentPage(1);
+      setPendingFile(null);
+      setModal(null);
+      showToast(`${data.document.name} is mapped and ready.`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -208,6 +289,19 @@ export default function Home() {
     } finally {
       setUploading(false);
     }
+  }
+
+  function closeModal() {
+    if (modal === "prepare-document" && uploading) {
+      return;
+    }
+
+    if (modal === "prepare-document") {
+      setPendingFile(null);
+      setDocumentError("");
+    }
+
+    setModal(null);
   }
 
   async function removeDocument() {
@@ -221,6 +315,8 @@ export default function Home() {
       }
 
       setActiveDocument(null);
+      setCurrentPage(1);
+      setPageContext(null);
       setDocumentError("");
       setModal(null);
       showToast("Document removed from this machine.");
@@ -240,7 +336,7 @@ export default function Home() {
     setIsListening(false);
     setTimerRunning(false);
     setModal(null);
-    showToast("Session ended. Your progress has been saved locally.");
+    showToast("Session ended.");
   }
 
   function startNewSession() {
@@ -253,6 +349,61 @@ export default function Home() {
   const insightsToggleLabel = insightsVisible
     ? "Hide insights"
     : "Show insights";
+
+  function renderCurrentConcepts() {
+    if (pageContextLoading) {
+      return <li className="waiting">Loading mapped concepts…</li>;
+    }
+
+    if (pageContextError) {
+      return <li className="context-error">{pageContextError}</li>;
+    }
+
+    if (!pageContext?.current_concepts.length) {
+      return (
+        <li className="waiting">No mapped concept on this page.</li>
+      );
+    }
+
+    return pageContext.current_concepts.map((concept) => (
+      <li key={`${concept.concept_id}:${concept.role}`}>
+        <strong>{concept.name}</strong>
+        <span>
+          {concept.role.replaceAll("_", " ")}
+          {concept.explicitness === "implicit" ? " · implicit" : ""}
+        </span>
+      </li>
+    ));
+  }
+
+  function renderFutureConnections() {
+    if (pageContextLoading) {
+      return <li className="waiting">Loading future connections…</li>;
+    }
+
+    if (pageContextError) {
+      return (
+        <li className="waiting">Future connections are unavailable.</li>
+      );
+    }
+
+    if (!pageContext?.future_connections.length) {
+      return (
+        <li className="waiting">No future connection needed here.</li>
+      );
+    }
+
+    return pageContext.future_connections.map((connection) => (
+      <li
+        key={`${connection.to_concept_id}:${connection.page_index}`}
+      >
+        <strong>{connection.name}</strong>
+        <span>
+          Page {connection.page_label} · {connection.reason}
+        </span>
+      </li>
+    ));
+  }
 
   return (
     <main className="app-shell">
@@ -306,10 +457,12 @@ export default function Home() {
                 <p className="popover-title">Learning settings</p>
                 <button
                   type="button"
-                  onClick={() => setCompactLesson((compact) => !compact)}
+                  onClick={() =>
+                    showToast("The tutor uses the full document map.")
+                  }
                 >
-                  <span>Reading density</span>
-                  <strong>{compactLesson ? "Compact" : "Comfortable"}</strong>
+                  <span>Document scope</span>
+                  <strong>Full PDF</strong>
                 </button>
               </div>
             )}
@@ -360,21 +513,6 @@ export default function Home() {
             </div>
             {activeDocument && (
               <div className="lesson-actions">
-                {activeDocument.type === "markdown" && (
-                  <>
-                    <span className="zoom-level" aria-live="polite">
-                      {zoom}%
-                    </span>
-                    <button
-                      className="icon-button small"
-                      type="button"
-                      onClick={cycleZoom}
-                      aria-label="Change document zoom"
-                    >
-                      <ZoomIn size={21} />
-                    </button>
-                  </>
-                )}
                 <button
                   className="icon-button small"
                   type="button"
@@ -409,8 +547,8 @@ export default function Home() {
             ref={fileInputRef}
             className="document-input"
             type="file"
-            accept=".pdf,.md,.markdown,application/pdf,text/markdown,text/plain"
-            onChange={uploadDocument}
+            accept=".pdf,application/pdf"
+            onChange={selectDocument}
           />
 
           <div className="document-viewport">
@@ -419,16 +557,48 @@ export default function Home() {
                 <FileText size={38} aria-hidden="true" />
                 <h1>Loading your document…</h1>
               </div>
-            ) : activeDocument?.type === "markdown" ? (
-              <article
-                className={`lesson-content markdown-content${compactLesson ? " compact" : ""}`}
-                style={{ fontSize: `${zoom}%` }}
-              >
-                <ReactMarkdown>{activeDocument.content ?? ""}</ReactMarkdown>
-              </article>
-            ) : activeDocument?.type === "pdf" ? (
+            ) : activeDocument ? (
               <div className="pdf-content">
-                <iframe src={activeDocument.url} title={activeDocument.name} />
+                <div className="pdf-page-bar">
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((page) => Math.max(1, page - 1))
+                    }
+                    disabled={currentPage === 1}
+                    aria-label="Previous PDF page"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  <span>
+                    Page <strong>{currentPage}</strong> of{" "}
+                    {activeDocument.map.page_count}
+                  </span>
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((page) =>
+                        Math.min(
+                          activeDocument.map.page_count,
+                          page + 1,
+                        ),
+                      )
+                    }
+                    disabled={
+                      currentPage === activeDocument.map.page_count
+                    }
+                    aria-label="Next PDF page"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+                <iframe
+                  key={currentPage}
+                  src={`${activeDocument.url}#page=${currentPage}&view=FitH`}
+                  title={activeDocument.name}
+                />
               </div>
             ) : (
               <div className="document-state">
@@ -438,8 +608,8 @@ export default function Home() {
                 <p className="document-state-eyebrow">Start learning</p>
                 <h1>Upload your first document</h1>
                 <p>
-                  Choose a PDF or Markdown file up to 10 MB. It will be saved
-                  locally on this machine.
+                  Choose a PDF up to 10 MB. The full document will be read
+                  once to prepare its concept map.
                 </p>
                 {documentError && (
                   <p className="document-error" role="alert">
@@ -453,7 +623,7 @@ export default function Home() {
                   disabled={uploading}
                 >
                   <Upload size={20} />
-                  {uploading ? "Uploading…" : "Choose document"}
+                  {uploading ? "Preparing…" : "Choose PDF"}
                 </button>
               </div>
             )}
@@ -532,59 +702,68 @@ export default function Home() {
           >
             <section className="insight-card understanding-card">
               <div className="card-eyebrow">
-                <span>Understanding</span>
+                <span>Document map</span>
                 <Sparkles size={21} aria-hidden="true" />
               </div>
               <div className="understanding-summary">
                 <div
                   className="progress-ring"
                   role="progressbar"
-                  aria-label="Understanding score"
+                  aria-label="Document preparation"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={70}
+                  aria-valuenow={activeDocument ? 100 : 0}
                 >
                   <div>
-                    <strong>70%</strong>
-                    <span>Optimal</span>
+                    <strong>{activeDocument ? "100%" : "—"}</strong>
+                    <span>{activeDocument ? "Mapped" : "Waiting"}</span>
                   </div>
                 </div>
-                <p>
-                  You&apos;re grasping wave mechanics faster than 82% of peers.
-                </p>
+                {activeDocument ? (
+                  <p>
+                    {activeDocument.map.concept_count} concepts and{" "}
+                    {activeDocument.map.connection_count} connections across{" "}
+                    {activeDocument.map.page_count} pages.
+                  </p>
+                ) : (
+                  <p>Upload a PDF to prepare the tutor&apos;s document map.</p>
+                )}
               </div>
             </section>
 
             <section className="insight-card takeaways-card" id="key-takeaways">
               <h2>
                 <BrainCircuit size={25} aria-hidden="true" />
-                Key Takeaways
+                Page Context
               </h2>
-              <ul>
-                {takeaways.map((takeaway) => (
-                  <li key={takeaway}>{takeaway}</li>
-                ))}
-                <li className="waiting">Waiting for next insight…</li>
+              <p className="context-section-label">
+                Current page · {currentPage}
+              </p>
+              <ul>{renderCurrentConcepts()}</ul>
+              <p className="context-section-label">Useful later</p>
+              <ul className="future-context-list">
+                {renderFutureConnections()}
               </ul>
               <button
                 className="primary-button analysis-button"
                 type="button"
                 onClick={() => setModal("analysis")}
+                disabled={!activeDocument}
               >
-                View Analysis
+                View Document Map
               </button>
             </section>
 
             <section className="insight-card session-card" id="session-log">
               <h2>
                 <History size={24} aria-hidden="true" />
-                <span>Session Log</span>
+                <span>Tutor handoff</span>
               </h2>
               <div className="log-entry">
-                <strong>AI Tutor • 14:02</strong>
+                <strong>Realtime context</strong>
                 <p>
-                  Explain the difference between classical and quantum
-                  probability.
+                  The handoff is ready: use the visible page plus this compact
+                  map slice. No learner profile is stored in this version.
                 </p>
               </div>
             </section>
@@ -603,8 +782,9 @@ export default function Home() {
             <button
               className="modal-close"
               type="button"
-              onClick={() => setModal(null)}
+              onClick={closeModal}
               aria-label="Close dialog"
+              disabled={modal === "prepare-document" && uploading}
             >
               <X size={21} />
             </button>
@@ -614,24 +794,28 @@ export default function Home() {
                 <div className="modal-icon">
                   <Sparkles size={23} />
                 </div>
-                <p className="modal-eyebrow">Learning analysis</p>
-                <h2 id="modal-title">Your momentum is strong</h2>
+                <p className="modal-eyebrow">Prepared document</p>
+                <h2 id="modal-title">
+                  {activeDocument?.map.title ?? "Document map"}
+                </h2>
                 <p className="modal-copy">
-                  You understand the core concepts well. Spend a little more time
-                  connecting probability density to real measurement outcomes.
+                  The preprocessing model reviewed the full PDF and created the
+                  concept map used to guide each page-level tutor interaction.
                 </p>
                 <div className="analysis-grid">
                   <div>
-                    <span>Concept recall</span>
-                    <strong>84%</strong>
+                    <span>PDF pages</span>
+                    <strong>{activeDocument?.map.page_count ?? "—"}</strong>
                   </div>
                   <div>
-                    <span>Session focus</span>
-                    <strong>91%</strong>
+                    <span>Concepts</span>
+                    <strong>{activeDocument?.map.concept_count ?? "—"}</strong>
                   </div>
                   <div>
-                    <span>Topic mastery</span>
-                    <strong>70%</strong>
+                    <span>Connections</span>
+                    <strong>
+                      {activeDocument?.map.connection_count ?? "—"}
+                    </strong>
                   </div>
                 </div>
                 <button
@@ -683,8 +867,8 @@ export default function Home() {
                 <p className="modal-eyebrow">Session control</p>
                 <h2 id="modal-title">End this learning session?</h2>
                 <p className="modal-copy">
-                  Your current progress and key takeaways will remain available
-                  in this browser.
+                  This stops the current interface session. Learner progress is
+                  not stored in this version.
                 </p>
                 <div className="modal-actions">
                   <button
@@ -701,6 +885,57 @@ export default function Home() {
                   >
                     <Check size={19} />
                     End Session
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modal === "prepare-document" && pendingFile && (
+              <>
+                <div className="modal-icon">
+                  <Upload size={23} />
+                </div>
+                <p className="modal-eyebrow">Document preparation</p>
+                <h2 id="modal-title">Prepare this PDF?</h2>
+                <div className="pending-file">
+                  <FileText size={23} aria-hidden="true" />
+                  <span>
+                    <strong>{pendingFile.name}</strong>
+                    <small>{formatFileSize(pendingFile.size)}</small>
+                  </span>
+                </div>
+                <p className="modal-copy">
+                  The complete PDF will be sent to Azure OpenAI to build its
+                  concept map. No AI request is made until you continue.
+                </p>
+                {activeDocument && (
+                  <p className="replacement-note">
+                    Your current document remains available unless preparation
+                    succeeds.
+                  </p>
+                )}
+                {documentError && (
+                  <p className="modal-error" role="alert">
+                    {documentError}
+                  </p>
+                )}
+                <div className="modal-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={closeModal}
+                    disabled={uploading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={prepareDocument}
+                    disabled={uploading}
+                  >
+                    <Sparkles size={19} />
+                    {uploading ? "Preparing…" : "Prepare document"}
                   </button>
                 </div>
               </>
@@ -747,4 +982,14 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+function formatFileSize(bytes: number) {
+  return `${(bytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`;
+}
+
+function isPdf(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+
+  return extension === "pdf" && file.type === "application/pdf";
 }

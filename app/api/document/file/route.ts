@@ -20,10 +20,7 @@ export async function GET(request: Request) {
     headers: {
       "Content-Disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(document.name)}`,
       "Content-Length": String(file.byteLength),
-      "Content-Type":
-        document.type === "pdf"
-          ? "application/pdf"
-          : "text/markdown; charset=utf-8",
+      "Content-Type": "application/pdf",
     },
   });
 }

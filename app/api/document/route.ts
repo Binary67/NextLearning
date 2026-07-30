@@ -1,20 +1,32 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  MissingAzureOpenAIConfigurationError,
+  generateDocumentModel,
+} from "@/lib/document-model-generation";
+import {
+  summarizeDocumentModel,
+  type DocumentModel,
+} from "@/lib/document-model";
 import {
   deleteStoredDocument,
   MAX_DOCUMENT_SIZE,
-  readDocumentFile,
+  readDocumentModel,
   readStoredDocument,
   saveDocument,
-  type DocumentType,
   type StoredDocument,
 } from "@/lib/document-storage";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const document = await readStoredDocument();
+  const [document, model] = await Promise.all([
+    readStoredDocument(),
+    readDocumentModel(),
+  ]);
 
   return Response.json({
-    document: document ? await toDocumentResponse(document) : null,
+    document: document && model ? toDocumentResponse(document, model) : null,
   });
 }
 
@@ -24,16 +36,14 @@ export async function POST(request: Request) {
 
   if (!(file instanceof File)) {
     return Response.json(
-      { message: "Choose a PDF or Markdown file to upload." },
+      { message: "Choose a PDF file to upload." },
       { status: 400 },
     );
   }
 
-  const type = getDocumentType(file);
-
-  if (!type) {
+  if (!isPdf(file)) {
     return Response.json(
-      { message: "Only PDF and Markdown files are supported." },
+      { message: "Only PDF files are supported." },
       { status: 415 },
     );
   }
@@ -45,11 +55,35 @@ export async function POST(request: Request) {
     );
   }
 
-  const document = await saveDocument(file, type);
+  const documentId = randomUUID();
 
-  return Response.json({
-    document: await toDocumentResponse(document),
-  });
+  try {
+    const model = await generateDocumentModel(file, documentId);
+    const document = await saveDocument(file, documentId, model);
+
+    return Response.json({
+      document: toDocumentResponse(document, model),
+    });
+  } catch (error) {
+    console.error("Document preparation failed:", error);
+
+    if (error instanceof MissingAzureOpenAIConfigurationError) {
+      return Response.json(
+        {
+          message:
+            "Document preparation is not configured. Check the Azure OpenAI server settings.",
+        },
+        { status: 503 },
+      );
+    }
+
+    return Response.json(
+      {
+        message: "The document could not be prepared. Try again.",
+      },
+      { status: 502 },
+    );
+  }
 }
 
 export async function DELETE() {
@@ -58,33 +92,21 @@ export async function DELETE() {
   return Response.json({ deleted });
 }
 
-function getDocumentType(file: File): DocumentType | null {
+function isPdf(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
-  if (extension === "pdf" && file.type === "application/pdf") {
-    return "pdf";
-  }
-
-  if (
-    (extension === "md" || extension === "markdown") &&
-    ["text/markdown", "text/plain", "application/octet-stream", ""].includes(
-      file.type,
-    )
-  ) {
-    return "markdown";
-  }
-
-  return null;
+  return extension === "pdf" && file.type === "application/pdf";
 }
 
-async function toDocumentResponse(document: StoredDocument) {
+function toDocumentResponse(
+  document: StoredDocument,
+  model: DocumentModel,
+) {
   return {
+    id: document.id,
     name: document.name,
     type: document.type,
     url: "/api/document/file",
-    content:
-      document.type === "markdown"
-        ? (await readDocumentFile(document)).toString("utf8")
-        : undefined,
+    map: summarizeDocumentModel(model),
   };
 }

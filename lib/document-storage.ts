@@ -1,34 +1,34 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import type { DocumentModel } from "@/lib/document-model";
+
 export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
 
-export type DocumentType = "markdown" | "pdf";
-
 export type StoredDocument = {
+  id: string;
   fileName: string;
   name: string;
-  type: DocumentType;
+  type: "pdf";
 };
 
 const documentsDirectory = path.join(process.cwd(), "data", "documents");
 const metadataPath = path.join(documentsDirectory, "current.json");
+const documentModelPath = path.join(
+  documentsDirectory,
+  "document-model.json",
+);
 
 export async function readStoredDocument(): Promise<StoredDocument | null> {
-  try {
-    const metadata = await fs.readFile(metadataPath, "utf8");
-    return JSON.parse(metadata) as StoredDocument;
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  return readJsonFile<StoredDocument>(metadataPath);
 }
 
 export async function readDocumentFile(document: StoredDocument) {
   return fs.readFile(path.join(documentsDirectory, document.fileName));
+}
+
+export async function readDocumentModel(): Promise<DocumentModel | null> {
+  return readJsonFile<DocumentModel>(documentModelPath);
 }
 
 export async function deleteStoredDocument() {
@@ -39,6 +39,7 @@ export async function deleteStoredDocument() {
   }
 
   await fs.rm(metadataPath, { force: true });
+  await fs.rm(documentModelPath, { force: true });
   await fs.rm(path.join(documentsDirectory, document.fileName), {
     force: true,
   });
@@ -48,17 +49,24 @@ export async function deleteStoredDocument() {
 
 export async function saveDocument(
   file: File,
-  type: DocumentType,
+  documentId: string,
+  model: DocumentModel,
 ): Promise<StoredDocument> {
   const previousDocument = await readStoredDocument();
-  const fileName = type === "pdf" ? "current.pdf" : "current.md";
-  const document = { fileName, name: file.name, type };
+  const fileName = "current.pdf";
+  const document: StoredDocument = {
+    id: documentId,
+    fileName,
+    name: file.name,
+    type: "pdf",
+  };
+  const fileData = Buffer.from(await file.arrayBuffer());
 
   await fs.mkdir(documentsDirectory, { recursive: true });
-  await fs.writeFile(
-    path.join(documentsDirectory, fileName),
-    Buffer.from(await file.arrayBuffer()),
-  );
+  await Promise.all([
+    fs.writeFile(path.join(documentsDirectory, fileName), fileData),
+    fs.writeFile(documentModelPath, JSON.stringify(model, null, 2)),
+  ]);
   await fs.writeFile(metadataPath, JSON.stringify(document, null, 2));
 
   if (previousDocument && previousDocument.fileName !== fileName) {
@@ -72,6 +80,19 @@ export async function saveDocument(
   }
 
   return document;
+}
+
+async function readJsonFile<T>(filePath: string): Promise<T | null> {
+  try {
+    const contents = await fs.readFile(filePath, "utf8");
+    return JSON.parse(contents) as T;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 function isMissingFileError(error: unknown) {
