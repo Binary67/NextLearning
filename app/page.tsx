@@ -13,7 +13,6 @@ import {
   Keyboard,
   LogOut,
   MessageSquareText,
-  Mic,
   Pause,
   Play,
   RotateCcw,
@@ -140,6 +139,13 @@ export default function Home() {
   }
 
   const liveTutorCaption = realtimeTutor.tutorCaption;
+  const tutorQuestion =
+    realtimeTutor.status === "connected" &&
+    !realtimeTutor.isSubmittingUserTurn &&
+    !realtimeTutor.isTutorResponding &&
+    !realtimeTutor.isTutorSpeaking
+      ? getLatestTutorQuestion(realtimeTutor.tutorTranscripts.at(-1) ?? "")
+      : "";
   const masteredUnitCount = learningProgress
     ? Object.keys(learningProgress.unit_progress).length
     : 0;
@@ -374,7 +380,7 @@ export default function Home() {
       showToast(
         isUserTurn
           ? "Answer sent. Waiting for the tutor."
-          : "Microphone on. Click again when you finish speaking.",
+          : "Listening. Tap the check when you finish speaking.",
       );
     }
   }, [isUserTurn, realtimeTutor, showToast]);
@@ -658,14 +664,9 @@ export default function Home() {
               <i />
               <i />
             </span>
-            <span
-              className={`turn-state-copy${liveTutorCaption ? " tutor-caption-copy" : ""}`}
-            >
-              <small>Your turn · microphone on</small>
-              <strong key={liveTutorCaption || "user-turn"}>
-                {liveTutorCaption ||
-                  "Click the hand again when you finish speaking"}
-              </strong>
+            <span className="turn-state-copy">
+              <small>Your turn · listening</small>
+              <strong>Speak your answer, then tap the check</strong>
             </span>
           </>
         );
@@ -696,15 +697,6 @@ export default function Home() {
             <strong key={liveTutorCaption || tutorTurnLabel}>
               {liveTutorCaption || `${tutorTurnLabel}…`}
             </strong>
-          </span>
-        );
-      }
-
-      if (liveTutorCaption) {
-        return (
-          <span className="turn-state-copy tutor-caption-copy">
-            <small>Your turn · raise hand when ready</small>
-            <strong key={liveTutorCaption}>{liveTutorCaption}</strong>
           </span>
         );
       }
@@ -1084,43 +1076,55 @@ export default function Home() {
             )}
           </div>
 
-          <div className={`session-dock${sessionEnded ? " ended" : ""}`}>
-            <button
-              className={`dock-icon${isUserTurn ? " user-turn" : ""}`}
-              type="button"
-              onClick={() => void toggleUserTurn()}
-              aria-label={userTurnActionLabel}
-              aria-pressed={isUserTurn}
-              title={userTurnActionLabel}
-              disabled={
-                realtimeTutor.status !== "connected" ||
-                realtimeTutor.isSubmittingUserTurn
-              }
-            >
-              {isUserTurn ? <Mic size={23} /> : <Hand size={23} />}
-            </button>
-            <div className="listening-status" aria-live="polite">
-              {renderTutorStatus()}
+          <div className="session-controls">
+            {tutorQuestion && (
+              <div
+                className="tutor-question"
+                aria-label="Tutor question"
+                aria-live="polite"
+              >
+                <small>Quick check</small>
+                <p>{tutorQuestion}</p>
+              </div>
+            )}
+            <div className={`session-dock${sessionEnded ? " ended" : ""}`}>
+              <button
+                className={`dock-icon${isUserTurn ? " user-turn" : ""}`}
+                type="button"
+                onClick={() => void toggleUserTurn()}
+                aria-label={userTurnActionLabel}
+                aria-pressed={isUserTurn}
+                title={userTurnActionLabel}
+                disabled={
+                  realtimeTutor.status !== "connected" ||
+                  realtimeTutor.isSubmittingUserTurn
+                }
+              >
+                {isUserTurn ? <Check size={23} /> : <Hand size={23} />}
+              </button>
+              <div className="listening-status" aria-live="polite">
+                {renderTutorStatus()}
+              </div>
+              <button
+                className="dock-icon"
+                type="button"
+                onClick={() => setModal("transcript")}
+                aria-label="View tutor transcript"
+                title="View tutor transcript"
+                disabled={realtimeTutor.tutorTranscripts.length === 0}
+              >
+                <MessageSquareText size={23} />
+              </button>
+              <button
+                className="dock-icon"
+                type="button"
+                onClick={() => setModal("shortcuts")}
+                aria-label="View keyboard shortcuts"
+              >
+                <Keyboard size={24} />
+              </button>
+              {renderSessionAction()}
             </div>
-            <button
-              className="dock-icon"
-              type="button"
-              onClick={() => setModal("transcript")}
-              aria-label="View tutor transcript"
-              title="View tutor transcript"
-              disabled={realtimeTutor.tutorTranscripts.length === 0}
-            >
-              <MessageSquareText size={23} />
-            </button>
-            <button
-              className="dock-icon"
-              type="button"
-              onClick={() => setModal("shortcuts")}
-              aria-label="View keyboard shortcuts"
-            >
-              <Keyboard size={24} />
-            </button>
-            {renderSessionAction()}
           </div>
         </section>
 
@@ -1684,4 +1688,19 @@ function isPdf(file: File) {
 
 function formatConceptId(conceptId: string) {
   return conceptId.replace("concept:", "").replaceAll("-", " ");
+}
+
+function getLatestTutorQuestion(transcript: string) {
+  const sentences =
+    transcript
+      .replace(/\s+/g, " ")
+      .trim()
+      .match(/[^.!?]+(?:[.!?]+["'’”)\]]*|$)/g) ?? [];
+
+  return (
+    sentences
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => /\?["'’”)\]]*$/.test(sentence))
+      .at(-1) ?? ""
+  );
 }

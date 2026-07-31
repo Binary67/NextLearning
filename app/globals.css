@@ -49,7 +49,7 @@ a:focus-visible {
 
 .app-shell {
   min-height: 100vh;
-  padding-bottom: 104px;
+  padding-bottom: 172px;
   background:
     radial-gradient(circle at 70% 0%, rgba(0, 122, 255, 0.035), transparent 28%),
     var(--background);
@@ -932,25 +932,66 @@ a:focus-visible {
   cursor: not-allowed;
 }
 
-.session-dock {
+.session-controls {
   position: fixed;
   right: 50%;
   bottom: 20px;
   z-index: 25;
   display: grid;
-  grid-template-columns: 60px minmax(280px, 1fr) 52px 52px 160px;
+  overflow: hidden;
   width: min(900px, calc(100% - 32px));
-  min-height: 70px;
-  align-items: center;
-  padding: 10px 14px;
   border: 1px solid rgba(60, 60, 67, 0.18);
   border-radius: 36px;
-  background: rgba(248, 248, 250, 0.86);
+  background: rgba(248, 248, 250, 0.9);
   box-shadow:
     0 10px 30px rgba(27, 38, 55, 0.13),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.75);
   backdrop-filter: saturate(180%) blur(24px);
   transform: translateX(50%);
+}
+
+.tutor-question {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(0, 122, 255, 0.035);
+}
+
+.tutor-question small {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tutor-question p {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 700px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: left;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.session-dock {
+  display: grid;
+  grid-template-columns: 60px minmax(280px, 1fr) 52px 52px 160px;
+  width: 100%;
+  min-height: 70px;
+  align-items: center;
+  padding: 10px 14px;
 }
 
 .dock-icon {
@@ -1569,17 +1610,21 @@ kbd {
     padding-right: 6px;
   }
 
-  .session-dock {
+  .session-controls {
     position: static;
     z-index: auto;
     width: 100%;
-    min-height: 70px;
     border: 0;
     border-top: 1px solid var(--hairline);
     border-radius: 0;
     background: #fafafc;
     box-shadow: none;
+    backdrop-filter: none;
     transform: none;
+  }
+
+  .session-dock {
+    min-height: 70px;
   }
 
   .dashboard-layout.insights-hidden {
@@ -1652,7 +1697,7 @@ kbd {
 
 @media (max-width: 640px) {
   .app-shell {
-    padding-bottom: 145px;
+    padding-bottom: 215px;
   }
 
   .topbar {
@@ -1752,12 +1797,26 @@ kbd {
     padding: 25px 22px;
   }
 
-  .session-dock {
+  .session-controls {
     bottom: 12px;
+    border-radius: 28px;
+  }
+
+  .tutor-question {
+    display: grid;
+    justify-items: center;
+    gap: 5px;
+    padding: 12px 16px;
+  }
+
+  .tutor-question p {
+    text-align: center;
+  }
+
+  .session-dock {
     grid-template-columns: 56px minmax(0, 1fr) 48px 48px;
     min-height: 76px;
     padding: 8px 9px;
-    border-radius: 28px;
   }
 
   .listening-status {
