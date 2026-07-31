@@ -22,17 +22,29 @@ import {
   User,
   X,
 } from "lucide-react";
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type {
+  DocumentModel,
   DocumentMapSummary,
   PageLearningContext,
 } from "@/lib/document-model";
+import {
+  findActiveTeachingUnit,
+  type LearningProgress,
+} from "@/lib/learning-progress";
 import type {
   TeachingPlan,
   TeachingPlanSummary,
   TeachingUnit,
 } from "@/lib/teaching-plan";
+import { useRealtimeTutor } from "@/lib/use-realtime-tutor";
 
 type NavSection = "Dashboard" | "Courses" | "Library";
 type Modal =
@@ -60,9 +72,7 @@ export default function Home() {
     useState<NavSection>("Dashboard");
   const [modal, setModal] = useState<Modal>(null);
   const [popover, setPopover] = useState<Popover>(null);
-  const [isListening, setIsListening] = useState(true);
   const [timerRunning, setTimerRunning] = useState(true);
-  const [sessionEnded, setSessionEnded] = useState(false);
   const [insightsVisible, setInsightsVisible] = useState(true);
   const [toast, setToast] = useState("");
   const [activeDocument, setActiveDocument] =
@@ -79,9 +89,46 @@ export default function Home() {
   const [pageContextError, setPageContextError] = useState("");
   const [teachingPlan, setTeachingPlan] =
     useState<TeachingPlan | null>(null);
+  const [documentModel, setDocumentModel] =
+    useState<DocumentModel | null>(null);
+  const [learningProgress, setLearningProgress] =
+    useState<LearningProgress | null>(null);
   const [teachingPlanLoading, setTeachingPlanLoading] = useState(false);
   const [teachingPlanError, setTeachingPlanError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeUnit =
+    teachingPlan && learningProgress
+      ? findActiveTeachingUnit(teachingPlan, learningProgress)
+      : null;
+  const realtimeTutor = useRealtimeTutor({
+    documentId: activeDocument?.id ?? null,
+    documentUrl: activeDocument?.url ?? null,
+    documentModel,
+    teachingPlan,
+    activeUnit,
+    onPageChange: setCurrentPage,
+    onProgressChange: setLearningProgress,
+  });
+  const sessionEnded = realtimeTutor.status === "ended";
+  const isListening = realtimeTutor.isListening;
+  const masteredUnitCount = learningProgress
+    ? Object.keys(learningProgress.unit_progress).length
+    : 0;
+  const activeUnitNumber =
+    activeUnit && teachingPlan
+      ? teachingPlan.units.findIndex((unit) => unit.id === activeUnit.id) + 1
+      : 0;
+  const tutorialComplete =
+    teachingPlan !== null &&
+    learningProgress !== null &&
+    activeUnit === null;
+  let microphoneLabel = "Start Realtime tutor";
+
+  if (realtimeTutor.status === "connected") {
+    microphoneLabel = isListening
+      ? "Pause microphone"
+      : "Resume microphone";
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -165,27 +212,64 @@ export default function Home() {
 
     const controller = new AbortController();
 
-    async function loadTeachingPlan() {
+    async function loadTutorialData() {
       setTeachingPlanLoading(true);
       setTeachingPlanError("");
       setTeachingPlan(null);
+      setDocumentModel(null);
+      setLearningProgress(null);
 
       try {
-        const response = await fetch("/api/document/plan", {
-          signal: controller.signal,
-        });
-        const data = (await response.json()) as {
+        const [planResponse, mapResponse, progressResponse] =
+          await Promise.all([
+            fetch("/api/document/plan", { signal: controller.signal }),
+            fetch("/api/document/map", { signal: controller.signal }),
+            fetch("/api/document/progress", {
+              signal: controller.signal,
+            }),
+          ]);
+        const planData = (await planResponse.json()) as {
           plan?: TeachingPlan;
           message?: string;
         };
+        const mapData = (await mapResponse.json()) as {
+          model?: DocumentModel;
+          message?: string;
+        };
+        const progressData = (await progressResponse.json()) as {
+          progress?: LearningProgress;
+          message?: string;
+        };
 
-        if (!response.ok || !data.plan) {
+        if (!planResponse.ok || !planData.plan) {
           throw new Error(
-            data.message ?? "The teaching blueprint could not be loaded.",
+            planData.message ?? "The teaching blueprint could not be loaded.",
           );
         }
 
-        setTeachingPlan(data.plan);
+        if (!mapResponse.ok || !mapData.model) {
+          throw new Error(
+            mapData.message ?? "The document map could not be loaded.",
+          );
+        }
+
+        if (!progressResponse.ok || !progressData.progress) {
+          throw new Error(
+            progressData.message ?? "Learning progress could not be loaded.",
+          );
+        }
+
+        setTeachingPlan(planData.plan);
+        setDocumentModel(mapData.model);
+        setLearningProgress(progressData.progress);
+        const initialUnit = findActiveTeachingUnit(
+          planData.plan,
+          progressData.progress,
+        );
+
+        if (initialUnit) {
+          setCurrentPage(initialUnit.source_anchors[0].page_index);
+        }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
           setTeachingPlanError(error.message);
@@ -197,9 +281,40 @@ export default function Home() {
       }
     }
 
-    loadTeachingPlan();
+    loadTutorialData();
     return () => controller.abort();
   }, [activeDocument]);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2600);
+  }, []);
+
+  function selectSection(section: NavSection) {
+    setActiveSection(section);
+    if (section !== "Dashboard") {
+      showToast(`${section} is selected and ready for future content.`);
+    }
+  }
+
+  function toggleTimer() {
+    setTimerRunning((running) => !running);
+    showToast(timerRunning ? "Focus timer paused." : "Focus timer resumed.");
+  }
+
+  function togglePopover(nextPopover: "settings" | "profile") {
+    setPopover((currentPopover) =>
+      currentPopover === nextPopover ? null : nextPopover,
+    );
+  }
+
+  const toggleListening = useCallback(() => {
+    realtimeTutor.toggleListening();
+
+    if (realtimeTutor.status === "connected") {
+      showToast(isListening ? "Listening paused." : "Listening resumed.");
+    }
+  }, [isListening, realtimeTutor, showToast]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -228,41 +343,13 @@ export default function Home() {
         setModal("end-session");
       } else if (key === " " && !sessionEnded && modal === null) {
         event.preventDefault();
-        setIsListening((listening) => !listening);
+        toggleListening();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [modal, sessionEnded, uploading]);
-
-  function showToast(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2600);
-  }
-
-  function selectSection(section: NavSection) {
-    setActiveSection(section);
-    if (section !== "Dashboard") {
-      showToast(`${section} is selected and ready for future content.`);
-    }
-  }
-
-  function toggleTimer() {
-    setTimerRunning((running) => !running);
-    showToast(timerRunning ? "Focus timer paused." : "Focus timer resumed.");
-  }
-
-  function togglePopover(nextPopover: "settings" | "profile") {
-    setPopover((currentPopover) =>
-      currentPopover === nextPopover ? null : nextPopover,
-    );
-  }
-
-  function toggleListening() {
-    setIsListening((listening) => !listening);
-    showToast(isListening ? "Listening paused." : "Listening resumed.");
-  }
+  }, [modal, sessionEnded, toggleListening, uploading]);
 
   function downloadDocument() {
     if (!activeDocument) {
@@ -327,6 +414,7 @@ export default function Home() {
         throw new Error(data.message ?? "The document could not be uploaded.");
       }
 
+      realtimeTutor.reset();
       setActiveDocument(data.document);
       setCurrentPage(1);
       setPendingFile(null);
@@ -367,10 +455,13 @@ export default function Home() {
         throw new Error("The document could not be removed.");
       }
 
+      realtimeTutor.reset();
       setActiveDocument(null);
       setCurrentPage(1);
       setPageContext(null);
       setTeachingPlan(null);
+      setDocumentModel(null);
+      setLearningProgress(null);
       setTeachingPlanError("");
       setDocumentError("");
       setModal(null);
@@ -387,18 +478,94 @@ export default function Home() {
   }
 
   function confirmEndSession() {
-    setSessionEnded(true);
-    setIsListening(false);
+    realtimeTutor.end();
     setTimerRunning(false);
     setModal(null);
     showToast("Session ended.");
   }
 
   function startNewSession() {
-    setSessionEnded(false);
-    setIsListening(true);
     setTimerRunning(true);
-    showToast("A new learning session has started.");
+    void realtimeTutor.start();
+  }
+
+  function renderTutorStatus() {
+    if (sessionEnded) {
+      return <span>Session complete</span>;
+    }
+
+    if (realtimeTutor.status === "connecting") {
+      return <strong>Connecting…</strong>;
+    }
+
+    if (realtimeTutor.status === "connected") {
+      return (
+        <>
+          {isListening && (
+            <span className="sound-bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          )}
+          <strong>{isListening ? "Listening…" : "Paused"}</strong>
+        </>
+      );
+    }
+
+    if (tutorialComplete) {
+      return <strong>Blueprint mastered</strong>;
+    }
+
+    if (realtimeTutor.status === "error") {
+      return <strong>Tutor unavailable</strong>;
+    }
+
+    return <strong>Ready to start</strong>;
+  }
+
+  function renderSessionAction() {
+    if (sessionEnded) {
+      return (
+        <button
+          className="primary-button end-button"
+          type="button"
+          onClick={startNewSession}
+          disabled={!activeUnit}
+        >
+          <Play size={20} />
+          New Session
+        </button>
+      );
+    }
+
+    if (
+      realtimeTutor.status === "connected" ||
+      realtimeTutor.status === "connecting"
+    ) {
+      return (
+        <button
+          className="primary-button end-button"
+          type="button"
+          onClick={() => setModal("end-session")}
+        >
+          <LogOut size={21} />
+          End Session
+        </button>
+      );
+    }
+
+    return (
+      <button
+        className="primary-button end-button"
+        type="button"
+        onClick={() => void realtimeTutor.start()}
+        disabled={!activeUnit}
+      >
+        <Play size={20} />
+        {tutorialComplete ? "Complete" : "Start Tutor"}
+      </button>
+    );
   }
 
   const insightsToggleLabel = insightsVisible
@@ -513,11 +680,11 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() =>
-                    showToast("The tutor uses the full document map.")
+                    showToast("The tutor follows the active teaching unit.")
                   }
                 >
-                  <span>Document scope</span>
-                  <strong>Full PDF</strong>
+                  <span>Tutor scope</span>
+                  <strong>Active unit</strong>
                 </button>
               </div>
             )}
@@ -689,24 +856,17 @@ export default function Home() {
               className={`dock-icon${isListening ? " listening" : ""}`}
               type="button"
               onClick={toggleListening}
-              aria-label={isListening ? "Pause microphone" : "Resume microphone"}
-              disabled={sessionEnded}
+              aria-label={microphoneLabel}
+              disabled={
+                sessionEnded ||
+                realtimeTutor.status === "connecting" ||
+                !activeUnit
+              }
             >
               {isListening ? <Mic size={23} /> : <MicOff size={23} />}
             </button>
             <div className="listening-status" aria-live="polite">
-              {sessionEnded ? (
-                <span>Session complete</span>
-              ) : (
-                <>
-                  <span className="sound-bars" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                  <strong>{isListening ? "Listening…" : "Paused"}</strong>
-                </>
-              )}
+              {renderTutorStatus()}
             </div>
             <button
               className="dock-icon"
@@ -716,25 +876,7 @@ export default function Home() {
             >
               <Keyboard size={24} />
             </button>
-            {sessionEnded ? (
-              <button
-                className="primary-button end-button"
-                type="button"
-                onClick={startNewSession}
-              >
-                <Play size={20} />
-                New Session
-              </button>
-            ) : (
-              <button
-                className="primary-button end-button"
-                type="button"
-                onClick={() => setModal("end-session")}
-              >
-                <LogOut size={21} />
-                End Session
-              </button>
-            )}
+            {renderSessionAction()}
           </div>
         </section>
 
@@ -829,15 +971,29 @@ export default function Home() {
             <section className="insight-card session-card" id="session-log">
               <h2>
                 <History size={24} aria-hidden="true" />
-                <span>Tutor handoff</span>
+                <span>Tutorial progress</span>
               </h2>
               <div className="log-entry">
-                <strong>Future tutor handoff</strong>
-                <p>
-                  The ordered teaching blueprint is ready. Realtime tutoring,
-                  learner state, and personalization are not part of this
-                  version.
-                </p>
+                <strong>
+                  {tutorialComplete
+                    ? "Teaching blueprint mastered"
+                    : activeUnit?.title ?? "Preparing tutorial"}
+                </strong>
+                {teachingPlan && learningProgress ? (
+                  <p>
+                    {masteredUnitCount} of {teachingPlan.units.length} units
+                    mastered.
+                    {activeUnit &&
+                      ` Active unit ${activeUnitNumber} begins on page ${activeUnit.source_anchors[0].page_label}.`}
+                  </p>
+                ) : (
+                  <p>Learning progress is loading.</p>
+                )}
+                {realtimeTutor.error && (
+                  <p className="tutor-error" role="alert">
+                    {realtimeTutor.error}
+                  </p>
+                )}
               </div>
             </section>
           </aside>
@@ -948,8 +1104,8 @@ export default function Home() {
                 <p className="modal-eyebrow">Session control</p>
                 <h2 id="modal-title">End this learning session?</h2>
                 <p className="modal-copy">
-                  This stops the current interface session. Learner progress is
-                  not stored in this version.
+                  This disconnects the live tutor. Mastered units and their
+                  evidence remain saved with this document.
                 </p>
                 <div className="modal-actions">
                   <button
@@ -1032,7 +1188,8 @@ export default function Home() {
                 <h2 id="modal-title">Remove this document?</h2>
                 <p className="modal-copy">
                   <strong>{activeDocument?.name}</strong> will be permanently
-                  deleted from this machine.
+                  deleted from this machine together with its saved learning
+                  progress.
                 </p>
                 <div className="modal-actions">
                   <button

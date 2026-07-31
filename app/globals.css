@@ -815,6 +815,13 @@ a:focus-visible {
   line-height: 1.7;
 }
 
+.log-entry .tutor-error {
+  color: #a22424;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .session-dock {
   position: fixed;
   right: 50%;

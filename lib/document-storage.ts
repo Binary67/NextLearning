@@ -2,6 +2,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import type { DocumentModel } from "@/lib/document-model";
+import {
+  createLearningProgress,
+  type LearningProgress,
+} from "@/lib/learning-progress";
 import type { TeachingPlan } from "@/lib/teaching-plan";
 
 export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
@@ -23,6 +27,10 @@ const teachingPlanPath = path.join(
   documentsDirectory,
   "teaching-plan.json",
 );
+const learningProgressPath = path.join(
+  documentsDirectory,
+  "learning-progress.json",
+);
 
 export async function readStoredDocument(): Promise<StoredDocument | null> {
   return readJsonFile<StoredDocument>(metadataPath);
@@ -40,6 +48,17 @@ export async function readTeachingPlan(): Promise<TeachingPlan | null> {
   return readJsonFile<TeachingPlan>(teachingPlanPath);
 }
 
+export async function readLearningProgress(): Promise<LearningProgress | null> {
+  return readJsonFile<LearningProgress>(learningProgressPath);
+}
+
+export async function saveLearningProgress(progress: LearningProgress) {
+  await fs.writeFile(
+    learningProgressPath,
+    JSON.stringify(progress, null, 2),
+  );
+}
+
 export async function deleteStoredDocument() {
   const document = await readStoredDocument();
 
@@ -50,6 +69,7 @@ export async function deleteStoredDocument() {
   await fs.rm(metadataPath, { force: true });
   await fs.rm(documentModelPath, { force: true });
   await fs.rm(teachingPlanPath, { force: true });
+  await fs.rm(learningProgressPath, { force: true });
   await fs.rm(path.join(documentsDirectory, document.fileName), {
     force: true,
   });
@@ -78,6 +98,10 @@ export async function saveDocument(
     fs.writeFile(path.join(documentsDirectory, fileName), fileData),
     fs.writeFile(documentModelPath, JSON.stringify(model, null, 2)),
     fs.writeFile(teachingPlanPath, JSON.stringify(plan, null, 2)),
+    fs.writeFile(
+      learningProgressPath,
+      JSON.stringify(createLearningProgress(documentId), null, 2),
+    ),
   ]);
   await fs.writeFile(metadataPath, JSON.stringify(document, null, 2));
 
