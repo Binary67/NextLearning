@@ -294,10 +294,10 @@ a:focus-visible {
 }
 
 .dashboard-layout {
-  --insights-motion: 260ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --insights-motion: 220ms cubic-bezier(0.22, 1, 0.36, 1);
 
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 336px;
   gap: 20px;
   width: min(1480px, calc(100% - 48px));
   margin: 20px auto 0;
@@ -306,8 +306,7 @@ a:focus-visible {
     gap var(--insights-motion);
 }
 
-.lesson-card,
-.insight-card {
+.lesson-card {
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow:
@@ -323,7 +322,7 @@ a:focus-visible {
 
 .lesson-toolbar {
   display: flex;
-  min-height: 74px;
+  min-height: 64px;
   align-items: center;
   justify-content: space-between;
   padding: 0 22px;
@@ -348,10 +347,25 @@ a:focus-visible {
 }
 
 .lesson-actions {
-  gap: 1px;
-  padding: 2px;
-  border-radius: 11px;
-  background: rgba(118, 118, 128, 0.07);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.lesson-toolbar-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.insights-toolbar-toggle {
+  margin-left: 2px;
+  color: #3a3a3c;
+}
+
+.insights-toolbar-toggle[aria-expanded="true"] {
+  color: var(--blue);
 }
 
 .icon-button.small {
@@ -447,9 +461,10 @@ a:focus-visible {
   padding: 1px 4px;
   border: 1px solid var(--border);
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.84);
   font-size: 0.82rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  backdrop-filter: saturate(180%) blur(16px);
 }
 
 .pdf-page-controls .icon-button.small {
@@ -507,7 +522,7 @@ a:focus-visible {
   overflow: hidden;
   border-radius: 10px;
   background: #d8d8dd;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.07);
 }
 
 .pdf-viewer {
@@ -522,7 +537,9 @@ a:focus-visible {
   position: relative;
   margin: 0 auto;
   background: #fff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 6px 18px rgba(0, 0, 0, 0.08);
 }
 
 .pdf-page-surface canvas {
@@ -555,80 +572,31 @@ a:focus-visible {
 .insights-column {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.025),
+    0 8px 24px rgba(0, 0, 0, 0.025);
+  backdrop-filter: saturate(160%) blur(18px);
   transition:
     opacity 140ms ease,
     transform var(--insights-motion);
 }
 
 .insights-panel {
-  position: relative;
   min-width: 0;
-}
-
-.insights-toggle {
-  position: absolute;
-  top: 9px;
-  left: -22px;
-  z-index: 3;
-  display: inline-grid;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #3a3a3c;
-  cursor: pointer;
-  place-items: center;
-}
-
-.insights-toggle::before {
-  position: absolute;
-  inset: 7px;
-  border: 1px solid rgba(60, 60, 67, 0.2);
-  border-radius: 50%;
-  background: rgba(250, 250, 252, 0.82);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.08),
-    0 4px 12px rgba(0, 0, 0, 0.06);
-  backdrop-filter: saturate(180%) blur(16px);
-  content: "";
-  transition:
-    background 160ms ease,
-    box-shadow 160ms ease,
-    transform 120ms ease;
-}
-
-.insights-toggle svg {
-  position: relative;
-  z-index: 1;
-  transition: transform var(--insights-motion);
-}
-
-.insights-toggle[aria-expanded="false"] svg {
-  transform: rotate(180deg);
-}
-
-.insights-toggle:hover::before {
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.1),
-    0 6px 16px rgba(0, 0, 0, 0.08);
-}
-
-.insights-toggle:active::before {
-  background: rgba(240, 240, 243, 0.96);
-  transform: scale(0.94);
 }
 
 .insight-card {
   flex: 0 0 auto;
-  border-radius: 20px;
+  background: transparent;
 }
 
-.insight-card.collapsed {
-  min-height: 0;
+.insight-card + .insight-card {
+  border-top: 1px solid var(--hairline);
 }
 
 .insight-card-header {
@@ -657,9 +625,20 @@ a:focus-visible {
 .insight-card-title {
   min-width: 0;
   gap: 11px;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.insight-card-icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--soft-blue);
+  color: var(--blue);
 }
 
 .insight-card-controls {
@@ -681,49 +660,41 @@ a:focus-visible {
 }
 
 .insight-card-summary {
-  margin: 10px 0 0;
+  margin: 7px 0 0 41px;
   color: var(--muted);
   font-size: 0.76rem;
   line-height: 1.4;
 }
 
 .understanding-card {
-  min-height: 224px;
-  padding: 24px;
   text-align: left;
 }
 
-.document-preparation-title {
-  color: #55555d;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.065em;
-  text-transform: uppercase;
+.understanding-card,
+.takeaways-card,
+.session-card {
+  min-height: 0;
+  padding: 20px;
 }
 
 .preparation-indicator {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   place-items: center;
-  border-radius: 9px;
-  background: rgba(118, 118, 128, 0.08);
-  color: var(--muted);
-}
-
-.preparation-indicator.ready {
+  border-radius: 8px;
   background: var(--soft-blue);
   color: var(--blue);
 }
 
 .preparation-status {
-  padding: 20px 0 19px;
+  padding: 18px 0;
 }
 
 .preparation-status h3 {
   margin: 0;
   color: #171719;
-  font-size: 1.25rem;
+  font-size: 1.12rem;
   font-weight: 650;
   letter-spacing: -0.035em;
 }
@@ -773,7 +744,7 @@ a:focus-visible {
   order: -1;
   margin: 0;
   color: #171719;
-  font-size: 1.3rem;
+  font-size: 1.18rem;
   font-weight: 650;
   letter-spacing: -0.035em;
   line-height: 1;
@@ -789,20 +760,6 @@ a:focus-visible {
   white-space: nowrap;
 }
 
-.takeaways-card {
-  min-height: 470px;
-  padding: 25px 24px 24px;
-}
-
-.takeaways-card .insight-card-header {
-  margin: 0 0 25px;
-}
-
-.takeaways-card .insight-card-title svg,
-.session-card .insight-card-title svg {
-  color: var(--blue);
-}
-
 .takeaways-card ul {
   padding: 0;
   margin: 0;
@@ -812,9 +769,9 @@ a:focus-visible {
 .takeaways-card li {
   position: relative;
   padding-left: 21px;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
   color: #3a3a3c;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   line-height: 1.42;
 }
 
@@ -929,20 +886,9 @@ a:focus-visible {
   width: 100%;
 }
 
-.session-card {
-  min-height: 210px;
-  padding: 25px 24px;
-}
-
+.takeaways-card .insight-card-header,
 .session-card .insight-card-header {
-  margin: 0 0 18px;
-}
-
-.session-card .insight-card-title {
-  font-size: 0.7rem;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin: 0 0 20px;
 }
 
 .insight-card.collapsed .insight-card-header {
@@ -1959,10 +1905,6 @@ kbd {
     min-height: 0;
   }
 
-  .insights-column {
-    padding-right: 6px;
-  }
-
   .session-controls {
     position: static;
     z-index: auto;
@@ -1981,8 +1923,12 @@ kbd {
   }
 
   .dashboard-layout.insights-hidden {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: minmax(0, 1fr) 0;
     gap: 0;
+  }
+
+  .dashboard-layout.insights-hidden .insights-panel {
+    overflow: hidden;
   }
 
   .dashboard-layout.insights-hidden .insights-column {
@@ -1993,7 +1939,7 @@ kbd {
     transition:
       opacity 120ms ease,
       transform var(--insights-motion),
-      visibility 0s 260ms;
+      visibility 0s 220ms;
     visibility: hidden;
   }
 }
@@ -2007,7 +1953,7 @@ kbd {
 }
 
 @media (max-width: 880px) {
-  .insights-toggle {
+  .insights-toolbar-toggle {
     display: none;
   }
 
@@ -2032,7 +1978,26 @@ kbd {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 18px;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
     margin-top: 18px;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .insight-card {
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.025),
+      0 8px 24px rgba(0, 0, 0, 0.025);
+  }
+
+  .insight-card + .insight-card {
+    border-top-color: var(--border);
   }
 
   .understanding-card {

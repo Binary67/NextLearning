@@ -13,6 +13,7 @@ import {
   Keyboard,
   LogOut,
   MessageSquareText,
+  PanelRight,
   Pause,
   Play,
   RotateCcw,
@@ -1010,36 +1011,49 @@ export default function Home() {
                 {activeDocument?.name ?? "Your learning document"}
               </h2>
             </div>
-            {activeDocument && (
-              <div className="lesson-actions">
-                <button
-                  className="icon-button small"
-                  type="button"
-                  onClick={downloadDocument}
-                  aria-label="Download document"
-                >
-                  <Download size={21} />
-                </button>
-                <button
-                  className="icon-button small"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Replace document"
-                  disabled={uploading}
-                >
-                  <Upload size={21} />
-                </button>
-                <button
-                  className="icon-button small danger-icon-button"
-                  type="button"
-                  onClick={() => setModal("remove-document")}
-                  aria-label="Remove document"
-                  disabled={removingDocument}
-                >
-                  <Trash2 size={20} />
-                </button>
-              </div>
-            )}
+            <div className="lesson-toolbar-controls">
+              {activeDocument && (
+                <div className="lesson-actions">
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={downloadDocument}
+                    aria-label="Download document"
+                  >
+                    <Download size={21} />
+                  </button>
+                  <button
+                    className="icon-button small"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Replace document"
+                    disabled={uploading}
+                  >
+                    <Upload size={21} />
+                  </button>
+                  <button
+                    className="icon-button small danger-icon-button"
+                    type="button"
+                    onClick={() => setModal("remove-document")}
+                    aria-label="Remove document"
+                    disabled={removingDocument}
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              )}
+              <button
+                className="icon-button small insights-toolbar-toggle"
+                type="button"
+                onClick={() => setInsightsVisible((visible) => !visible)}
+                aria-label={insightsToggleLabel}
+                aria-controls="learning-insights"
+                aria-expanded={insightsVisible}
+                title={insightsToggleLabel}
+              >
+                <PanelRight size={19} aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           <input
@@ -1203,17 +1217,6 @@ export default function Home() {
         </section>
 
         <div className="insights-panel">
-          <button
-            className="insights-toggle"
-            type="button"
-            onClick={() => setInsightsVisible((visible) => !visible)}
-            aria-label={insightsToggleLabel}
-            aria-controls="learning-insights"
-            aria-expanded={insightsVisible}
-            title={insightsToggleLabel}
-          >
-            <ChevronRight size={16} aria-hidden="true" />
-          </button>
           <aside
             className="insights-column"
             id="learning-insights"
@@ -1226,23 +1229,21 @@ export default function Home() {
             >
               <InsightCardHeader
                 title="Document preparation"
-                titleClassName="document-preparation-title"
+                icon={<Sparkles size={18} aria-hidden="true" />}
                 expanded={documentPreparationExpanded}
                 contentId="document-preparation-content"
                 onToggle={() =>
                   setDocumentPreparationExpanded((expanded) => !expanded)
                 }
                 status={
-                  <span
-                    className={`preparation-indicator${activeDocument ? " ready" : ""}`}
-                    aria-hidden="true"
-                  >
-                    {activeDocument ? (
-                      <Check size={16} strokeWidth={2.5} />
-                    ) : (
-                      <Sparkles size={16} />
-                    )}
-                  </span>
+                  activeDocument ? (
+                    <span
+                      className="preparation-indicator"
+                      aria-hidden="true"
+                    >
+                      <Check size={15} strokeWidth={2.5} />
+                    </span>
+                  ) : undefined
                 }
               />
               <div
@@ -1738,7 +1739,6 @@ export default function Home() {
 
 function InsightCardHeader({
   title,
-  titleClassName,
   icon,
   status,
   expanded,
@@ -1746,17 +1746,12 @@ function InsightCardHeader({
   onToggle,
 }: {
   title: string;
-  titleClassName?: string;
   icon?: ReactNode;
   status?: ReactNode;
   expanded: boolean;
   contentId: string;
   onToggle: () => void;
 }) {
-  const titleClasses = titleClassName
-    ? `insight-card-title ${titleClassName}`
-    : "insight-card-title";
-
   return (
     <h2 className="insight-card-header">
       <button
@@ -1766,8 +1761,8 @@ function InsightCardHeader({
         aria-controls={contentId}
         aria-expanded={expanded}
       >
-        <span className={titleClasses}>
-          {icon}
+        <span className="insight-card-title">
+          {icon && <span className="insight-card-icon">{icon}</span>}
           <span>{title}</span>
         </span>
         <span className="insight-card-controls">
