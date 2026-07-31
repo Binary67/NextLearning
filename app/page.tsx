@@ -139,7 +139,7 @@ export default function Home() {
     userTurnActionLabel = "Done speaking";
   }
 
-  const liveTutorCaption = getLiveCaption(realtimeTutor.tutorTranscript);
+  const liveTutorCaption = realtimeTutor.tutorCaption;
   const masteredUnitCount = learningProgress
     ? Object.keys(learningProgress.unit_progress).length
     : 0;
@@ -662,7 +662,7 @@ export default function Home() {
               className={`turn-state-copy${liveTutorCaption ? " tutor-caption-copy" : ""}`}
             >
               <small>Your turn · microphone on</small>
-              <strong>
+              <strong key={liveTutorCaption || "user-turn"}>
                 {liveTutorCaption ||
                   "Click the hand again when you finish speaking"}
               </strong>
@@ -693,7 +693,9 @@ export default function Home() {
             className={`turn-state-copy${liveTutorCaption ? " tutor-caption-copy" : ""}`}
           >
             <small>{tutorTurnLabel}</small>
-            <strong>{liveTutorCaption || `${tutorTurnLabel}…`}</strong>
+            <strong key={liveTutorCaption || tutorTurnLabel}>
+              {liveTutorCaption || `${tutorTurnLabel}…`}
+            </strong>
           </span>
         );
       }
@@ -702,7 +704,7 @@ export default function Home() {
         return (
           <span className="turn-state-copy tutor-caption-copy">
             <small>Your turn · raise hand when ready</small>
-            <strong>{liveTutorCaption}</strong>
+            <strong key={liveTutorCaption}>{liveTutorCaption}</strong>
           </span>
         );
       }
@@ -1682,35 +1684,4 @@ function isPdf(file: File) {
 
 function formatConceptId(conceptId: string) {
   return conceptId.replace("concept:", "").replaceAll("-", " ");
-}
-
-function getLiveCaption(transcript: string) {
-  const normalizedTranscript = transcript.replace(/\s+/g, " ").trim();
-  const maximumLength = 220;
-
-  if (!normalizedTranscript) {
-    return "";
-  }
-
-  const sentences =
-    normalizedTranscript
-      .match(/[^.!?]+(?:[.!?]+["'’”)\]]*|$)/g)
-      ?.map((sentence) => sentence.trim())
-      .filter(Boolean) ?? [normalizedTranscript];
-  const latestSentence = sentences.at(-1) ?? normalizedTranscript;
-  const previousSentence = sentences.at(-2);
-  const caption =
-    previousSentence &&
-    previousSentence.length + latestSentence.length + 1 <= maximumLength
-      ? `${previousSentence} ${latestSentence}`
-      : latestSentence;
-
-  if (caption.length <= maximumLength) {
-    return caption;
-  }
-
-  const tail = caption.slice(-maximumLength);
-  const firstSpace = tail.indexOf(" ");
-
-  return `…${tail.slice(firstSpace + 1)}`;
 }
