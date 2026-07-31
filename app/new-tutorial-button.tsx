@@ -181,7 +181,7 @@ export function NewTutorialButton({
         onClick={() => inputRef.current?.click()}
       >
         <Upload size={19} />
-        New Tutorial
+        Create tutorial
       </button>
     );
 
