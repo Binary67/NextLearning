@@ -1,21 +1,32 @@
 import {
-  readStoredDocument,
+  isTutorialId,
+  readStoredTutorial,
   readTeachingPlan,
 } from "@/lib/document-storage";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
-  const [document, plan] = await Promise.all([
-    readStoredDocument(),
-    readTeachingPlan(),
+type TutorialRealtimeRouteContext = {
+  params: Promise<{ tutorialId: string }>;
+};
+
+export async function POST(
+  request: Request,
+  context: TutorialRealtimeRouteContext,
+) {
+  const { tutorialId } = await context.params;
+
+  if (!isTutorialId(tutorialId)) {
+    return tutorialNotFoundResponse();
+  }
+
+  const [tutorial, plan] = await Promise.all([
+    readStoredTutorial(tutorialId),
+    readTeachingPlan(tutorialId),
   ]);
 
-  if (!document || !plan) {
-    return Response.json(
-      { message: "Prepare a document before starting the tutor." },
-      { status: 404 },
-    );
+  if (!tutorial || !plan) {
+    return tutorialNotFoundResponse();
   }
 
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
@@ -124,6 +135,13 @@ export async function POST(request: Request) {
 
     return tutorUnavailableResponse();
   }
+}
+
+function tutorialNotFoundResponse() {
+  return Response.json(
+    { message: "That tutorial is not available." },
+    { status: 404 },
+  );
 }
 
 function tutorUnavailableResponse() {

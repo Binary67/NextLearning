@@ -5,29 +5,17 @@ import { generateDocumentModel } from "@/lib/document-model-generation";
 import { generateDocumentLayout } from "@/lib/document-layout-generation";
 import { validateDocumentLayout } from "@/lib/document-layout";
 import {
-  summarizeDocumentModel,
-  type DocumentModel,
-  validateDocumentModel,
-} from "@/lib/document-model";
-import {
-  deleteStoredDocument,
   MAX_DOCUMENT_SIZE,
-  readDocumentLayout,
-  readDocumentModel,
-  readStoredDocument,
-  readTeachingGrounding,
-  readTeachingPlan,
-  saveDocument,
-  type StoredDocument,
+  saveTutorial,
 } from "@/lib/document-storage";
+import { createLearningProgress } from "@/lib/learning-progress";
 import { generateTeachingGrounding } from "@/lib/teaching-grounding-generation";
-import { validateTeachingGrounding } from "@/lib/teaching-grounding";
 import { generateTeachingPlan } from "@/lib/teaching-plan-generation";
 import {
-  summarizeTeachingPlan,
-  type TeachingPlan,
-  validateTeachingPlan,
-} from "@/lib/teaching-plan";
+  listPreparedTutorials,
+  type TutorialResponse,
+  toTutorialResponse,
+} from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
@@ -38,7 +26,7 @@ type DocumentPreparationEvent =
     }
   | {
       type: "complete";
-      document: ReturnType<typeof toDocumentResponse>;
+      tutorial: TutorialResponse;
     }
   | {
       type: "error";
@@ -46,41 +34,10 @@ type DocumentPreparationEvent =
     };
 
 export async function GET() {
-  const [
-    document,
-    storedModel,
-    storedLayout,
-    storedPlan,
-    storedGrounding,
-  ] = await Promise.all([
-    readStoredDocument(),
-    readDocumentModel(),
-    readDocumentLayout(),
-    readTeachingPlan(),
-    readTeachingGrounding(),
-  ]);
-
-  if (
-    !document ||
-    !storedModel ||
-    !storedLayout ||
-    !storedPlan ||
-    !storedGrounding
-  ) {
-    return Response.json({ document: null });
-  }
-
-  const model = validateDocumentModel(storedModel, document.id);
-  const layout = validateDocumentLayout(
-    storedLayout,
-    document.id,
-    model.page_count,
-  );
-  const plan = validateTeachingPlan(storedPlan, model);
-  validateTeachingGrounding(storedGrounding, plan, layout);
+  const tutorials = await listPreparedTutorials();
 
   return Response.json({
-    document: toDocumentResponse(document, model, plan),
+    tutorials: tutorials.map(toTutorialResponse),
   });
 }
 
@@ -109,7 +66,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const documentId = randomUUID();
+  const tutorialId = randomUUID();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -123,12 +80,12 @@ export async function POST(request: Request) {
       try {
         send({ type: "progress", stage: "analyzing" });
         const [model, generatedLayout] = await Promise.all([
-          generateDocumentModel(file, documentId),
-          generateDocumentLayout(file, documentId),
+          generateDocumentModel(file, tutorialId),
+          generateDocumentLayout(file, tutorialId),
         ]);
         const layout = validateDocumentLayout(
           generatedLayout,
-          documentId,
+          tutorialId,
           model.page_count,
         );
 
@@ -143,9 +100,9 @@ export async function POST(request: Request) {
         );
 
         send({ type: "progress", stage: "saving" });
-        const document = await saveDocument(
+        const tutorial = await saveTutorial(
           file,
-          documentId,
+          tutorialId,
           model,
           plan,
           layout,
@@ -154,7 +111,12 @@ export async function POST(request: Request) {
 
         send({
           type: "complete",
-          document: toDocumentResponse(document, model, plan),
+          tutorial: toTutorialResponse({
+            tutorial,
+            model,
+            plan,
+            progress: createLearningProgress(tutorialId, tutorial.createdAt),
+          }),
         });
       } catch (error) {
         console.error("Document preparation failed:", error);
@@ -179,29 +141,8 @@ export async function POST(request: Request) {
   });
 }
 
-export async function DELETE() {
-  const deleted = await deleteStoredDocument();
-
-  return Response.json({ deleted });
-}
-
 function isPdf(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
   return extension === "pdf" && file.type === "application/pdf";
-}
-
-function toDocumentResponse(
-  document: StoredDocument,
-  model: DocumentModel,
-  plan: TeachingPlan,
-) {
-  return {
-    id: document.id,
-    name: document.name,
-    type: document.type,
-    url: "/api/document/file",
-    map: summarizeDocumentModel(model),
-    plan: summarizeTeachingPlan(plan),
-  };
 }

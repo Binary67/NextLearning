@@ -1,29 +1,25 @@
-import { validateDocumentModel } from "@/lib/document-model";
-import {
-  readDocumentModel,
-  readLearningProgress,
-  readStoredDocument,
-  readTeachingPlan,
-  saveLearningProgress,
-} from "@/lib/document-storage";
+import { isTutorialId, saveLearningProgress } from "@/lib/document-storage";
 import {
   createLearningProgress,
   findActiveTeachingUnit,
   markUnitMastered,
-  validateLearningProgress,
 } from "@/lib/learning-progress";
-import { validateTeachingPlan } from "@/lib/teaching-plan";
+import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const prepared = await readPreparedTutorial();
+type TutorialProgressRouteContext = {
+  params: Promise<{ tutorialId: string }>;
+};
+
+export async function GET(
+  _request: Request,
+  context: TutorialProgressRouteContext,
+) {
+  const prepared = await readTutorialFromContext(context);
 
   if (!prepared) {
-    return Response.json(
-      { message: "No prepared tutorial is available." },
-      { status: 404 },
-    );
+    return tutorialNotFoundResponse();
   }
 
   return Response.json({
@@ -33,30 +29,30 @@ export async function GET() {
   });
 }
 
-export async function PUT() {
-  const prepared = await readPreparedTutorial();
+export async function PUT(
+  _request: Request,
+  context: TutorialProgressRouteContext,
+) {
+  const prepared = await readTutorialFromContext(context);
 
   if (!prepared) {
-    return Response.json(
-      { message: "No prepared tutorial is available." },
-      { status: 404 },
-    );
+    return tutorialNotFoundResponse();
   }
 
   const progress = createLearningProgress(prepared.progress.document_id);
-  await saveLearningProgress(progress);
+  await saveLearningProgress(prepared.tutorial.id, progress);
 
   return Response.json({ progress });
 }
 
-export async function POST(request: Request) {
-  const prepared = await readPreparedTutorial();
+export async function POST(
+  request: Request,
+  context: TutorialProgressRouteContext,
+) {
+  const prepared = await readTutorialFromContext(context);
 
   if (!prepared) {
-    return Response.json(
-      { message: "No prepared tutorial is available." },
-      { status: 404 },
-    );
+    return tutorialNotFoundResponse();
   }
 
   const body = (await request.json().catch(() => null)) as unknown;
@@ -103,7 +99,7 @@ export async function POST(request: Request) {
     activeUnit,
     body.mastery_evidence,
   );
-  await saveLearningProgress(progress);
+  await saveLearningProgress(prepared.tutorial.id, progress);
 
   return Response.json({
     progress,
@@ -113,28 +109,23 @@ export async function POST(request: Request) {
   });
 }
 
-async function readPreparedTutorial() {
-  const [document, storedModel, storedPlan, storedProgress] =
-    await Promise.all([
-      readStoredDocument(),
-      readDocumentModel(),
-      readTeachingPlan(),
-      readLearningProgress(),
-    ]);
+async function readTutorialFromContext(
+  context: TutorialProgressRouteContext,
+) {
+  const { tutorialId } = await context.params;
 
-  if (!document || !storedModel || !storedPlan || !storedProgress) {
+  if (!isTutorialId(tutorialId)) {
     return null;
   }
 
-  const model = validateDocumentModel(storedModel, document.id);
-  const plan = validateTeachingPlan(storedPlan, model);
-  const progress = validateLearningProgress(
-    storedProgress,
-    document.id,
-    plan,
-  );
+  return readPreparedTutorial(tutorialId);
+}
 
-  return { plan, progress };
+function tutorialNotFoundResponse() {
+  return Response.json(
+    { message: "That tutorial is not available." },
+    { status: 404 },
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

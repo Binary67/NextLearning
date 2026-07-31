@@ -298,13 +298,16 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
 
-      const response = await fetch("/api/realtime/session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/sdp",
+      const response = await fetch(
+        `/api/tutorials/${documentId}/realtime/session`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/sdp",
+          },
+          body: offer.sdp,
         },
-        body: offer.sdp,
-      });
+      );
       const answerSdp = await response.text();
 
       if (!response.ok) {
@@ -829,10 +832,11 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   async function completeUnit(functionCall: RealtimeFunctionCall) {
     const args = parseArguments(functionCall.arguments);
     const masteryEvidence = args.mastery_evidence;
-    const { activeUnit, teachingPlan } = optionsRef.current;
+    const { activeUnit, documentId, teachingPlan } = optionsRef.current;
 
     if (
       !activeUnit ||
+      !documentId ||
       !teachingPlan ||
       typeof masteryEvidence !== "string" ||
       masteryEvidence.trim().length === 0
@@ -852,16 +856,19 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       );
     }
 
-    const response = await fetch("/api/document/progress", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `/api/tutorials/${documentId}/progress`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          active_unit_id: activeUnit.id,
+          mastery_evidence: masteryEvidence,
+        }),
       },
-      body: JSON.stringify({
-        active_unit_id: activeUnit.id,
-        mastery_evidence: masteryEvidence,
-      }),
-    });
+    );
     const data = (await response.json()) as ProgressResponse;
 
     if (!response.ok || !data.progress) {
