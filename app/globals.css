@@ -427,31 +427,82 @@ a:focus-visible {
 
 .pdf-content {
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-rows: 34px minmax(0, 1fr);
   height: 950px;
-  padding: 14px;
-  gap: 10px;
+  padding: 8px 12px 12px;
+  gap: 6px;
   background: #e5e5e9;
 }
 
 .pdf-page-bar {
   display: flex;
-  width: max-content;
-  min-width: 220px;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  justify-self: center;
-  padding: 5px 7px;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.9);
+  justify-content: center;
+  gap: 8px;
   color: var(--muted);
+}
+
+.pdf-page-controls {
+  display: flex;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.9);
   font-size: 0.82rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.pdf-page-bar strong {
+.pdf-page-controls .icon-button.small {
+  width: 28px;
+  height: 28px;
+}
+
+.pdf-page-controls span {
+  display: flex;
+  min-width: 50px;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+}
+
+.pdf-page-controls i {
+  color: #9a9aa3;
+  font-style: normal;
+}
+
+.pdf-page-controls strong {
   color: var(--ink);
+}
+
+.pdf-focus-context {
+  display: flex;
+  min-width: 0;
+  max-width: min(620px, calc(100% - 110px));
+  align-items: baseline;
+  gap: 7px;
+  padding: 0 8px;
+}
+
+.pdf-focus-context small {
+  flex: 0 0 auto;
+  color: var(--blue-deep);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pdf-focus-context strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pdf-stage {
@@ -504,62 +555,6 @@ a:focus-visible {
   background: #fff;
   color: #a22424;
   font-weight: 700;
-}
-
-.visual-focus-chip,
-.tutor-caption {
-  position: absolute;
-  z-index: 4;
-  border: 1px solid rgba(60, 60, 67, 0.18);
-  background: rgba(252, 252, 254, 0.92);
-  box-shadow: 0 8px 28px rgba(27, 38, 55, 0.16);
-  backdrop-filter: saturate(180%) blur(18px);
-}
-
-.visual-focus-chip {
-  top: 14px;
-  left: 50%;
-  display: flex;
-  max-width: min(620px, calc(100% - 40px));
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 13px;
-  border-radius: 18px;
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.visual-focus-chip span,
-.tutor-caption > span {
-  color: var(--blue-deep);
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.visual-focus-chip strong {
-  overflow: hidden;
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tutor-caption {
-  right: 50%;
-  bottom: 16px;
-  width: min(720px, calc(100% - 48px));
-  padding: 11px 16px 13px;
-  border-radius: 16px;
-  transform: translateX(50%);
-}
-
-.tutor-caption p {
-  margin: 4px 0 0;
-  font-size: 0.9rem;
-  font-weight: 560;
-  line-height: 1.4;
 }
 
 .insights-column {
@@ -927,8 +922,8 @@ a:focus-visible {
   bottom: 20px;
   z-index: 25;
   display: grid;
-  grid-template-columns: 60px minmax(170px, 1fr) 60px 160px;
-  width: min(610px, calc(100% - 32px));
+  grid-template-columns: 60px minmax(280px, 1fr) 52px 52px 160px;
+  width: min(900px, calc(100% - 32px));
   min-height: 70px;
   align-items: center;
   padding: 10px 14px;
@@ -968,10 +963,12 @@ a:focus-visible {
 
 .listening-status {
   display: flex;
+  min-width: 0;
   min-height: 38px;
   align-items: center;
   justify-content: center;
   gap: 13px;
+  overflow: hidden;
   border-right: 1px solid var(--hairline);
   border-left: 1px solid var(--hairline);
   color: var(--blue-deep);
@@ -981,10 +978,12 @@ a:focus-visible {
 
 .turn-state-copy {
   display: flex;
+  width: 100%;
   min-width: 0;
   flex-direction: column;
   align-items: center;
   gap: 3px;
+  padding: 0 12px;
   text-align: center;
 }
 
@@ -999,6 +998,16 @@ a:focus-visible {
 
 .turn-state-copy strong {
   line-height: 1.2;
+}
+
+.tutor-caption-copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.28;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .turn-state-copy.error {
@@ -1073,6 +1082,50 @@ a:focus-visible {
   width: min(900px, 100%);
   max-height: calc(100dvh - 40px);
   flex-direction: column;
+}
+
+.transcript-modal {
+  display: flex;
+  width: min(680px, 100%);
+  max-height: calc(100dvh - 40px);
+  flex-direction: column;
+}
+
+.transcript-content {
+  min-height: 160px;
+  flex: 1 1 auto;
+  padding-right: 6px;
+  margin: 24px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.transcript-content article {
+  padding: 15px 17px;
+  border-radius: 13px;
+  background: var(--background);
+}
+
+.transcript-content article + article {
+  margin-top: 10px;
+}
+
+.transcript-content small {
+  color: var(--blue-deep);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.transcript-content p {
+  margin: 7px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.transcript-empty {
+  color: var(--muted);
 }
 
 .modal-close {
@@ -1657,6 +1710,15 @@ kbd {
     padding: 8px;
   }
 
+  .pdf-focus-context {
+    max-width: calc(100% - 102px);
+    padding: 0 3px;
+  }
+
+  .pdf-focus-context small {
+    display: none;
+  }
+
   .insights-column {
     display: flex;
   }
@@ -1669,7 +1731,7 @@ kbd {
 
   .session-dock {
     bottom: 12px;
-    grid-template-columns: 56px 1fr 56px;
+    grid-template-columns: 56px minmax(0, 1fr) 48px 48px;
     min-height: 76px;
     padding: 8px 9px;
     border-radius: 28px;

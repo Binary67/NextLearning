@@ -12,6 +12,7 @@ import {
   History,
   Keyboard,
   LogOut,
+  MessageSquareText,
   Mic,
   Pause,
   Play,
@@ -52,6 +53,7 @@ import { useRealtimeTutor } from "@/lib/use-realtime-tutor";
 type NavSection = "Dashboard" | "Courses" | "Library";
 type Modal =
   | "analysis"
+  | "transcript"
   | "shortcuts"
   | "end-session"
   | "prepare-document"
@@ -128,6 +130,7 @@ export default function Home() {
     userTurnActionLabel = "Done speaking";
   }
 
+  const liveTutorCaption = getLiveCaption(realtimeTutor.tutorTranscript);
   const masteredUnitCount = learningProgress
     ? Object.keys(learningProgress.unit_progress).length
     : 0;
@@ -404,6 +407,11 @@ export default function Home() {
         setPopover(null);
       } else if (key === "a") {
         setModal("analysis");
+      } else if (
+        key === "t" &&
+        realtimeTutor.tutorTranscripts.length > 0
+      ) {
+        setModal("transcript");
       } else if (key === "e" && !sessionEnded) {
         setModal("end-session");
       } else if (
@@ -421,6 +429,7 @@ export default function Home() {
   }, [
     modal,
     realtimeTutor.status,
+    realtimeTutor.tutorTranscripts.length,
     sessionEnded,
     toggleUserTurn,
     uploading,
@@ -593,9 +602,14 @@ export default function Home() {
               <i />
               <i />
             </span>
-            <span className="turn-state-copy">
-              <small>Your turn</small>
-              <strong>Microphone on · click again when done</strong>
+            <span
+              className={`turn-state-copy${liveTutorCaption ? " tutor-caption-copy" : ""}`}
+            >
+              <small>Your turn · microphone on</small>
+              <strong>
+                {liveTutorCaption ||
+                  "Click the hand again when you finish speaking"}
+              </strong>
             </span>
           </>
         );
@@ -614,14 +628,25 @@ export default function Home() {
         realtimeTutor.isTutorResponding ||
         realtimeTutor.isTutorSpeaking
       ) {
+        const tutorTurnLabel = realtimeTutor.isTutorSpeaking
+          ? "Tutor speaking"
+          : "Tutor thinking";
+
         return (
-          <span className="turn-state-copy">
-            <small>Tutor&apos;s turn</small>
-            <strong>
-              {realtimeTutor.isTutorSpeaking
-                ? "Tutor is speaking…"
-                : "Tutor is thinking…"}
-            </strong>
+          <span
+            className={`turn-state-copy${liveTutorCaption ? " tutor-caption-copy" : ""}`}
+          >
+            <small>{tutorTurnLabel}</small>
+            <strong>{liveTutorCaption || `${tutorTurnLabel}…`}</strong>
+          </span>
+        );
+      }
+
+      if (liveTutorCaption) {
+        return (
+          <span className="turn-state-copy tutor-caption-copy">
+            <small>Your turn · raise hand when ready</small>
+            <strong>{liveTutorCaption}</strong>
           </span>
         );
       }
@@ -910,39 +935,51 @@ export default function Home() {
             ) : activeDocument ? (
               <div className="pdf-content">
                 <div className="pdf-page-bar">
-                  <button
-                    className="icon-button small"
-                    type="button"
-                    onClick={() =>
-                      setCurrentPage((page) => Math.max(1, page - 1))
-                    }
-                    disabled={currentPage === 1}
-                    aria-label="Previous PDF page"
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-                  <span>
-                    Page <strong>{currentPage}</strong> of{" "}
-                    {activeDocument.map.page_count}
-                  </span>
-                  <button
-                    className="icon-button small"
-                    type="button"
-                    onClick={() =>
-                      setCurrentPage((page) =>
-                        Math.min(
-                          activeDocument.map.page_count,
-                          page + 1,
-                        ),
-                      )
-                    }
-                    disabled={
-                      currentPage === activeDocument.map.page_count
-                    }
-                    aria-label="Next PDF page"
-                  >
-                    <ChevronRight size={20} />
-                  </button>
+                  <div className="pdf-page-controls">
+                    <button
+                      className="icon-button small"
+                      type="button"
+                      onClick={() =>
+                        setCurrentPage((page) => Math.max(1, page - 1))
+                      }
+                      disabled={currentPage === 1}
+                      aria-label="Previous PDF page"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span>
+                      <strong>{currentPage}</strong>
+                      <i aria-hidden="true">/</i>
+                      {activeDocument.map.page_count}
+                    </span>
+                    <button
+                      className="icon-button small"
+                      type="button"
+                      onClick={() =>
+                        setCurrentPage((page) =>
+                          Math.min(
+                            activeDocument.map.page_count,
+                            page + 1,
+                          ),
+                        )
+                      }
+                      disabled={
+                        currentPage === activeDocument.map.page_count
+                      }
+                      aria-label="Next PDF page"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                  {realtimeTutor.activeVisualFocus?.page_index ===
+                    currentPage && (
+                    <div className="pdf-focus-context" aria-live="polite">
+                      <small>Now looking at</small>
+                      <strong>
+                        {realtimeTutor.activeVisualFocus.teaching_point}
+                      </strong>
+                    </div>
+                  )}
                 </div>
                 <div className="pdf-stage">
                   <PdfDocumentViewer
@@ -957,23 +994,6 @@ export default function Home() {
                         : []
                     }
                   />
-                  {realtimeTutor.activeVisualFocus?.page_index ===
-                    currentPage && (
-                    <div className="visual-focus-chip" aria-live="polite">
-                      <span>Now looking at</span>
-                      <strong>
-                        {realtimeTutor.activeVisualFocus.teaching_point}
-                      </strong>
-                    </div>
-                  )}
-                  {realtimeTutor.tutorTranscript && (
-                    <div className="tutor-caption" aria-live="polite">
-                      <span>Tutor says</span>
-                      <p>
-                        {getCaptionTail(realtimeTutor.tutorTranscript)}
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
@@ -1024,6 +1044,16 @@ export default function Home() {
             <div className="listening-status" aria-live="polite">
               {renderTutorStatus()}
             </div>
+            <button
+              className="dock-icon"
+              type="button"
+              onClick={() => setModal("transcript")}
+              aria-label="View tutor transcript"
+              title="View tutor transcript"
+              disabled={realtimeTutor.tutorTranscripts.length === 0}
+            >
+              <MessageSquareText size={23} />
+            </button>
             <button
               className="dock-icon"
               type="button"
@@ -1159,7 +1189,7 @@ export default function Home() {
       {modal && (
         <div className="modal-backdrop" role="presentation">
           <section
-            className={`modal${modal === "analysis" ? " teaching-plan-modal" : ""}`}
+            className={`modal${modal === "analysis" ? " teaching-plan-modal" : ""}${modal === "transcript" ? " transcript-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
@@ -1238,6 +1268,10 @@ export default function Home() {
                     <kbd>A</kbd>
                   </p>
                   <p>
+                    <span>Open tutor transcript</span>
+                    <kbd>T</kbd>
+                  </p>
+                  <p>
                     <span>End learning session</span>
                     <kbd>E</kbd>
                   </p>
@@ -1248,6 +1282,39 @@ export default function Home() {
                   onClick={() => setModal(null)}
                 >
                   Got It
+                </button>
+              </>
+            )}
+
+            {modal === "transcript" && (
+              <>
+                <div className="modal-icon">
+                  <MessageSquareText size={23} />
+                </div>
+                <p className="modal-eyebrow">Session transcript</p>
+                <h2 id="modal-title">What the tutor has said</h2>
+                <div className="transcript-content" role="log">
+                  {realtimeTutor.tutorTranscripts.length > 0 ? (
+                    realtimeTutor.tutorTranscripts.map(
+                      (transcript, index) => (
+                        <article key={`${index}:${transcript}`}>
+                          <small>Tutor · turn {index + 1}</small>
+                          <p>{transcript}</p>
+                        </article>
+                      ),
+                    )
+                  ) : (
+                    <p className="transcript-empty">
+                      The tutor has not spoken yet.
+                    </p>
+                  )}
+                </div>
+                <button
+                  className="primary-button modal-button"
+                  type="button"
+                  onClick={() => setModal(null)}
+                >
+                  Continue Learning
                 </button>
               </>
             )}
@@ -1508,14 +1575,32 @@ function formatConceptId(conceptId: string) {
   return conceptId.replace("concept:", "").replaceAll("-", " ");
 }
 
-function getCaptionTail(transcript: string) {
-  const maximumLength = 420;
+function getLiveCaption(transcript: string) {
+  const normalizedTranscript = transcript.replace(/\s+/g, " ").trim();
+  const maximumLength = 220;
 
-  if (transcript.length <= maximumLength) {
-    return transcript;
+  if (!normalizedTranscript) {
+    return "";
   }
 
-  const tail = transcript.slice(-maximumLength);
+  const sentences =
+    normalizedTranscript
+      .match(/[^.!?]+(?:[.!?]+["'’”)\]]*|$)/g)
+      ?.map((sentence) => sentence.trim())
+      .filter(Boolean) ?? [normalizedTranscript];
+  const latestSentence = sentences.at(-1) ?? normalizedTranscript;
+  const previousSentence = sentences.at(-2);
+  const caption =
+    previousSentence &&
+    previousSentence.length + latestSentence.length + 1 <= maximumLength
+      ? `${previousSentence} ${latestSentence}`
+      : latestSentence;
+
+  if (caption.length <= maximumLength) {
+    return caption;
+  }
+
+  const tail = caption.slice(-maximumLength);
   const firstSpace = tail.indexOf(" ");
 
   return `…${tail.slice(firstSpace + 1)}`;

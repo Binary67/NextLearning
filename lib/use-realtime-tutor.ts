@@ -87,6 +87,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const [isTutorResponding, setIsTutorResponding] = useState(false);
   const [isTutorSpeaking, setIsTutorSpeaking] = useState(false);
   const [tutorTranscript, setTutorTranscript] = useState("");
+  const [tutorTranscriptHistory, setTutorTranscriptHistory] = useState<
+    string[]
+  >([]);
   const [activeVisualFocus, setActiveVisualFocus] =
     useState<RealtimeVisualFocus | null>(null);
   const [error, setError] = useState("");
@@ -99,6 +102,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const userTurnTransitionRef = useRef(false);
   const responseInProgressRef = useRef(false);
   const outputAudioPlayingRef = useRef(false);
+  const tutorTranscriptRef = useRef("");
   const activeVisualFocusRef = useRef<RealtimeVisualFocus | null>(null);
   const pendingServerEventsRef = useRef(
     new Map<string, PendingServerEvent>(),
@@ -394,8 +398,10 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
   function clearTutorialDisplay() {
     activeVisualFocusRef.current = null;
+    tutorTranscriptRef.current = "";
     setActiveVisualFocus(null);
     setTutorTranscript("");
+    setTutorTranscriptHistory([]);
   }
 
   async function handleServerEvent(rawEvent: unknown) {
@@ -437,6 +443,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     switch (event.type) {
       case "response.created":
         responseInProgressRef.current = true;
+        commitTutorTranscript();
         setTutorTranscript("");
 
         if (isUserTurnRef.current) {
@@ -464,11 +471,13 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         return;
       case "response.output_audio_transcript.delta":
         if (event.delta) {
-          setTutorTranscript((transcript) => transcript + event.delta);
+          tutorTranscriptRef.current += event.delta;
+          setTutorTranscript(tutorTranscriptRef.current);
         }
         return;
       case "response.output_audio_transcript.done":
         if (event.transcript) {
+          tutorTranscriptRef.current = event.transcript;
           setTutorTranscript(event.transcript);
         }
         return;
@@ -890,6 +899,23 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     setError(message);
   }
 
+  function commitTutorTranscript() {
+    const completedTranscript = tutorTranscriptRef.current.trim();
+
+    if (completedTranscript) {
+      setTutorTranscriptHistory((history) => [
+        ...history,
+        completedTranscript,
+      ]);
+    }
+
+    tutorTranscriptRef.current = "";
+  }
+
+  const tutorTranscripts = tutorTranscript
+    ? [...tutorTranscriptHistory, tutorTranscript]
+    : tutorTranscriptHistory;
+
   return {
     status,
     isUserTurn,
@@ -897,6 +923,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     isTutorResponding,
     isTutorSpeaking,
     tutorTranscript,
+    tutorTranscripts,
     activeVisualFocus,
     error,
     start,
