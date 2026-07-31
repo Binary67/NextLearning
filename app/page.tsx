@@ -658,17 +658,13 @@ export default function Home() {
 
       if (isUserTurn) {
         return (
-          <>
-            <span className="sound-bars" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            <span className="turn-state-copy">
-              <small>Your turn · listening</small>
-              <strong>Speak your answer, then tap the check</strong>
-            </span>
-          </>
+          <span className="turn-state-copy">
+            <small className="listening-label">
+              <span className="listening-dot" aria-hidden="true" />
+              Listening
+            </small>
+            <strong>Speak your answer, then tap the check</strong>
+          </span>
         );
       }
 

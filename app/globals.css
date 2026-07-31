@@ -1015,7 +1015,7 @@ a:focus-visible {
 .dock-icon.user-turn:hover:not(:disabled) {
   background: var(--blue);
   color: #fff;
-  box-shadow: 0 5px 14px rgba(0, 113, 235, 0.24);
+  animation: listening-button-pulse 1.8s ease-out infinite;
 }
 
 .listening-status {
@@ -1053,6 +1053,21 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.turn-state-copy .listening-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.listening-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  animation: listening-dot-pulse 1.4s ease-in-out infinite;
+}
+
 .turn-state-copy strong {
   line-height: 1.2;
 }
@@ -1075,34 +1090,6 @@ a:focus-visible {
 .turn-state-copy.error strong {
   color: #a22424;
   font-size: 0.72rem;
-}
-
-.sound-bars {
-  display: flex;
-  height: 18px;
-  align-items: center;
-  gap: 3px;
-}
-
-.sound-bars i {
-  width: 3px;
-  border-radius: 4px;
-  background: var(--blue);
-  animation: sound 900ms ease-in-out infinite alternate;
-}
-
-.sound-bars i:nth-child(1) {
-  height: 8px;
-}
-
-.sound-bars i:nth-child(2) {
-  height: 17px;
-  animation-delay: -300ms;
-}
-
-.sound-bars i:nth-child(3) {
-  height: 11px;
-  animation-delay: -600ms;
 }
 
 .end-button {
@@ -1537,9 +1524,25 @@ kbd {
   transform: translate(-50%, 0);
 }
 
-@keyframes sound {
-  to {
-    height: 5px;
+@keyframes listening-dot-pulse {
+  50% {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+}
+
+@keyframes listening-button-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 5px 14px rgba(0, 113, 235, 0.24),
+      0 0 0 0 rgba(0, 122, 255, 0.18);
+  }
+
+  50% {
+    box-shadow:
+      0 5px 14px rgba(0, 113, 235, 0.24),
+      0 0 0 6px rgba(0, 122, 255, 0);
   }
 }
 
