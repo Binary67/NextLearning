@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowDown,
   BrainCircuit,
   Check,
   ChevronLeft,
@@ -198,7 +199,6 @@ export default function Home() {
       : "Done answering";
   }
 
-  const liveTutorCaption = realtimeTutor.tutorCaption;
   const tutorQuestion =
     realtimeTutor.status === "connected" &&
     realtimeTutor.isAwaitingLearnerAnswer &&
@@ -731,13 +731,9 @@ export default function Home() {
           : "Tutor thinking";
 
         return (
-          <span
-            className={`turn-state-copy${liveTutorCaption ? " tutor-caption-copy" : ""}`}
-          >
+          <span className="turn-state-copy">
             <small>{tutorTurnLabel}</small>
-            <strong key={liveTutorCaption || tutorTurnLabel}>
-              {liveTutorCaption || `${tutorTurnLabel}…`}
-            </strong>
+            <strong>{tutorTurnLabel}…</strong>
           </span>
         );
       }
@@ -1222,6 +1218,15 @@ export default function Home() {
             id="learning-insights"
             aria-label="Learning insights"
           >
+            {tutorSessionActive && (
+              <TutorTranscriptCanvas
+                transcript={realtimeTutor.currentTutorTranscript}
+                isStreaming={
+                  realtimeTutor.isTutorResponding ||
+                  realtimeTutor.isTutorSpeaking
+                }
+              />
+            )}
             <section
               className={`insight-card understanding-card${
                 documentPreparationExpanded ? "" : " collapsed"
@@ -1734,6 +1739,115 @@ export default function Home() {
         {toast}
       </div>
     </main>
+  );
+}
+
+function TutorTranscriptCanvas({
+  transcript,
+  isStreaming,
+}: {
+  transcript: string;
+  isStreaming: boolean;
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [hasNewTextBelow, setHasNewTextBelow] = useState(false);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!transcript) {
+        viewport.scrollTop = 0;
+      }
+
+      setHasNewTextBelow(
+        Boolean(transcript) && hasScrollableContentBelow(viewport),
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [transcript]);
+
+  function handleScroll() {
+    const viewport = viewportRef.current;
+
+    if (viewport) {
+      setHasNewTextBelow(hasScrollableContentBelow(viewport));
+    }
+  }
+
+  function showNewestText() {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: "smooth",
+    });
+  }
+
+  return (
+    <section
+      className="insight-card live-transcript-card"
+      aria-labelledby="live-transcript-title"
+    >
+      <div className="live-transcript-header">
+        <h2 className="insight-card-title" id="live-transcript-title">
+          <span className="insight-card-icon">
+            <MessageSquareText size={18} aria-hidden="true" />
+          </span>
+          Tutor transcript
+        </h2>
+        <span
+          className={`live-transcript-status${isStreaming ? " streaming" : ""}`}
+        >
+          {isStreaming ? "Live" : "Current turn"}
+        </span>
+      </div>
+      <div className="live-transcript-canvas">
+        <div
+          ref={viewportRef}
+          className="live-transcript-viewport"
+          onScroll={handleScroll}
+          aria-label="Current tutor response"
+          role="region"
+          tabIndex={0}
+        >
+          {transcript ? (
+            <p>{transcript}</p>
+          ) : (
+            <p className="live-transcript-placeholder">
+              {isStreaming
+                ? "The tutor is preparing a response…"
+                : "The tutor’s next response will appear here."}
+            </p>
+          )}
+        </div>
+        {hasNewTextBelow && (
+          <button
+            className="new-transcript-text-button"
+            type="button"
+            onClick={showNewestText}
+          >
+            New text below
+            <ArrowDown size={14} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function hasScrollableContentBelow(element: HTMLElement) {
+  return (
+    element.scrollHeight - element.scrollTop - element.clientHeight > 1
   );
 }
 

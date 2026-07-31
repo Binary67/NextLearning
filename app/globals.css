@@ -666,6 +666,112 @@ a:focus-visible {
   line-height: 1.4;
 }
 
+.live-transcript-card {
+  display: flex;
+  height: min(52dvh, 520px);
+  min-height: 320px;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.live-transcript-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-transcript-header h2 {
+  margin: 0;
+}
+
+.live-transcript-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.live-transcript-status.streaming {
+  color: var(--blue-deep);
+}
+
+.live-transcript-status.streaming::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  animation: listening-dot-pulse 1.4s ease-in-out infinite;
+  content: "";
+}
+
+.live-transcript-canvas {
+  position: relative;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin-top: 16px;
+}
+
+.live-transcript-viewport {
+  height: 100%;
+  overflow-y: auto;
+  padding: 17px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: rgba(245, 245, 247, 0.72);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.live-transcript-viewport:focus-visible {
+  outline: 3px solid rgba(0, 122, 255, 0.3);
+  outline-offset: 2px;
+}
+
+.live-transcript-viewport p {
+  margin: 0;
+  color: #2c2c2e;
+  font-size: 0.88rem;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.live-transcript-placeholder {
+  color: var(--muted);
+}
+
+.new-transcript-text-button {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid rgba(0, 102, 214, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 14px rgba(27, 38, 55, 0.12);
+  color: var(--blue-deep);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  backdrop-filter: blur(12px);
+}
+
+.new-transcript-text-button:hover {
+  background: #fff;
+}
+
 .understanding-card {
   text-align: left;
 }
@@ -1279,17 +1385,6 @@ a:focus-visible {
   line-height: 1.2;
 }
 
-.tutor-caption-copy strong {
-  display: -webkit-box;
-  overflow: hidden;
-  animation: caption-in 180ms ease-out;
-  font-size: 0.78rem;
-  font-weight: 650;
-  line-height: 1.28;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .turn-state-copy.error {
   padding: 0 10px;
 }
@@ -1837,12 +1932,6 @@ kbd {
   }
 }
 
-@keyframes caption-in {
-  from {
-    opacity: 0;
-  }
-}
-
 @keyframes document-preparation-pulse {
   50% {
     background-position: 100% 0;
@@ -1998,6 +2087,10 @@ kbd {
 
   .insight-card + .insight-card {
     border-top-color: var(--border);
+  }
+
+  .live-transcript-card {
+    grid-column: 1 / -1;
   }
 
   .understanding-card {

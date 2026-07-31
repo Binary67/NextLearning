@@ -98,22 +98,14 @@ type ResponseRequest = {
   purpose?: RealtimeResponsePurpose;
 };
 
-const CAPTION_WORDS_PER_PHRASE = 12;
-const CAPTION_MINIMUM_WORDS_PER_PHRASE = 4;
-const CAPTION_INITIAL_MILLISECONDS_PER_WORD = 330;
-const CAPTION_MINIMUM_MILLISECONDS_PER_WORD = 220;
-const CAPTION_MAXIMUM_MILLISECONDS_PER_WORD = 500;
-const CAPTION_PACE_SAMPLE_WEIGHT = 0.5;
-const CAPTION_SENTENCE_PAUSE_MILLISECONDS = 200;
-
 export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const [status, setStatus] = useState<RealtimeTutorStatus>("idle");
   const [isUserTurn, setIsUserTurn] = useState(false);
   const [isSubmittingUserTurn, setIsSubmittingUserTurn] = useState(false);
   const [isTutorResponding, setIsTutorResponding] = useState(false);
   const [isTutorSpeaking, setIsTutorSpeaking] = useState(false);
-  const [tutorCaption, setTutorCaption] = useState("");
-  const [spokenTutorTranscript, setSpokenTutorTranscript] = useState("");
+  const [currentTutorTranscript, setCurrentTutorTranscript] =
+    useState("");
   const [tutorTranscriptHistory, setTutorTranscriptHistory] = useState<
     string[]
   >([]);
@@ -138,15 +130,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const outputAudioPlayingRef = useRef(false);
   const responsePlaybackCompletedRef = useRef(false);
   const tutorTranscriptRef = useRef("");
-  const spokenTutorTranscriptRef = useRef("");
-  const tutorTranscriptDoneRef = useRef(false);
-  const tutorPlaybackStartedAtRef = useRef<number | null>(null);
-  const captionMillisecondsPerWordRef = useRef(
-    CAPTION_INITIAL_MILLISECONDS_PER_WORD,
-  );
-  const captionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const pendingFunctionCallRef = useRef<RealtimeFunctionCall | null>(null);
   const activeVisualFocusRef = useRef<RealtimeVisualFocus | null>(null);
   const viewedVisualFocusIdsRef = useRef(new Set<string>());
@@ -188,8 +171,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     responseInProgressRef.current = false;
     outputAudioPlayingRef.current = false;
     responsePlaybackCompletedRef.current = false;
-    tutorTranscriptDoneRef.current = false;
-    tutorPlaybackStartedAtRef.current = null;
     pendingFunctionCallRef.current = null;
     activeVisualFocusRef.current = null;
     learnerTurnPurposeRef.current = null;
@@ -201,11 +182,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     resumeAfterPlaybackRef.current = false;
     viewedVisualFocusIdsRef.current.clear();
     completedLessonStepIdsRef.current.clear();
-
-    if (captionTimerRef.current) {
-      clearTimeout(captionTimerRef.current);
-      captionTimerRef.current = null;
-    }
   }, []);
 
   useEffect(() => {
@@ -304,7 +280,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
       const dataChannelOpened = waitForDataChannel(dataChannel);
       dataChannel.addEventListener("message", (event) => {
-        void handleServerEvent(event.data, event.timeStamp);
+        void handleServerEvent(event.data);
       });
       dataChannel.addEventListener("close", () => {
         failConnection(
@@ -559,27 +535,17 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   function clearTutorialDisplay() {
-    stopTutorCaptionTimer();
     activeVisualFocusRef.current = null;
     viewedVisualFocusIdsRef.current.clear();
     resetCompletedLessonSteps();
     resetInterruptionState();
     tutorTranscriptRef.current = "";
-    spokenTutorTranscriptRef.current = "";
-    tutorTranscriptDoneRef.current = false;
-    tutorPlaybackStartedAtRef.current = null;
-    captionMillisecondsPerWordRef.current =
-      CAPTION_INITIAL_MILLISECONDS_PER_WORD;
     setActiveVisualFocus(null);
-    setTutorCaption("");
-    setSpokenTutorTranscript("");
+    setCurrentTutorTranscript("");
     setTutorTranscriptHistory([]);
   }
 
-  async function handleServerEvent(
-    rawEvent: unknown,
-    receivedAt: number,
-  ) {
+  async function handleServerEvent(rawEvent: unknown) {
     if (typeof rawEvent !== "string") {
       return;
     }
@@ -633,7 +599,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         return;
       case "output_audio_buffer.started":
         outputAudioPlayingRef.current = true;
-        tutorPlaybackStartedAtRef.current = receivedAt;
 
         if (isUserTurnRef.current) {
           sendEvent({ type: "output_audio_buffer.clear" });
@@ -643,28 +608,26 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
         setIsTutorResponding(true);
         setIsTutorSpeaking(true);
-        revealNextTutorCaptionPhrase();
         void playRemoteAudio();
         return;
       case "response.output_audio_transcript.delta":
         if (event.delta) {
           tutorTranscriptRef.current += event.delta;
-          revealNextTutorCaptionPhrase();
+          setCurrentTutorTranscript(tutorTranscriptRef.current);
         }
         return;
       case "response.output_audio_transcript.done":
         if (event.transcript) {
           tutorTranscriptRef.current = event.transcript;
+          setCurrentTutorTranscript(event.transcript);
         }
 
-        tutorTranscriptDoneRef.current = true;
-        revealNextTutorCaptionPhrase();
         return;
       case "output_audio_buffer.stopped":
-        await finishTutorPlayback(true, receivedAt);
+        await finishTutorPlayback(true);
         return;
       case "output_audio_buffer.cleared":
-        await finishTutorPlayback(false, receivedAt);
+        await finishTutorPlayback(false);
         return;
       case "response.done": {
         responseInProgressRef.current = false;
@@ -1278,83 +1241,22 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
   }
 
-  function revealNextTutorCaptionPhrase() {
-    if (
-      !outputAudioPlayingRef.current ||
-      captionTimerRef.current ||
-      !tutorTranscriptRef.current.startsWith(
-        spokenTutorTranscriptRef.current,
-      )
-    ) {
-      return;
-    }
-
-    const phrase = getNextTutorCaptionPhrase(
-      tutorTranscriptRef.current,
-      spokenTutorTranscriptRef.current.length,
-      tutorTranscriptDoneRef.current,
-    );
-
-    if (!phrase) {
-      return;
-    }
-
-    spokenTutorTranscriptRef.current += phrase;
-    setSpokenTutorTranscript(spokenTutorTranscriptRef.current);
-    setTutorCaption(normalizeTutorCaption(phrase));
-    captionTimerRef.current = setTimeout(() => {
-      captionTimerRef.current = null;
-      revealNextTutorCaptionPhrase();
-    }, getTutorCaptionPhraseDuration(
-      phrase,
-      captionMillisecondsPerWordRef.current,
-    ));
-  }
-
-  function stopTutorCaptionTimer() {
-    if (!captionTimerRef.current) {
-      return;
-    }
-
-    clearTimeout(captionTimerRef.current);
-    captionTimerRef.current = null;
-  }
-
-  function finishTutorCaption() {
-    stopTutorCaptionTimer();
-    spokenTutorTranscriptRef.current = tutorTranscriptRef.current;
-    setSpokenTutorTranscript(tutorTranscriptRef.current);
-    setTutorCaption(getFinalTutorCaption(tutorTranscriptRef.current));
-  }
-
-  async function finishTutorPlayback(
-    revealFullTranscript: boolean,
-    playbackStoppedAt: number,
-  ) {
+  async function finishTutorPlayback(playbackCompleted: boolean) {
     const responsePurpose = activeResponsePurposeRef.current;
     outputAudioPlayingRef.current = false;
-    responsePlaybackCompletedRef.current = revealFullTranscript;
-
-    if (revealFullTranscript) {
-      updateTutorCaptionPace(playbackStoppedAt);
-      finishTutorCaption();
-    } else {
-      stopTutorCaptionTimer();
-    }
-
-    tutorPlaybackStartedAtRef.current = null;
+    responsePlaybackCompletedRef.current = playbackCompleted;
     setIsTutorSpeaking(false);
 
     const pendingFunctionCall = pendingFunctionCallRef.current;
     pendingFunctionCallRef.current = null;
 
-    if (revealFullTranscript && responsePurpose === "resume-step") {
+    if (playbackCompleted && responsePurpose === "resume-step") {
       interruptedLessonStepIdRef.current = null;
       interruptedVisualFocusIdRef.current = null;
     }
 
     if (pendingFunctionCall) {
-      if (revealFullTranscript) {
+      if (playbackCompleted) {
         await handleFunctionCall(pendingFunctionCall);
       } else {
         await rejectInterruptedFunctionCall(pendingFunctionCall);
@@ -1362,41 +1264,12 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     if (
-      revealFullTranscript &&
+      playbackCompleted &&
       responsePurpose === "interruption-answer" &&
       resumeAfterPlaybackRef.current
     ) {
       await resumeInterruptedLessonStep();
     }
-  }
-
-  function updateTutorCaptionPace(playbackStoppedAt: number) {
-    const playbackStartedAt = tutorPlaybackStartedAtRef.current;
-    const wordCount = countTutorCaptionWords(tutorTranscriptRef.current);
-
-    if (playbackStartedAt === null || wordCount === 0) {
-      return;
-    }
-
-    const sentencePauseCount =
-      tutorTranscriptRef.current.match(/[.!?]["'’”)\]]*(?:\s|$)/g)
-        ?.length ?? 0;
-    const spokenMilliseconds =
-      playbackStoppedAt -
-      playbackStartedAt -
-      sentencePauseCount * CAPTION_SENTENCE_PAUSE_MILLISECONDS;
-    const sampledMillisecondsPerWord = Math.min(
-      CAPTION_MAXIMUM_MILLISECONDS_PER_WORD,
-      Math.max(
-        CAPTION_MINIMUM_MILLISECONDS_PER_WORD,
-        spokenMilliseconds / wordCount,
-      ),
-    );
-
-    captionMillisecondsPerWordRef.current =
-      captionMillisecondsPerWordRef.current *
-        (1 - CAPTION_PACE_SAMPLE_WEIGHT) +
-      sampledMillisecondsPerWord * CAPTION_PACE_SAMPLE_WEIGHT;
   }
 
   function failConnection(dataChannel: RTCDataChannel, message: string) {
@@ -1412,8 +1285,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   function commitTutorTranscript() {
-    stopTutorCaptionTimer();
-    const completedTranscript = spokenTutorTranscriptRef.current.trim();
+    const completedTranscript = tutorTranscriptRef.current.trim();
 
     if (completedTranscript) {
       setTutorTranscriptHistory((history) => [
@@ -1423,14 +1295,11 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     tutorTranscriptRef.current = "";
-    spokenTutorTranscriptRef.current = "";
-    tutorTranscriptDoneRef.current = false;
-    setTutorCaption("");
-    setSpokenTutorTranscript("");
+    setCurrentTutorTranscript("");
   }
 
-  const tutorTranscripts = spokenTutorTranscript
-    ? [...tutorTranscriptHistory, spokenTutorTranscript]
+  const tutorTranscripts = currentTutorTranscript
+    ? [...tutorTranscriptHistory, currentTutorTranscript]
     : tutorTranscriptHistory;
 
   return {
@@ -1439,7 +1308,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     isSubmittingUserTurn,
     isTutorResponding,
     isTutorSpeaking,
-    tutorCaption,
+    currentTutorTranscript,
     tutorTranscripts,
     activeVisualFocus,
     completedLessonStepIds,
@@ -1451,82 +1320,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     end,
     reset,
   };
-}
-
-function getNextTutorCaptionPhrase(
-  transcript: string,
-  displayedLength: number,
-  allowIncompletePhrase: boolean,
-) {
-  const remainingTranscript = transcript.slice(displayedLength);
-  const words = remainingTranscript.matchAll(/\S+\s*/g);
-  let phraseEnd = 0;
-  let phraseComplete = false;
-  let wordCount = 0;
-
-  for (const word of words) {
-    phraseEnd = word.index + word[0].length;
-    wordCount += 1;
-    const sentenceEnded = /[.!?]["'’”)\]]*\s*$/.test(word[0]);
-
-    if (
-      (sentenceEnded &&
-        wordCount >= CAPTION_MINIMUM_WORDS_PER_PHRASE) ||
-      (wordCount === CAPTION_WORDS_PER_PHRASE &&
-        /\s$/.test(word[0]))
-    ) {
-      phraseComplete = true;
-      break;
-    }
-  }
-
-  if (!phraseComplete && !allowIncompletePhrase) {
-    return "";
-  }
-
-  return remainingTranscript.slice(0, phraseEnd);
-}
-
-function getTutorCaptionPhraseDuration(
-  phrase: string,
-  millisecondsPerWord: number,
-) {
-  const wordCount = countTutorCaptionWords(phrase);
-  const sentencePause = /[.!?]["'’”)\]]*\s*$/.test(phrase)
-    ? CAPTION_SENTENCE_PAUSE_MILLISECONDS
-    : 0;
-
-  return wordCount * millisecondsPerWord + sentencePause;
-}
-
-function countTutorCaptionWords(text: string) {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function getFinalTutorCaption(transcript: string) {
-  let displayedLength = 0;
-  let finalCaption = "";
-
-  while (displayedLength < transcript.length) {
-    const phrase = getNextTutorCaptionPhrase(
-      transcript,
-      displayedLength,
-      true,
-    );
-
-    if (!phrase) {
-      break;
-    }
-
-    displayedLength += phrase.length;
-    finalCaption = normalizeTutorCaption(phrase);
-  }
-
-  return finalCaption;
-}
-
-function normalizeTutorCaption(caption: string) {
-  return caption.replace(/\s+/g, " ").trim();
 }
 
 function setAudioTracksEnabled(
