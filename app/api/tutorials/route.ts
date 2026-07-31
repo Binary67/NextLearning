@@ -3,25 +3,16 @@ import { randomUUID } from "node:crypto";
 import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
 import { generateDocumentModel } from "@/lib/document-model-generation";
 import {
-  summarizeDocumentModel,
-  type DocumentModel,
-  validateDocumentModel,
-} from "@/lib/document-model";
-import {
-  deleteStoredDocument,
   MAX_DOCUMENT_SIZE,
-  readDocumentModel,
-  readStoredDocument,
-  readTeachingPlan,
-  saveDocument,
-  type StoredDocument,
+  saveTutorial,
 } from "@/lib/document-storage";
+import { createLearningProgress } from "@/lib/learning-progress";
 import { generateTeachingPlan } from "@/lib/teaching-plan-generation";
 import {
-  summarizeTeachingPlan,
-  type TeachingPlan,
-  validateTeachingPlan,
-} from "@/lib/teaching-plan";
+  listPreparedTutorials,
+  type TutorialResponse,
+  toTutorialResponse,
+} from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
@@ -32,7 +23,7 @@ type DocumentPreparationEvent =
     }
   | {
       type: "complete";
-      document: ReturnType<typeof toDocumentResponse>;
+      tutorial: TutorialResponse;
     }
   | {
       type: "error";
@@ -40,21 +31,10 @@ type DocumentPreparationEvent =
     };
 
 export async function GET() {
-  const [document, storedModel, storedPlan] = await Promise.all([
-    readStoredDocument(),
-    readDocumentModel(),
-    readTeachingPlan(),
-  ]);
-
-  if (!document || !storedModel || !storedPlan) {
-    return Response.json({ document: null });
-  }
-
-  const model = validateDocumentModel(storedModel, document.id);
-  const plan = validateTeachingPlan(storedPlan, model);
+  const tutorials = await listPreparedTutorials();
 
   return Response.json({
-    document: toDocumentResponse(document, model, plan),
+    tutorials: tutorials.map(toTutorialResponse),
   });
 }
 
@@ -83,8 +63,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const documentId = randomUUID();
-
+  const tutorialId = randomUUID();
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -96,22 +75,27 @@ export async function POST(request: Request) {
 
       try {
         send({ type: "progress", stage: "analyzing" });
-        const model = await generateDocumentModel(file, documentId);
+        const model = await generateDocumentModel(file, tutorialId);
 
         send({ type: "progress", stage: "planning" });
         const plan = await generateTeachingPlan(file, model);
 
         send({ type: "progress", stage: "saving" });
-        const document = await saveDocument(
+        const tutorial = await saveTutorial(
           file,
-          documentId,
+          tutorialId,
           model,
           plan,
         );
 
         send({
           type: "complete",
-          document: toDocumentResponse(document, model, plan),
+          tutorial: toTutorialResponse({
+            tutorial,
+            model,
+            plan,
+            progress: createLearningProgress(tutorialId, tutorial.createdAt),
+          }),
         });
       } catch (error) {
         console.error("Document preparation failed:", error);
@@ -136,29 +120,8 @@ export async function POST(request: Request) {
   });
 }
 
-export async function DELETE() {
-  const deleted = await deleteStoredDocument();
-
-  return Response.json({ deleted });
-}
-
 function isPdf(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
   return extension === "pdf" && file.type === "application/pdf";
-}
-
-function toDocumentResponse(
-  document: StoredDocument,
-  model: DocumentModel,
-  plan: TeachingPlan,
-) {
-  return {
-    id: document.id,
-    name: document.name,
-    type: document.type,
-    url: "/api/document/file",
-    map: summarizeDocumentModel(model),
-    plan: summarizeTeachingPlan(plan),
-  };
 }

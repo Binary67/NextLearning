@@ -10,101 +10,157 @@ import type { TeachingPlan } from "@/lib/teaching-plan";
 
 export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
 
-export type StoredDocument = {
+export type StoredTutorial = {
   id: string;
-  fileName: string;
-  name: string;
+  title: string;
+  documentName: string;
   type: "pdf";
+  createdAt: string;
 };
 
-const documentsDirectory = path.join(process.cwd(), "data", "documents");
-const metadataPath = path.join(documentsDirectory, "current.json");
-const documentModelPath = path.join(
-  documentsDirectory,
-  "document-model.json",
-);
-const teachingPlanPath = path.join(
-  documentsDirectory,
-  "teaching-plan.json",
-);
-const learningProgressPath = path.join(
-  documentsDirectory,
-  "learning-progress.json",
-);
+const tutorialsDirectory = path.join(process.cwd(), "data", "tutorials");
+const tutorialMetadataFileName = "tutorial.json";
+const documentFileName = "source.pdf";
+const documentModelFileName = "document-model.json";
+const teachingPlanFileName = "teaching-plan.json";
+const learningProgressFileName = "learning-progress.json";
+const tutorialIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function readStoredDocument(): Promise<StoredDocument | null> {
-  return readJsonFile<StoredDocument>(metadataPath);
+export function isTutorialId(value: string) {
+  return tutorialIdPattern.test(value);
 }
 
-export async function readDocumentFile(document: StoredDocument) {
-  return fs.readFile(path.join(documentsDirectory, document.fileName));
+export async function listStoredTutorialIds() {
+  try {
+    const entries = await fs.readdir(tutorialsDirectory, {
+      withFileTypes: true,
+    });
+
+    return entries
+      .filter((entry) => entry.isDirectory() && isTutorialId(entry.name))
+      .map((entry) => entry.name);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
 }
 
-export async function readDocumentModel(): Promise<DocumentModel | null> {
-  return readJsonFile<DocumentModel>(documentModelPath);
+export async function readStoredTutorial(
+  tutorialId: string,
+): Promise<StoredTutorial | null> {
+  if (!isTutorialId(tutorialId)) {
+    return null;
+  }
+
+  return readJsonFile<StoredTutorial>(
+    tutorialFilePath(tutorialId, tutorialMetadataFileName),
+  );
 }
 
-export async function readTeachingPlan(): Promise<TeachingPlan | null> {
-  return readJsonFile<TeachingPlan>(teachingPlanPath);
+export async function readDocumentFile(tutorialId: string) {
+  return fs.readFile(tutorialFilePath(tutorialId, documentFileName));
 }
 
-export async function readLearningProgress(): Promise<LearningProgress | null> {
-  return readJsonFile<LearningProgress>(learningProgressPath);
+export async function readDocumentModel(
+  tutorialId: string,
+): Promise<DocumentModel | null> {
+  return readJsonFile<DocumentModel>(
+    tutorialFilePath(tutorialId, documentModelFileName),
+  );
 }
 
-export async function saveLearningProgress(progress: LearningProgress) {
+export async function readTeachingPlan(
+  tutorialId: string,
+): Promise<TeachingPlan | null> {
+  return readJsonFile<TeachingPlan>(
+    tutorialFilePath(tutorialId, teachingPlanFileName),
+  );
+}
+
+export async function readLearningProgress(
+  tutorialId: string,
+): Promise<LearningProgress | null> {
+  return readJsonFile<LearningProgress>(
+    tutorialFilePath(tutorialId, learningProgressFileName),
+  );
+}
+
+export async function saveLearningProgress(
+  tutorialId: string,
+  progress: LearningProgress,
+) {
   await fs.writeFile(
-    learningProgressPath,
+    tutorialFilePath(tutorialId, learningProgressFileName),
     JSON.stringify(progress, null, 2),
   );
 }
 
-export async function deleteStoredDocument() {
-  const document = await readStoredDocument();
+export async function deleteStoredTutorial(tutorialId: string) {
+  const tutorial = await readStoredTutorial(tutorialId);
 
-  if (!document) {
+  if (!tutorial) {
     return false;
   }
 
-  await fs.rm(metadataPath, { force: true });
-  await fs.rm(documentModelPath, { force: true });
-  await fs.rm(teachingPlanPath, { force: true });
-  await fs.rm(learningProgressPath, { force: true });
-  await fs.rm(path.join(documentsDirectory, document.fileName), {
+  await fs.rm(tutorialDirectory(tutorialId), {
     force: true,
+    recursive: true,
   });
 
   return true;
 }
 
-export async function saveDocument(
+export async function saveTutorial(
   file: File,
-  documentId: string,
+  tutorialId: string,
   model: DocumentModel,
   plan: TeachingPlan,
-): Promise<StoredDocument> {
-  const fileName = "current.pdf";
-  const document: StoredDocument = {
-    id: documentId,
-    fileName,
-    name: file.name,
+): Promise<StoredTutorial> {
+  const createdAt = new Date().toISOString();
+  const tutorial: StoredTutorial = {
+    id: tutorialId,
+    title: model.title,
+    documentName: file.name,
     type: "pdf",
+    createdAt,
   };
   const fileData = Buffer.from(await file.arrayBuffer());
+  const directory = tutorialDirectory(tutorialId);
 
-  await fs.mkdir(documentsDirectory, { recursive: true });
+  await fs.mkdir(directory, { recursive: true });
   await Promise.all([
-    fs.writeFile(path.join(documentsDirectory, fileName), fileData),
-    fs.writeFile(documentModelPath, JSON.stringify(model, null, 2)),
-    fs.writeFile(teachingPlanPath, JSON.stringify(plan, null, 2)),
+    fs.writeFile(tutorialFilePath(tutorialId, documentFileName), fileData),
     fs.writeFile(
-      learningProgressPath,
-      JSON.stringify(createLearningProgress(documentId), null, 2),
+      tutorialFilePath(tutorialId, documentModelFileName),
+      JSON.stringify(model, null, 2),
+    ),
+    fs.writeFile(
+      tutorialFilePath(tutorialId, teachingPlanFileName),
+      JSON.stringify(plan, null, 2),
+    ),
+    fs.writeFile(
+      tutorialFilePath(tutorialId, learningProgressFileName),
+      JSON.stringify(createLearningProgress(tutorialId, createdAt), null, 2),
     ),
   ]);
-  await fs.writeFile(metadataPath, JSON.stringify(document, null, 2));
+  await fs.writeFile(
+    tutorialFilePath(tutorialId, tutorialMetadataFileName),
+    JSON.stringify(tutorial, null, 2),
+  );
 
-  return document;
+  return tutorial;
+}
+
+function tutorialDirectory(tutorialId: string) {
+  return path.join(tutorialsDirectory, tutorialId);
+}
+
+function tutorialFilePath(tutorialId: string, fileName: string) {
+  return path.join(tutorialDirectory(tutorialId), fileName);
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T | null> {
