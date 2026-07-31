@@ -1366,6 +1366,7 @@ export default function Home() {
                   completedLessonStepIds={
                     realtimeTutor.completedLessonStepIds
                   }
+                  tutorSessionActive={tutorSessionActive}
                 />
                 {realtimeTutor.error && (
                   <p className="tutor-error" role="alert">
@@ -1705,7 +1706,8 @@ export default function Home() {
                 <p className="modal-eyebrow">Tutorial progress</p>
                 <h2 id="modal-title">Reset learning progress?</h2>
                 <p className="modal-copy">
-                  This clears {masteredUnitCount} mastered{" "}
+                  This resets the entire learning path, clearing{" "}
+                  {masteredUnitCount} mastered{" "}
                   {masteredUnitCount === 1 ? "unit" : "units"} and all
                   mastery evidence. The PDF and its prepared teaching
                   materials will remain available.
@@ -1897,11 +1899,13 @@ function LearningPath({
   progress,
   activeUnitId,
   completedLessonStepIds,
+  tutorSessionActive,
 }: {
   plan: TeachingPlan | null;
   progress: LearningProgress | null;
   activeUnitId: string | null;
   completedLessonStepIds: string[];
+  tutorSessionActive: boolean;
 }) {
   const [expandedUnitIds, setExpandedUnitIds] = useState(
     () => new Set(activeUnitId ? [activeUnitId] : []),
@@ -1972,6 +1976,7 @@ function LearningPath({
         {plan.units.map((unit, unitIndex) => {
           const isMastered = masteredUnitIds.has(unit.id);
           const isActive = unit.id === activeUnitId;
+          const isInProgress = isActive && tutorSessionActive;
           let unitStatus = "upcoming";
           let unitStatusLabel = "Upcoming";
 
@@ -1980,12 +1985,12 @@ function LearningPath({
             unitStatusLabel = "Mastered";
           } else if (isActive) {
             unitStatus = "active";
-            unitStatusLabel = "In progress";
+            unitStatusLabel = isInProgress ? "In progress" : "Ready";
           }
 
           const isExpanded = expandedUnitIds.has(unit.id);
           const stepListId = `learning-path-unit-${unitIndex}`;
-          const currentStepId = isActive
+          const currentStepId = isInProgress
             ? unit.lesson_steps.find(
                 (step) => !completedStepIds.has(step.id),
               )?.id
