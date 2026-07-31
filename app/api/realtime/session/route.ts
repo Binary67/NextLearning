@@ -48,6 +48,9 @@ export async function POST(request: Request) {
       model: deployment,
       output_modalities: ["audio"],
       audio: {
+        input: {
+          turn_detection: null,
+        },
         output: {
           voice: "marin",
         },

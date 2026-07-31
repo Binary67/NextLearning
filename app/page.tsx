@@ -8,11 +8,11 @@ import {
   Clock3,
   Download,
   FileText,
+  Hand,
   History,
   Keyboard,
   LogOut,
   Mic,
-  MicOff,
   Pause,
   Play,
   Settings,
@@ -110,7 +110,15 @@ export default function Home() {
     onProgressChange: setLearningProgress,
   });
   const sessionEnded = realtimeTutor.status === "ended";
-  const isListening = realtimeTutor.isListening;
+  const isUserTurn = realtimeTutor.isUserTurn;
+  let userTurnActionLabel = "Raise hand to speak";
+
+  if (realtimeTutor.isSubmittingUserTurn) {
+    userTurnActionLabel = "Sending answer";
+  } else if (isUserTurn) {
+    userTurnActionLabel = "Done speaking";
+  }
+
   const masteredUnitCount = learningProgress
     ? Object.keys(learningProgress.unit_progress).length
     : 0;
@@ -122,13 +130,6 @@ export default function Home() {
     teachingPlan !== null &&
     learningProgress !== null &&
     activeUnit === null;
-  let microphoneLabel = "Start Realtime tutor";
-
-  if (realtimeTutor.status === "connected") {
-    microphoneLabel = isListening
-      ? "Pause microphone"
-      : "Resume microphone";
-  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -308,17 +309,35 @@ export default function Home() {
     );
   }
 
-  const toggleListening = useCallback(() => {
-    realtimeTutor.toggleListening();
+  const toggleUserTurn = useCallback(async () => {
+    const actionSucceeded = await realtimeTutor.toggleUserTurn();
 
-    if (realtimeTutor.status === "connected") {
-      showToast(isListening ? "Listening paused." : "Listening resumed.");
+    if (actionSucceeded) {
+      showToast(
+        isUserTurn
+          ? "Answer sent. Waiting for the tutor."
+          : "Microphone on. Click again when you finish speaking.",
+      );
     }
-  }, [isListening, realtimeTutor, showToast]);
+  }, [isUserTurn, realtimeTutor, showToast]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.metaKey || event.ctrlKey || event.altKey) {
+      const target = event.target;
+      const isInteractiveTarget =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(
+            target.tagName,
+          ));
+
+      if (
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isInteractiveTarget
+      ) {
         return;
       }
 
@@ -341,15 +360,25 @@ export default function Home() {
         setModal("analysis");
       } else if (key === "e" && !sessionEnded) {
         setModal("end-session");
-      } else if (key === " " && !sessionEnded && modal === null) {
+      } else if (
+        key === " " &&
+        realtimeTutor.status === "connected" &&
+        modal === null
+      ) {
         event.preventDefault();
-        toggleListening();
+        void toggleUserTurn();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [modal, sessionEnded, toggleListening, uploading]);
+  }, [
+    modal,
+    realtimeTutor.status,
+    sessionEnded,
+    toggleUserTurn,
+    uploading,
+  ]);
 
   function downloadDocument() {
     if (!activeDocument) {
@@ -499,17 +528,61 @@ export default function Home() {
     }
 
     if (realtimeTutor.status === "connected") {
-      return (
-        <>
-          {isListening && (
+      if (realtimeTutor.error) {
+        return (
+          <span className="turn-state-copy error">
+            <small>Tutor issue</small>
+            <strong>{realtimeTutor.error}</strong>
+          </span>
+        );
+      }
+
+      if (isUserTurn) {
+        return (
+          <>
             <span className="sound-bars" aria-hidden="true">
               <i />
               <i />
               <i />
             </span>
-          )}
-          <strong>{isListening ? "Listening…" : "Paused"}</strong>
-        </>
+            <span className="turn-state-copy">
+              <small>Your turn</small>
+              <strong>Microphone on · click again when done</strong>
+            </span>
+          </>
+        );
+      }
+
+      if (realtimeTutor.isSubmittingUserTurn) {
+        return (
+          <span className="turn-state-copy">
+            <small>Your turn</small>
+            <strong>Sending your answer…</strong>
+          </span>
+        );
+      }
+
+      if (
+        realtimeTutor.isTutorResponding ||
+        realtimeTutor.isTutorSpeaking
+      ) {
+        return (
+          <span className="turn-state-copy">
+            <small>Tutor&apos;s turn</small>
+            <strong>
+              {realtimeTutor.isTutorSpeaking
+                ? "Tutor is speaking…"
+                : "Tutor is thinking…"}
+            </strong>
+          </span>
+        );
+      }
+
+      return (
+        <span className="turn-state-copy">
+          <small>Your turn</small>
+          <strong>Raise hand when you&apos;re ready</strong>
+        </span>
       );
     }
 
@@ -518,7 +591,14 @@ export default function Home() {
     }
 
     if (realtimeTutor.status === "error") {
-      return <strong>Tutor unavailable</strong>;
+      return (
+        <span className="turn-state-copy error">
+          <small>Tutor unavailable</small>
+          <strong>
+            {realtimeTutor.error || "The tutor connection failed."}
+          </strong>
+        </span>
+      );
     }
 
     return <strong>Ready to start</strong>;
@@ -853,17 +933,18 @@ export default function Home() {
 
           <div className={`session-dock${sessionEnded ? " ended" : ""}`}>
             <button
-              className={`dock-icon${isListening ? " listening" : ""}`}
+              className={`dock-icon${isUserTurn ? " user-turn" : ""}`}
               type="button"
-              onClick={toggleListening}
-              aria-label={microphoneLabel}
+              onClick={() => void toggleUserTurn()}
+              aria-label={userTurnActionLabel}
+              aria-pressed={isUserTurn}
+              title={userTurnActionLabel}
               disabled={
-                sessionEnded ||
-                realtimeTutor.status === "connecting" ||
-                !activeUnit
+                realtimeTutor.status !== "connected" ||
+                realtimeTutor.isSubmittingUserTurn
               }
             >
-              {isListening ? <Mic size={23} /> : <MicOff size={23} />}
+              {isUserTurn ? <Mic size={23} /> : <Hand size={23} />}
             </button>
             <div className="listening-status" aria-live="polite">
               {renderTutorStatus()}
@@ -1074,7 +1155,7 @@ export default function Home() {
                 <h2 id="modal-title">Keyboard shortcuts</h2>
                 <div className="shortcut-list">
                   <p>
-                    <span>Pause or resume listening</span>
+                    <span>Raise hand or finish speaking</span>
                     <kbd>Space</kbd>
                   </p>
                   <p>

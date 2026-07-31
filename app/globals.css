@@ -860,8 +860,11 @@ a:focus-visible {
   opacity: 0.38;
 }
 
-.dock-icon.listening {
-  color: #123652;
+.dock-icon.user-turn,
+.dock-icon.user-turn:hover:not(:disabled) {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(0, 113, 235, 0.24);
 }
 
 .listening-status {
@@ -875,6 +878,37 @@ a:focus-visible {
   color: var(--blue-deep);
   font-size: 0.82rem;
   letter-spacing: 0;
+}
+
+.turn-state-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.turn-state-copy small {
+  color: var(--muted);
+  font-size: 0.59rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.turn-state-copy strong {
+  line-height: 1.2;
+}
+
+.turn-state-copy.error {
+  padding: 0 10px;
+}
+
+.turn-state-copy.error strong {
+  color: #a22424;
+  font-size: 0.72rem;
 }
 
 .sound-bars {

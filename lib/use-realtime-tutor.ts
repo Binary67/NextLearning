@@ -34,11 +34,25 @@ type RealtimeFunctionCall = {
 type RealtimeServerEvent = {
   type?: string;
   error?: {
+    event_id?: string;
     message?: string;
   };
   response?: {
+    status?: string;
+    status_details?: {
+      error?: {
+        message?: string;
+      };
+    };
     output?: RealtimeFunctionCall[];
   };
+};
+
+type PendingServerEvent = {
+  eventId: string | null;
+  resolve: () => void;
+  reject: (reason: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
 };
 
 type ProgressResponse = {
@@ -49,15 +63,29 @@ type ProgressResponse = {
 
 export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const [status, setStatus] = useState<RealtimeTutorStatus>("idle");
-  const [isListening, setIsListening] = useState(false);
+  const [isUserTurn, setIsUserTurn] = useState(false);
+  const [isSubmittingUserTurn, setIsSubmittingUserTurn] = useState(false);
+  const [isTutorResponding, setIsTutorResponding] = useState(false);
+  const [isTutorSpeaking, setIsTutorSpeaking] = useState(false);
   const [error, setError] = useState("");
   const optionsRef = useRef(options);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const isUserTurnRef = useRef(false);
+  const userTurnTransitionRef = useRef(false);
+  const responseInProgressRef = useRef(false);
+  const outputAudioPlayingRef = useRef(false);
+  const pendingServerEventsRef = useRef(
+    new Map<string, PendingServerEvent>(),
+  );
 
   const closeConnection = useCallback(() => {
+    rejectPendingServerEvents(
+      pendingServerEventsRef.current,
+      new Error("The Realtime tutor connection closed."),
+    );
     dataChannelRef.current?.close();
     peerConnectionRef.current?.close();
 
@@ -73,6 +101,10 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     peerConnectionRef.current = null;
     mediaStreamRef.current = null;
     remoteAudioRef.current = null;
+    isUserTurnRef.current = false;
+    userTurnTransitionRef.current = false;
+    responseInProgressRef.current = false;
+    outputAudioPlayingRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -85,6 +117,13 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     },
     [closeConnection],
   );
+
+  function clearTurnState() {
+    setIsUserTurn(false);
+    setIsSubmittingUserTurn(false);
+    setIsTutorResponding(false);
+    setIsTutorSpeaking(false);
+  }
 
   async function start() {
     if (status === "connecting" || status === "connected") {
@@ -112,27 +151,37 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     setStatus("connecting");
+    clearTurnState();
     setError("");
 
     try {
       const peerConnection = new RTCPeerConnection();
       const remoteAudio = new Audio();
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: {
+          autoGainControl: true,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
       });
       const dataChannel = peerConnection.createDataChannel("oai-events");
 
       remoteAudio.autoplay = true;
       peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject = event.streams[0];
+        remoteAudio.srcObject =
+          event.streams[0] ?? new MediaStream([event.track]);
+        void playRemoteAudio();
       };
       peerConnection.onconnectionstatechange = () => {
         if (peerConnection.connectionState === "failed") {
-          setError("The Realtime tutor connection failed.");
-          setStatus("error");
-          setIsListening(false);
+          failConnection(
+            dataChannel,
+            "The Realtime tutor connection failed.",
+          );
         }
       };
+
+      setAudioTracksEnabled(mediaStream, false);
 
       for (const track of mediaStream.getTracks()) {
         peerConnection.addTrack(track, mediaStream);
@@ -144,9 +193,21 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       remoteAudioRef.current = remoteAudio;
 
       const dataChannelOpened = waitForDataChannel(dataChannel);
-      dataChannel.onmessage = (event) => {
+      dataChannel.addEventListener("message", (event) => {
         void handleServerEvent(event.data);
-      };
+      });
+      dataChannel.addEventListener("close", () => {
+        failConnection(
+          dataChannel,
+          "The Realtime tutor data channel closed.",
+        );
+      });
+      dataChannel.addEventListener("error", () => {
+        failConnection(
+          dataChannel,
+          "The Realtime tutor data channel failed.",
+        );
+      });
 
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
@@ -169,49 +230,133 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         type: "answer",
         sdp: answerSdp,
       });
-      await dataChannelOpened;
+      const sessionCreated = waitForServerEvent("session.created");
 
-      setStatus("connected");
-      setIsListening(true);
+      await Promise.all([dataChannelOpened, sessionCreated]);
+
+      setIsUserTurn(false);
       await presentTeachingUnit(activeUnit, true);
+      setStatus("connected");
     } catch (reason) {
       closeConnection();
       setError(
-        reason instanceof Error
-          ? reason.message
-          : "The Realtime tutor could not start.",
+        getErrorMessage(reason, "The Realtime tutor could not start."),
       );
       setStatus("error");
-      setIsListening(false);
+      clearTurnState();
     }
   }
 
-  function toggleListening() {
-    if (status !== "connected") {
-      void start();
-      return;
+  async function toggleUserTurn() {
+    if (
+      status !== "connected" ||
+      isSubmittingUserTurn ||
+      userTurnTransitionRef.current
+    ) {
+      return false;
     }
 
-    const nextListeningState = !isListening;
+    userTurnTransitionRef.current = true;
 
-    for (const track of mediaStreamRef.current?.getAudioTracks() ?? []) {
-      track.enabled = nextListeningState;
+    try {
+      if (isUserTurnRef.current) {
+        return await finishUserTurn();
+      }
+
+      return await beginUserTurn();
+    } finally {
+      userTurnTransitionRef.current = false;
+    }
+  }
+
+  async function beginUserTurn() {
+    const remoteAudio = remoteAudioRef.current;
+
+    if (remoteAudio) {
+      remoteAudio.muted = true;
     }
 
-    setIsListening(nextListeningState);
+    isUserTurnRef.current = true;
+
+    try {
+      await sendEventAndWait(
+        { type: "input_audio_buffer.clear" },
+        "input_audio_buffer.cleared",
+      );
+
+      if (responseInProgressRef.current) {
+        sendEvent({ type: "response.cancel" });
+        responseInProgressRef.current = false;
+      }
+
+      if (outputAudioPlayingRef.current) {
+        sendEvent({ type: "output_audio_buffer.clear" });
+        outputAudioPlayingRef.current = false;
+      }
+
+      setAudioTracksEnabled(mediaStreamRef.current, true);
+
+      setIsUserTurn(true);
+      setIsTutorResponding(false);
+      setIsTutorSpeaking(false);
+      setError("");
+      return true;
+    } catch (reason) {
+      isUserTurnRef.current = false;
+
+      if (remoteAudio) {
+        remoteAudio.muted = false;
+      }
+
+      setIsUserTurn(false);
+      setError(
+        getErrorMessage(reason, "The learner turn could not start."),
+      );
+      return false;
+    }
+  }
+
+  async function finishUserTurn() {
+    setAudioTracksEnabled(mediaStreamRef.current, false);
+
+    isUserTurnRef.current = false;
+    setIsUserTurn(false);
+    setIsSubmittingUserTurn(true);
+
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = false;
+    }
+
+    try {
+      await sendEventAndWait(
+        { type: "input_audio_buffer.commit" },
+        "input_audio_buffer.committed",
+      );
+      await requestResponse();
+      setError("");
+      return true;
+    } catch (reason) {
+      setIsTutorResponding(false);
+      setError(
+        getErrorMessage(reason, "The learner turn could not be submitted."),
+      );
+      return false;
+    } finally {
+      setIsSubmittingUserTurn(false);
+    }
   }
 
   function end() {
     closeConnection();
     setStatus("ended");
-    setIsListening(false);
+    clearTurnState();
     setError("");
   }
 
   function reset() {
     closeConnection();
     setStatus("idle");
-    setIsListening(false);
+    clearTurnState();
     setError("");
   }
 
@@ -229,20 +374,93 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     if (event.type === "error") {
-      setError(event.error?.message ?? "The Realtime tutor reported an error.");
+      const realtimeError = new Error(
+        event.error?.message ?? "The Realtime tutor reported an error.",
+      );
+
+      rejectPendingServerEvent(
+        pendingServerEventsRef.current,
+        event.error?.event_id,
+        realtimeError,
+      );
+      setIsSubmittingUserTurn(false);
+      setIsTutorResponding(false);
+      setError(realtimeError.message);
       return;
     }
 
-    if (event.type !== "response.done") {
-      return;
+    if (event.type) {
+      resolvePendingServerEvent(
+        pendingServerEventsRef.current,
+        event.type,
+      );
     }
 
-    const functionCall = event.response?.output?.find(
-      (item) => item.type === "function_call",
-    );
+    switch (event.type) {
+      case "response.created":
+        responseInProgressRef.current = true;
 
-    if (functionCall) {
-      await handleFunctionCall(functionCall);
+        if (isUserTurnRef.current) {
+          sendEvent({ type: "response.cancel" });
+          responseInProgressRef.current = false;
+          setIsTutorResponding(false);
+          return;
+        }
+
+        setIsTutorResponding(true);
+        setError("");
+        return;
+      case "output_audio_buffer.started":
+        outputAudioPlayingRef.current = true;
+
+        if (isUserTurnRef.current) {
+          sendEvent({ type: "output_audio_buffer.clear" });
+          outputAudioPlayingRef.current = false;
+          return;
+        }
+
+        setIsTutorResponding(true);
+        setIsTutorSpeaking(true);
+        void playRemoteAudio();
+        return;
+      case "output_audio_buffer.stopped":
+      case "output_audio_buffer.cleared":
+        outputAudioPlayingRef.current = false;
+        setIsTutorSpeaking(false);
+        return;
+      case "response.done": {
+        responseInProgressRef.current = false;
+
+        if (
+          event.response?.status &&
+          event.response.status !== "completed"
+        ) {
+          setIsTutorResponding(false);
+
+          if (event.response.status !== "cancelled") {
+            setError(
+              event.response.status_details?.error?.message ??
+                "The tutor response did not complete.",
+            );
+          }
+
+          return;
+        }
+
+        const functionCall = event.response?.output?.find(
+          (item) => item.type === "function_call",
+        );
+
+        if (functionCall) {
+          await handleFunctionCall(functionCall);
+          return;
+        }
+
+        setIsTutorResponding(false);
+        return;
+      }
+      default:
+        return;
     }
   }
 
@@ -259,12 +477,21 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
           throw new Error("That tutor tool is not available.");
       }
     } catch (reason) {
-      sendFunctionOutput(functionCall.call_id, {
-        success: false,
-        message:
-          reason instanceof Error ? reason.message : "The tutor tool failed.",
-      });
-      sendEvent({ type: "response.create" });
+      try {
+        await sendFunctionOutput(functionCall.call_id, {
+          success: false,
+          message: getErrorMessage(reason, "The tutor tool failed."),
+        });
+        await requestResponse();
+      } catch (responseError) {
+        setIsTutorResponding(false);
+        setError(
+          getErrorMessage(
+            responseError,
+            "The tutor tool response failed.",
+          ),
+        );
+      }
     }
   }
 
@@ -286,12 +513,12 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
     const image = await renderSourcePage(pageIndex);
 
-    sendFunctionOutput(functionCall.call_id, {
+    await sendFunctionOutput(functionCall.call_id, {
       success: true,
       page_index: pageIndex,
     });
-    sendPageImage(activeUnit, pageIndex, image);
-    sendEvent({ type: "response.create" });
+    await sendPageImage(activeUnit, pageIndex, image);
+    await requestResponse();
   }
 
   async function completeUnit(functionCall: RealtimeFunctionCall) {
@@ -330,7 +557,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       ? teachingPlan.units.find((unit) => unit.id === data.active_unit_id)
       : null;
 
-    sendFunctionOutput(functionCall.call_id, {
+    await sendFunctionOutput(functionCall.call_id, {
       success: true,
       completed_unit_id: activeUnit.id,
       next_unit_id: nextUnit?.id ?? null,
@@ -341,17 +568,20 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       return;
     }
 
-    sendEvent({
-      type: "session.update",
-      session: {
-        type: "realtime",
-        instructions:
-          "All teaching units are mastered. Congratulate the learner briefly, summarize the completed document in one sentence, and invite final questions.",
-        tools: [],
-        tool_choice: "none",
+    await sendEventAndWait(
+      {
+        type: "session.update",
+        session: {
+          type: "realtime",
+          instructions:
+            "All teaching units are mastered. Congratulate the learner briefly, summarize the completed document in one sentence, and invite final questions.",
+          tools: [],
+          tool_choice: "none",
+        },
       },
-    });
-    sendEvent({ type: "response.create" });
+      "session.updated",
+    );
+    await requestResponse();
   }
 
   async function presentTeachingUnit(
@@ -364,27 +594,30 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       throw new Error("The teaching context is unavailable.");
     }
 
-    sendEvent({
-      type: "session.update",
-      session: {
-        type: "realtime",
-        instructions: buildTutorInstructions(
-          documentModel,
-          teachingPlan,
-          unit,
-          isSessionStart,
-        ),
-        tools: buildTutorTools(unit),
-        tool_choice: "auto",
-        parallel_tool_calls: false,
+    await sendEventAndWait(
+      {
+        type: "session.update",
+        session: {
+          type: "realtime",
+          instructions: buildTutorInstructions(
+            documentModel,
+            teachingPlan,
+            unit,
+            isSessionStart,
+          ),
+          tools: buildTutorTools(unit),
+          tool_choice: "auto",
+          parallel_tool_calls: false,
+        },
       },
-    });
+      "session.updated",
+    );
 
     const pageIndex = unit.source_anchors[0].page_index;
     const image = await renderSourcePage(pageIndex);
 
-    sendPageImage(unit, pageIndex, image);
-    sendEvent({ type: "response.create" });
+    await sendPageImage(unit, pageIndex, image);
+    await requestResponse();
   }
 
   async function renderSourcePage(pageIndex: number) {
@@ -399,39 +632,46 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     return renderPdfPageAsImage(documentId, documentUrl, pageIndex);
   }
 
-  function sendPageImage(
+  async function sendPageImage(
     unit: TeachingUnit,
     pageIndex: number,
     imageUrl: string,
   ) {
-    sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: `Source page ${pageIndex} is now visible for the active teaching unit "${unit.title}". Use only the parts relevant to the unit objective.`,
-          },
-          {
-            type: "input_image",
-            image_url: imageUrl,
-          },
-        ],
+    await sendEventAndWait(
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `Source page ${pageIndex} is now visible for the active teaching unit "${unit.title}". Use only the parts relevant to the unit objective.`,
+            },
+            {
+              type: "input_image",
+              detail: "auto",
+              image_url: imageUrl,
+            },
+          ],
+        },
       },
-    });
+      "conversation.item.added",
+    );
   }
 
-  function sendFunctionOutput(callId: string, output: object) {
-    sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: callId,
-        output: JSON.stringify(output),
+  async function sendFunctionOutput(callId: string, output: object) {
+    await sendEventAndWait(
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: callId,
+          output: JSON.stringify(output),
+        },
       },
-    });
+      "conversation.item.added",
+    );
   }
 
   function sendEvent(event: object) {
@@ -441,18 +681,174 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       throw new Error("The Realtime tutor is not connected.");
     }
 
-    dataChannel.send(JSON.stringify(event));
+    const message = JSON.stringify(event);
+    const maxMessageSize = peerConnectionRef.current?.sctp?.maxMessageSize;
+
+    if (
+      maxMessageSize &&
+      new TextEncoder().encode(message).byteLength > maxMessageSize
+    ) {
+      throw new Error(
+        "A tutor message is too large for the Realtime connection.",
+      );
+    }
+
+    dataChannel.send(message);
+  }
+
+  function sendEventAndWait(event: object, expectedEventType: string) {
+    const eventId = `client_${crypto.randomUUID()}`;
+    const response = waitForServerEvent(expectedEventType, eventId);
+
+    try {
+      sendEvent({ ...event, event_id: eventId });
+    } catch (reason) {
+      rejectPendingServerEvent(
+        pendingServerEventsRef.current,
+        eventId,
+        reason instanceof Error
+          ? reason
+          : new Error("The Realtime event could not be sent."),
+      );
+    }
+
+    return response;
+  }
+
+  function waitForServerEvent(
+    expectedEventType: string,
+    eventId: string | null = null,
+  ) {
+    if (pendingServerEventsRef.current.has(expectedEventType)) {
+      throw new Error(
+        `The Realtime tutor is already waiting for ${expectedEventType}.`,
+      );
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingServerEventsRef.current.delete(expectedEventType);
+        reject(
+          new Error(
+            `The Realtime tutor timed out waiting for ${expectedEventType}.`,
+          ),
+        );
+      }, 10_000);
+
+      pendingServerEventsRef.current.set(expectedEventType, {
+        eventId,
+        resolve,
+        reject,
+        timeout,
+      });
+    });
+  }
+
+  async function requestResponse() {
+    if (isUserTurnRef.current) {
+      return;
+    }
+
+    await sendEventAndWait(
+      { type: "response.create" },
+      "response.created",
+    );
+  }
+
+  async function playRemoteAudio() {
+    const remoteAudio = remoteAudioRef.current;
+
+    if (!remoteAudio?.srcObject || !remoteAudio.paused) {
+      return;
+    }
+
+    try {
+      await remoteAudio.play();
+    } catch {
+      setError(
+        "Tutor audio playback was blocked. Allow audio autoplay and start the session again.",
+      );
+    }
+  }
+
+  function failConnection(dataChannel: RTCDataChannel, message: string) {
+    if (dataChannelRef.current !== dataChannel) {
+      return;
+    }
+
+    closeConnection();
+    setStatus("error");
+    clearTurnState();
+    setError(message);
   }
 
   return {
     status,
-    isListening,
+    isUserTurn,
+    isSubmittingUserTurn,
+    isTutorResponding,
+    isTutorSpeaking,
     error,
     start,
-    toggleListening,
+    toggleUserTurn,
     end,
     reset,
   };
+}
+
+function setAudioTracksEnabled(
+  mediaStream: MediaStream | null,
+  enabled: boolean,
+) {
+  for (const track of mediaStream?.getAudioTracks() ?? []) {
+    track.enabled = enabled;
+  }
+}
+
+function resolvePendingServerEvent(
+  pendingEvents: Map<string, PendingServerEvent>,
+  eventType: string,
+) {
+  const pendingEvent = pendingEvents.get(eventType);
+
+  if (!pendingEvent) {
+    return;
+  }
+
+  clearTimeout(pendingEvent.timeout);
+  pendingEvents.delete(eventType);
+  pendingEvent.resolve();
+}
+
+function rejectPendingServerEvent(
+  pendingEvents: Map<string, PendingServerEvent>,
+  eventId: string | undefined,
+  reason: Error,
+) {
+  if (!eventId) {
+    return;
+  }
+
+  for (const [eventType, pendingEvent] of pendingEvents) {
+    if (pendingEvent.eventId === eventId) {
+      clearTimeout(pendingEvent.timeout);
+      pendingEvents.delete(eventType);
+      pendingEvent.reject(reason);
+      return;
+    }
+  }
+}
+
+function rejectPendingServerEvents(
+  pendingEvents: Map<string, PendingServerEvent>,
+  reason: Error,
+) {
+  for (const pendingEvent of pendingEvents.values()) {
+    clearTimeout(pendingEvent.timeout);
+    pendingEvent.reject(reason);
+  }
+
+  pendingEvents.clear();
 }
 
 function buildTutorInstructions(
@@ -573,4 +969,8 @@ function readResponseMessage(value: string) {
   } catch {
     return null;
   }
+}
+
+function getErrorMessage(reason: unknown, fallback: string) {
+  return reason instanceof Error ? reason.message : fallback;
 }

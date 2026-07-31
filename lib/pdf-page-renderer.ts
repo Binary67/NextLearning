@@ -11,8 +11,8 @@ export async function renderPdfPageAsImage(
   const page = await pdfDocument.getPage(pageIndex);
   const initialViewport = page.getViewport({ scale: 1 });
   const scale = Math.min(
-    1.6,
-    1200 / Math.max(initialViewport.width, initialViewport.height),
+    1.4,
+    900 / Math.max(initialViewport.width, initialViewport.height),
   );
   const viewport = page.getViewport({ scale });
   const canvas = window.document.createElement("canvas");
@@ -26,7 +26,7 @@ export async function renderPdfPageAsImage(
     background: "rgb(255,255,255)",
   }).promise;
 
-  return canvas.toDataURL("image/jpeg", 0.84);
+  return canvas.toDataURL("image/jpeg", 0.72);
 }
 
 async function loadPdfDocument(documentId: string, documentUrl: string) {
