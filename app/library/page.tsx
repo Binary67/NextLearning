@@ -4,6 +4,8 @@ import {
   ArrowRight,
   BookOpen,
   FileText,
+  GraduationCap,
+  LayoutDashboard,
   LibraryBig,
   Trash2,
   X,
@@ -107,157 +109,170 @@ export default function LibraryPage() {
   }
 
   return (
-    <main className="app-shell library-shell">
-      <header className="topbar">
-        <div className="brand-group">
-          <Link className="brand" href="/library" aria-label="NextLearning home">
-            <span className="brand-mark" aria-hidden="true">
-              N
-            </span>
-            NextLearning
-          </Link>
-        </div>
+    <div className="app-shell library-shell">
+      <aside className="library-sidebar">
+        <Link
+          className="library-brand"
+          href="/library"
+          aria-label="NextLearning home"
+        >
+          <span className="brand-mark" aria-hidden="true">
+            N
+          </span>
+          <span className="library-brand-name">NextLearning</span>
+        </Link>
 
-        <nav className="main-nav" aria-label="Primary navigation">
-          <Link className="nav-link" href={dashboardHref}>
-            Dashboard
+        <nav className="library-navigation" aria-label="Primary navigation">
+          <Link
+            className="library-nav-item"
+            href={dashboardHref}
+            aria-label="Dashboard"
+          >
+            <LayoutDashboard size={18} aria-hidden="true" />
+            <span>Dashboard</span>
           </Link>
           <button
-            className="nav-link"
+            className="library-nav-item"
             type="button"
+            aria-label="Courses"
             onClick={() =>
               showToast("Courses are ready for future learning paths.")
             }
           >
-            Courses
+            <GraduationCap size={18} aria-hidden="true" />
+            <span>Courses</span>
           </button>
           <Link
-            className="nav-link active"
+            className="library-nav-item active"
             href="/library"
             aria-current="page"
+            aria-label="Library"
           >
-            Library
+            <LibraryBig size={18} aria-hidden="true" />
+            <span>Library</span>
           </Link>
         </nav>
 
-        <div className="header-actions">
-          <button
-            className="avatar"
-            type="button"
-            onClick={() => showToast("Profile selected.")}
-            aria-label="Open profile"
-          >
+        <button
+          className="library-profile"
+          type="button"
+          onClick={() => showToast("Profile selected.")}
+          aria-label="Open profile"
+        >
+          <span className="avatar" aria-hidden="true">
             AM
-          </button>
-        </div>
-      </header>
+          </span>
+          <span className="library-profile-copy">
+            <strong>Profile</strong>
+            <small>Your learning space</small>
+          </span>
+        </button>
+      </aside>
 
-      <section className="library-content" aria-labelledby="library-title">
-        <header className="library-heading">
-          <div>
-            <p className="library-eyebrow">Your learning space</p>
-            <h1 id="library-title">Tutorial Library</h1>
-            <p>
-              Pick up where you left off or prepare a new PDF as its own
-              guided tutorial.
-            </p>
-          </div>
-          <NewTutorialButton />
-        </header>
+      <main className="library-main">
+        <section className="library-content" aria-labelledby="library-title">
+          <header className="library-heading">
+            <div>
+              <h1 id="library-title">Library</h1>
+              <p>Your guided tutorials and learning progress.</p>
+            </div>
+            {tutorials.length > 0 && <NewTutorialButton />}
+          </header>
 
-        {loading ? (
-          <div className="library-state" aria-live="polite">
-            <LibraryBig size={34} aria-hidden="true" />
-            <h2>Loading your tutorials…</h2>
-          </div>
-        ) : error ? (
-          <div className="library-state">
-            <LibraryBig size={34} aria-hidden="true" />
-            <h2>Library unavailable</h2>
-            <p role="alert">{error}</p>
-          </div>
-        ) : tutorials.length === 0 ? (
-          <div className="library-state library-empty">
-            <span className="library-state-icon">
-              <BookOpen size={31} aria-hidden="true" />
-            </span>
-            <p className="library-eyebrow">Begin a new subject</p>
-            <h2>Your tutorial library is empty</h2>
-            <p>
-              Use New Tutorial to upload a PDF. Each tutorial keeps its own
-              teaching plan and learning progress.
-            </p>
-          </div>
-        ) : (
-          <div className="tutorial-grid">
-            {tutorials.map((tutorial) => {
-              const progress =
-                tutorial.masteredUnitCount / tutorial.plan.unit_count;
+          {loading ? (
+            <div className="library-state" aria-live="polite">
+              <LibraryBig size={34} aria-hidden="true" />
+              <h2>Loading your tutorials…</h2>
+            </div>
+          ) : error ? (
+            <div className="library-state">
+              <LibraryBig size={34} aria-hidden="true" />
+              <h2>Library unavailable</h2>
+              <p role="alert">{error}</p>
+            </div>
+          ) : tutorials.length === 0 ? (
+            <div className="library-state library-empty">
+              <span className="library-state-icon">
+                <BookOpen size={28} aria-hidden="true" />
+              </span>
+              <h2>No tutorials yet</h2>
+              <p>Choose a PDF and we’ll turn it into a guided tutorial.</p>
+              <NewTutorialButton />
+            </div>
+          ) : (
+            <div className="tutorial-grid">
+              {tutorials.map((tutorial) => {
+                const progress =
+                  tutorial.masteredUnitCount / tutorial.plan.unit_count;
 
-              return (
-                <article className="tutorial-card" key={tutorial.id}>
-                  <Link
-                    className="tutorial-card-content"
-                    href={`/tutorials/${tutorial.id}`}
-                  >
-                    <div className="tutorial-card-heading">
-                      <span className="tutorial-file-icon">
-                        <FileText size={22} aria-hidden="true" />
-                      </span>
-                      <span className="tutorial-card-status">
-                        {tutorial.masteredUnitCount === tutorial.plan.unit_count
-                          ? "Complete"
-                          : "In progress"}
-                      </span>
-                    </div>
-                    <h2>{tutorial.title}</h2>
-                    <p className="tutorial-document-name">
-                      {tutorial.documentName}
-                    </p>
-                    <dl className="tutorial-metrics">
-                      <div>
-                        <dt>Pages</dt>
-                        <dd>{tutorial.map.page_count}</dd>
+                return (
+                  <article className="tutorial-card" key={tutorial.id}>
+                    <Link
+                      className="tutorial-card-content"
+                      href={`/tutorials/${tutorial.id}`}
+                    >
+                      <div className="tutorial-card-heading">
+                        <span className="tutorial-file-icon">
+                          <FileText size={22} aria-hidden="true" />
+                        </span>
+                        <span className="tutorial-card-status">
+                          {tutorial.masteredUnitCount ===
+                          tutorial.plan.unit_count
+                            ? "Complete"
+                            : "In progress"}
+                        </span>
                       </div>
-                      <div>
-                        <dt>Concepts</dt>
-                        <dd>{tutorial.map.concept_count}</dd>
+                      <h2>{tutorial.title}</h2>
+                      <p className="tutorial-document-name">
+                        {tutorial.documentName}
+                      </p>
+                      <dl className="tutorial-metrics">
+                        <div>
+                          <dt>Pages</dt>
+                          <dd>{tutorial.map.page_count}</dd>
+                        </div>
+                        <div>
+                          <dt>Concepts</dt>
+                          <dd>{tutorial.map.concept_count}</dd>
+                        </div>
+                        <div>
+                          <dt>Progress</dt>
+                          <dd>
+                            {tutorial.masteredUnitCount}/
+                            {tutorial.plan.unit_count}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="tutorial-progress">
+                        <span
+                          style={{
+                            width: `${Math.round(progress * 100)}%`,
+                          }}
+                        />
                       </div>
-                      <div>
-                        <dt>Progress</dt>
-                        <dd>
-                          {tutorial.masteredUnitCount}/
-                          {tutorial.plan.unit_count}
-                        </dd>
+                      <div className="tutorial-card-footer">
+                        <span>{formatUpdatedAt(tutorial.updatedAt)}</span>
+                        <strong>
+                          Continue
+                          <ArrowRight size={15} aria-hidden="true" />
+                        </strong>
                       </div>
-                    </dl>
-                    <div className="tutorial-progress">
-                      <span
-                        style={{ width: `${Math.round(progress * 100)}%` }}
-                      />
-                    </div>
-                    <div className="tutorial-card-footer">
-                      <span>{formatUpdatedAt(tutorial.updatedAt)}</span>
-                      <strong>
-                        Continue
-                        <ArrowRight size={15} aria-hidden="true" />
-                      </strong>
-                    </div>
-                  </Link>
-                  <button
-                    className="tutorial-delete-button"
-                    type="button"
-                    onClick={() => setTutorialToDelete(tutorial)}
-                    aria-label={`Delete ${tutorial.title}`}
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                    </Link>
+                    <button
+                      className="tutorial-delete-button"
+                      type="button"
+                      onClick={() => setTutorialToDelete(tutorial)}
+                      aria-label={`Delete ${tutorial.title}`}
+                    >
+                      <Trash2 size={17} />
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </main>
 
       {tutorialToDelete && (
         <div className="modal-backdrop">
@@ -312,7 +327,7 @@ export default function LibraryPage() {
       <div className={`toast${toast ? " visible" : ""}`} aria-live="polite">
         {toast}
       </div>
-    </main>
+    </div>
   );
 }
 
