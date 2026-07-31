@@ -2,22 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type {
-  DocumentLayout,
-  DocumentLayoutBlock,
-} from "@/lib/document-layout";
 import type { DocumentModel } from "@/lib/document-model";
 import type { LearningProgress } from "@/lib/learning-progress";
-import { renderPdfPageAsImage } from "@/lib/pdf-page-renderer";
-import type {
-  TeachingGrounding,
-  TeachingUnitGrounding,
-} from "@/lib/teaching-grounding";
+import { renderPdfPageForTutor } from "@/lib/pdf-page-renderer";
 import type {
   TeachingLessonStep,
   TeachingPlan,
   TeachingUnit,
 } from "@/lib/teaching-plan";
+import {
+  isVisualGuideCell,
+  VISUAL_GUIDE_CELLS,
+  type VisualGuideRegion,
+} from "@/lib/visual-guide";
 
 export type RealtimeTutorStatus =
   | "idle"
@@ -29,21 +26,17 @@ export type RealtimeTutorStatus =
 type RealtimeTutorOptions = {
   documentId: string | null;
   documentUrl: string | null;
-  documentLayout: DocumentLayout | null;
   documentModel: DocumentModel | null;
   teachingPlan: TeachingPlan | null;
-  teachingGrounding: TeachingGrounding | null;
   activeUnit: TeachingUnit | null;
   onPageChange: (pageIndex: number) => void;
   onProgressChange: (progress: LearningProgress) => void;
 };
 
-export type RealtimeVisualFocus = {
-  id: string;
+export type RealtimeVisualGuide = VisualGuideRegion & {
   lesson_step_id: string;
-  teaching_point: string;
   page_index: number;
-  blocks: DocumentLayoutBlock[];
+  label: string;
 };
 
 type RealtimeFunctionCall = {
@@ -109,8 +102,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const [tutorTranscriptHistory, setTutorTranscriptHistory] = useState<
     string[]
   >([]);
-  const [activeVisualFocus, setActiveVisualFocus] =
-    useState<RealtimeVisualFocus | null>(null);
+  const [activeVisualGuide, setActiveVisualGuide] =
+    useState<RealtimeVisualGuide | null>(null);
   const [completedLessonStepIds, setCompletedLessonStepIds] = useState<
     string[]
   >([]);
@@ -131,8 +124,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const responsePlaybackCompletedRef = useRef(false);
   const tutorTranscriptRef = useRef("");
   const pendingFunctionCallRef = useRef<RealtimeFunctionCall | null>(null);
-  const activeVisualFocusRef = useRef<RealtimeVisualFocus | null>(null);
-  const viewedVisualFocusIdsRef = useRef(new Set<string>());
+  const activeVisualGuideRef = useRef<RealtimeVisualGuide | null>(null);
+  const guidedLessonStepIdsRef = useRef(new Set<string>());
   const completedLessonStepIdsRef = useRef(new Set<string>());
   const learnerTurnPurposeRef = useRef<LearnerTurnPurpose | null>(null);
   const awaitingLearnerAnswerRef = useRef(false);
@@ -140,7 +133,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     useRef<RealtimeResponsePurpose>("tutorial");
   const sessionInstructionsRef = useRef("");
   const interruptedLessonStepIdRef = useRef<string | null>(null);
-  const interruptedVisualFocusIdRef = useRef<string | null>(null);
   const resumeAfterPlaybackRef = useRef(false);
   const pendingServerEventsRef = useRef(
     new Map<string, PendingServerEvent>(),
@@ -172,15 +164,14 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     outputAudioPlayingRef.current = false;
     responsePlaybackCompletedRef.current = false;
     pendingFunctionCallRef.current = null;
-    activeVisualFocusRef.current = null;
+    activeVisualGuideRef.current = null;
     learnerTurnPurposeRef.current = null;
     awaitingLearnerAnswerRef.current = false;
     activeResponsePurposeRef.current = "tutorial";
     sessionInstructionsRef.current = "";
     interruptedLessonStepIdRef.current = null;
-    interruptedVisualFocusIdRef.current = null;
     resumeAfterPlaybackRef.current = false;
-    viewedVisualFocusIdsRef.current.clear();
+    guidedLessonStepIdsRef.current.clear();
     completedLessonStepIdsRef.current.clear();
   }, []);
 
@@ -214,20 +205,16 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     const {
       documentId,
       documentUrl,
-      documentLayout,
       documentModel,
       teachingPlan,
-      teachingGrounding,
       activeUnit,
     } = optionsRef.current;
 
     if (
       !documentId ||
       !documentUrl ||
-      !documentLayout ||
       !documentModel ||
       !teachingPlan ||
-      !teachingGrounding ||
       !activeUnit
     ) {
       setError("A prepared teaching unit is required.");
@@ -380,15 +367,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
     if (learnerTurnPurpose === "interruption") {
       const currentStep = getCurrentLessonStep();
-      const activeVisualFocus = activeVisualFocusRef.current;
 
       interruptedLessonStepIdRef.current = currentStep?.id ?? null;
-      interruptedVisualFocusIdRef.current =
-        activeVisualFocus &&
-        currentStep &&
-        activeVisualFocus.lesson_step_id === currentStep.id
-          ? activeVisualFocus.id
-          : null;
       resumeAfterPlaybackRef.current = false;
     }
 
@@ -527,7 +507,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
   function resetInterruptionState() {
     interruptedLessonStepIdRef.current = null;
-    interruptedVisualFocusIdRef.current = null;
     resumeAfterPlaybackRef.current = false;
     activeResponsePurposeRef.current = "tutorial";
     responsePlaybackCompletedRef.current = false;
@@ -535,12 +514,12 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   function clearTutorialDisplay() {
-    activeVisualFocusRef.current = null;
-    viewedVisualFocusIdsRef.current.clear();
+    activeVisualGuideRef.current = null;
+    guidedLessonStepIdsRef.current.clear();
     resetCompletedLessonSteps();
     resetInterruptionState();
     tutorTranscriptRef.current = "";
-    setActiveVisualFocus(null);
+    setActiveVisualGuide(null);
     setCurrentTutorTranscript("");
     setTutorTranscriptHistory([]);
   }
@@ -700,8 +679,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   async function handleFunctionCall(functionCall: RealtimeFunctionCall) {
     try {
       switch (functionCall.name) {
-        case "set_visual_focus":
-          await setVisualFocus(functionCall);
+        case "set_visual_guide":
+          await setVisualGuide(functionCall);
           return;
         case "complete_lesson_step":
           await completeLessonStep(functionCall);
@@ -731,32 +710,49 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
   }
 
-  async function setVisualFocus(functionCall: RealtimeFunctionCall) {
+  async function setVisualGuide(functionCall: RealtimeFunctionCall) {
     const args = parseArguments(functionCall.arguments);
-    const focusId = args.focus_id;
     const { activeUnit } = optionsRef.current;
+    const currentStep = getCurrentLessonStep();
+    const lessonStepId = args.lesson_step_id;
+    const pageIndex = args.page_index;
+    const startCell = args.start_cell;
+    const endCell = args.end_cell;
+    const label = args.label;
 
-    if (!activeUnit || typeof focusId !== "string") {
-      throw new Error("That visual focus is not available.");
+    if (
+      !activeUnit ||
+      !currentStep ||
+      lessonStepId !== currentStep.id ||
+      typeof pageIndex !== "number" ||
+      !Number.isInteger(pageIndex) ||
+      !getSourcePageIndexes(activeUnit).includes(pageIndex) ||
+      !isVisualGuideCell(startCell) ||
+      !isVisualGuideCell(endCell) ||
+      typeof label !== "string" ||
+      label.trim().length === 0
+    ) {
+      throw new Error("That visual guide is not available.");
     }
 
-    const previousPageIndex = activeVisualFocusRef.current?.page_index;
-    const focus = activateVisualFocus(activeUnit, focusId);
-    const image =
-      previousPageIndex === focus.page_index
-        ? null
-        : await renderSourcePage(focus.page_index);
+    const visualGuide: RealtimeVisualGuide = {
+      lesson_step_id: currentStep.id,
+      page_index: pageIndex,
+      start_cell: startCell,
+      end_cell: endCell,
+      label: label.trim(),
+    };
 
+    activeVisualGuideRef.current = visualGuide;
+    guidedLessonStepIdsRef.current.add(currentStep.id);
+    setActiveVisualGuide(visualGuide);
+    optionsRef.current.onPageChange(pageIndex);
     await sendFunctionOutput(functionCall.call_id, {
       success: true,
-      focus_id: focus.id,
-      page_index: focus.page_index,
+      page_index: pageIndex,
+      start_cell: startCell,
+      end_cell: endCell,
     });
-
-    if (image) {
-      await sendPageImage(activeUnit, focus.page_index, image);
-    }
-
     await requestResponse();
   }
 
@@ -765,13 +761,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   ) {
     const args = parseArguments(functionCall.arguments);
     const lessonStepId = args.lesson_step_id;
-    const { activeUnit, teachingGrounding } = optionsRef.current;
+    const { activeUnit } = optionsRef.current;
 
-    if (
-      !activeUnit ||
-      !teachingGrounding ||
-      typeof lessonStepId !== "string"
-    ) {
+    if (!activeUnit || typeof lessonStepId !== "string") {
       throw new Error("That lesson step is not available.");
     }
 
@@ -793,19 +785,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       );
     }
 
-    const unitGrounding = teachingGrounding.units.find(
-      (item) => item.unit_id === activeUnit.id,
-    );
-    const missingFocusIds = unitGrounding?.focuses
-      .filter((focus) => focus.lesson_step_id === lessonStepId)
-      .map((focus) => focus.id)
-      .filter(
-        (focusId) => !viewedVisualFocusIdsRef.current.has(focusId),
-      );
-
-    if (!unitGrounding || !missingFocusIds || missingFocusIds.length > 0) {
+    if (!guidedLessonStepIdsRef.current.has(lessonStepId)) {
       throw new Error(
-        "Use every visual focus for this lesson step before completing it.",
+        "Set a visual guide for this lesson step before completing it.",
       );
     }
 
@@ -905,44 +887,21 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     unit: TeachingUnit,
     isSessionStart: boolean,
   ) {
-    const {
-      documentLayout,
-      documentModel,
-      teachingPlan,
-      teachingGrounding,
-    } = optionsRef.current;
+    const { documentModel, teachingPlan } = optionsRef.current;
 
-    if (
-      !documentLayout ||
-      !documentModel ||
-      !teachingPlan ||
-      !teachingGrounding
-    ) {
+    if (!documentModel || !teachingPlan) {
       throw new Error("The teaching context is unavailable.");
     }
 
-    const unitGrounding = teachingGrounding.units.find(
-      (item) => item.unit_id === unit.id,
-    );
-
-    if (!unitGrounding) {
-      throw new Error("The teaching unit has no visual grounding.");
-    }
-
-    viewedVisualFocusIdsRef.current.clear();
+    activeVisualGuideRef.current = null;
+    guidedLessonStepIdsRef.current.clear();
+    setActiveVisualGuide(null);
     resetCompletedLessonSteps();
     resetInterruptionState();
-    const initialFocus = activateVisualFocus(
-      unit,
-      unitGrounding.focuses[0].id,
-    );
     const tutorInstructions = buildTutorInstructions(
       documentModel,
       teachingPlan,
       unit,
-      unitGrounding,
-      documentLayout,
-      initialFocus.id,
       isSessionStart,
     );
     sessionInstructionsRef.current = tutorInstructions;
@@ -953,7 +912,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         session: {
           type: "realtime",
           instructions: tutorInstructions,
-          tools: buildTutorTools(unit, unitGrounding),
+          tools: buildTutorTools(unit),
           tool_choice: "auto",
           parallel_tool_calls: false,
         },
@@ -961,49 +920,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       "session.updated",
     );
 
-    const image = await renderSourcePage(initialFocus.page_index);
-
-    await sendPageImage(unit, initialFocus.page_index, image);
+    optionsRef.current.onPageChange(unit.source_anchors[0].page_index);
+    await sendSourcePages(unit);
     await requestResponse();
-  }
-
-  function activateVisualFocus(unit: TeachingUnit, focusId: string) {
-    const { documentLayout, teachingGrounding } = optionsRef.current;
-    const unitGrounding = teachingGrounding?.units.find(
-      (item) => item.unit_id === unit.id,
-    );
-    const focus = unitGrounding?.focuses.find(
-      (item) => item.id === focusId,
-    );
-
-    if (!focus) {
-      throw new Error("That visual focus is not available.");
-    }
-
-    const page = documentLayout?.pages.find(
-      (item) => item.page_index === focus.page_index,
-    );
-    const blockIds = new Set(focus.block_ids);
-    const blocks = page?.blocks.filter((block) => blockIds.has(block.id));
-
-    if (!page || !blocks || blocks.length !== focus.block_ids.length) {
-      throw new Error("That visual focus is not available.");
-    }
-
-    const visualFocus: RealtimeVisualFocus = {
-      id: focus.id,
-      lesson_step_id: focus.lesson_step_id,
-      teaching_point: focus.teaching_point,
-      page_index: focus.page_index,
-      blocks,
-    };
-
-    viewedVisualFocusIdsRef.current.add(focus.id);
-    activeVisualFocusRef.current = visualFocus;
-    setActiveVisualFocus(visualFocus);
-    optionsRef.current.onPageChange(focus.page_index);
-
-    return visualFocus;
   }
 
   async function renderSourcePage(pageIndex: number) {
@@ -1013,7 +932,14 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       throw new Error("The source document is unavailable.");
     }
 
-    return renderPdfPageAsImage(documentId, documentUrl, pageIndex);
+    return renderPdfPageForTutor(documentId, documentUrl, pageIndex);
+  }
+
+  async function sendSourcePages(unit: TeachingUnit) {
+    for (const pageIndex of getSourcePageIndexes(unit)) {
+      const image = await renderSourcePage(pageIndex);
+      await sendPageImage(unit, pageIndex, image);
+    }
   }
 
   async function sendPageImage(
@@ -1030,7 +956,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
           content: [
             {
               type: "input_text",
-              text: `Source page ${pageIndex} is now visible for the active teaching unit "${unit.title}". Use only the parts relevant to the unit objective.`,
+              text: `Source page ${pageIndex} supports the active teaching unit "${unit.title}". The image uses a 4-by-4 grid labeled A1 through D4. Use the grid when setting visual guidance, and use only material relevant to the unit objective.`,
             },
             {
               type: "input_image",
@@ -1073,42 +999,18 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
     try {
       const lessonStepId = interruptedLessonStepIdRef.current;
-      const { activeUnit, teachingGrounding } = optionsRef.current;
+      const { activeUnit } = optionsRef.current;
 
-      if (!activeUnit || !teachingGrounding || !lessonStepId) {
+      if (!activeUnit || !lessonStepId) {
         throw new Error("The interrupted lesson step is unavailable.");
       }
 
       const lessonStep = activeUnit.lesson_steps.find(
         (step) => step.id === lessonStepId,
       );
-      const unitGrounding = teachingGrounding.units.find(
-        (unit) => unit.unit_id === activeUnit.id,
-      );
 
-      if (!lessonStep || !unitGrounding) {
+      if (!lessonStep) {
         throw new Error("The interrupted lesson step is unavailable.");
-      }
-
-      const resumeFocus =
-        unitGrounding.focuses.find(
-          (focus) => focus.id === interruptedVisualFocusIdRef.current,
-        ) ??
-        unitGrounding.focuses.find(
-          (focus) => focus.lesson_step_id === lessonStep.id,
-        );
-
-      if (
-        resumeFocus &&
-        activeVisualFocusRef.current?.id !== resumeFocus.id
-      ) {
-        const previousPageIndex = activeVisualFocusRef.current?.page_index;
-        activateVisualFocus(activeUnit, resumeFocus.id);
-
-        if (previousPageIndex !== resumeFocus.page_index) {
-          const image = await renderSourcePage(resumeFocus.page_index);
-          await sendPageImage(activeUnit, resumeFocus.page_index, image);
-        }
       }
 
       await requestResponse({
@@ -1116,7 +1018,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         instructions: buildResumeLessonStepInstructions(
           sessionInstructionsRef.current,
           lessonStep,
-          resumeFocus?.id ?? null,
+          activeVisualGuideRef.current,
         ),
       });
     } catch (reason) {
@@ -1252,7 +1154,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
     if (playbackCompleted && responsePurpose === "resume-step") {
       interruptedLessonStepIdRef.current = null;
-      interruptedVisualFocusIdRef.current = null;
     }
 
     if (pendingFunctionCall) {
@@ -1310,7 +1211,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     isTutorSpeaking,
     currentTutorTranscript,
     tutorTranscripts,
-    activeVisualFocus,
+    activeVisualGuide,
     completedLessonStepIds,
     learnerTurnPurpose,
     isAwaitingLearnerAnswer,
@@ -1381,9 +1282,6 @@ function buildTutorInstructions(
   model: DocumentModel,
   plan: TeachingPlan,
   unit: TeachingUnit,
-  grounding: TeachingUnitGrounding,
-  layout: DocumentLayout,
-  activeFocusId: string,
   isSessionStart: boolean,
 ) {
   const concepts = model.concepts.filter((concept) =>
@@ -1397,7 +1295,6 @@ function buildTutorInstructions(
   const prerequisiteTitles = unit.prerequisite_unit_ids.map(
     (id) => plan.units.find((item) => item.id === id)?.title ?? id,
   );
-  const sourceBlocks = collectGroundedSourceBlocks(layout, grounding);
 
   return `You are the live voice tutor for "${plan.title}".
 
@@ -1413,9 +1310,7 @@ ${JSON.stringify({
   lesson_steps: unit.lesson_steps,
   mastery_criteria: unit.mastery_criteria,
   common_difficulties: unit.common_difficulties,
-  visual_focuses: grounding.focuses,
-  source_blocks: sourceBlocks,
-  active_visual_focus_id: activeFocusId,
+  visual_guide_grid: "Each source page image is divided into A1 through D4.",
   concepts,
   connections,
 })}
@@ -1423,12 +1318,13 @@ ${JSON.stringify({
 Teaching flow:
 - ${isSessionStart ? "Briefly welcome the learner, then" : "Acknowledge the completed unit, then"} introduce this unit's objective.
 - Teach one lesson step at a time. Cover the full content of that step with the planned reasoning, mechanism, example, comparison, or synthesis.
-- Use source_blocks as the textual evidence for each visual focus. Explain the evidence in your own words instead of reading the page aloud.
-- The first visual focus is already highlighted. Use every listed visual focus for the current lesson_step_id. Before using another focus, call set_visual_focus with its focus ID. Reusing a focus is fine; do not change highlights merely to add motion.
+- Source page images for this unit are provided with a labeled 4-by-4 grid. Use them as visual source material instead of reading the page aloud.
+- Before teaching each lesson step, call set_visual_guide with that lesson_step_id and the smallest rectangular grid range that helps the learner follow the point. Call it once for every step, even when reusing the same area.
+- Visual guidance is for orientation, not a claim that every detail inside the selected area is relevant. Keep it stable while discussing the same area.
 - Do not ask for a learner response during motivate, explain, demonstrate, contrast, connect, or recap unless the learner interrupts with a question.
 - If the learner interrupts, answer the question directly. Do not treat the interrupted lesson step as complete; the application will explicitly ask you to resume it.
 - For practice and assess steps, ask learner_prompt and wait for the learner's own answer. Treat expected_response as a private rubric and never reveal it in advance. If the answer is incomplete, use remediation and let the learner try again.
-- After fully teaching a step, call complete_lesson_step with its lesson_step_id. Activating a highlight alone does not complete a step.
+- After fully teaching a step, call complete_lesson_step with its lesson_step_id. Setting visual guidance alone does not complete a step.
 - Do not skip, merge, reorder, or prematurely summarize lesson steps.
 - Call complete_unit only after every lesson step is complete and the learner's own assessment answer demonstrates every mastery criterion. Provide one concise sentence of observable evidence.
 - Do not claim progress was saved until complete_unit succeeds.
@@ -1451,74 +1347,70 @@ Temporary interruption-answer mode:
 function buildResumeLessonStepInstructions(
   sessionInstructions: string,
   lessonStep: TeachingLessonStep,
-  visualFocusId: string | null,
+  activeVisualGuide: RealtimeVisualGuide | null,
 ) {
   return `${sessionInstructions}
 
 Temporary resume mode:
 - Resume the interrupted lesson step below. Start with a brief transition such as "Returning to ${lessonStep.title}."
 - Restate enough context and cover the full planned content so the learner does not miss material that may have been cut off.
-- Stay on this lesson step and use its visual focus before advancing.
+- Stay on this lesson step. Keep the current visual guide when it remains relevant, or set a new guide before discussing another source area.
 - For practice or assess, ask learner_prompt and wait for the learner's answer. For every other kind, complete the step only after the resumed explanation has been fully delivered.
 
 Interrupted lesson step:
 ${JSON.stringify({
   ...lessonStep,
-  resume_visual_focus_id: visualFocusId,
+  active_visual_guide: activeVisualGuide,
 })}`;
 }
 
-function collectGroundedSourceBlocks(
-  layout: DocumentLayout,
-  grounding: TeachingUnitGrounding,
-) {
-  const sourceBlocks = new Map<
-    string,
-    { id: string; page_index: number; text: string }
-  >();
-
-  for (const focus of grounding.focuses) {
-    const page = layout.pages.find(
-      (item) => item.page_index === focus.page_index,
-    );
-
-    for (const blockId of focus.block_ids) {
-      const block = page?.blocks.find((item) => item.id === blockId);
-
-      if (block && !sourceBlocks.has(block.id)) {
-        sourceBlocks.set(block.id, {
-          id: block.id,
-          page_index: focus.page_index,
-          text: block.text,
-        });
-      }
-    }
-  }
-
-  return Array.from(sourceBlocks.values());
-}
-
-function buildTutorTools(
-  unit: TeachingUnit,
-  grounding: TeachingUnitGrounding,
-) {
+function buildTutorTools(unit: TeachingUnit) {
   return [
     {
       type: "function",
-      name: "set_visual_focus",
+      name: "set_visual_guide",
       description:
-        "Highlight the grounded PDF section for the teaching point you are about to explain.",
+        "Guide the learner to the source-page region for the lesson step you are about to teach.",
       parameters: {
         type: "object",
         properties: {
-          focus_id: {
+          lesson_step_id: {
             type: "string",
-            enum: grounding.focuses.map((focus) => focus.id),
+            enum: unit.lesson_steps.map((step) => step.id),
             description:
-              "A validated visual focus from the active teaching unit.",
+              "The current lesson step that the visual guide supports.",
+          },
+          page_index: {
+            type: "integer",
+            enum: getSourcePageIndexes(unit),
+            description:
+              "One of the source pages supplied for the active teaching unit.",
+          },
+          start_cell: {
+            type: "string",
+            enum: VISUAL_GUIDE_CELLS,
+            description:
+              "One corner of the smallest rectangular grid range to show.",
+          },
+          end_cell: {
+            type: "string",
+            enum: VISUAL_GUIDE_CELLS,
+            description:
+              "The opposite corner of the smallest rectangular grid range to show.",
+          },
+          label: {
+            type: "string",
+            description:
+              "A short learner-facing description of what to look at.",
           },
         },
-        required: ["focus_id"],
+        required: [
+          "lesson_step_id",
+          "page_index",
+          "start_cell",
+          "end_cell",
+          "label",
+        ],
         additionalProperties: false,
       },
     },
@@ -1559,6 +1451,12 @@ function buildTutorTools(
         additionalProperties: false,
       },
     },
+  ];
+}
+
+function getSourcePageIndexes(unit: TeachingUnit) {
+  return [
+    ...new Set(unit.source_anchors.map((anchor) => anchor.page_index)),
   ];
 }
 

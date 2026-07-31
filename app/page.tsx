@@ -36,7 +36,6 @@ import {
 } from "react";
 
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
-import type { DocumentLayout } from "@/lib/document-layout";
 import {
   buildPageLearningContext,
   type DocumentModel,
@@ -46,7 +45,6 @@ import {
   findActiveTeachingUnit,
   type LearningProgress,
 } from "@/lib/learning-progress";
-import type { TeachingGrounding } from "@/lib/teaching-grounding";
 import type {
   TeachingPlan,
   TeachingPlanSummary,
@@ -80,17 +78,12 @@ const DOCUMENT_PREPARATION_STAGES = [
   {
     id: "analyzing",
     label: "Analyzing document",
-    description: "Mapping key concepts and reading the page structure.",
+    description: "Mapping the document’s key concepts.",
   },
   {
     id: "planning",
     label: "Building teaching plan",
     description: "Organizing the material into focused learning units.",
-  },
-  {
-    id: "grounding",
-    label: "Linking source material",
-    description: "Matching each lesson to relevant PDF passages.",
   },
   {
     id: "saving",
@@ -140,10 +133,6 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [teachingPlan, setTeachingPlan] =
     useState<TeachingPlan | null>(null);
-  const [documentLayout, setDocumentLayout] =
-    useState<DocumentLayout | null>(null);
-  const [teachingGrounding, setTeachingGrounding] =
-    useState<TeachingGrounding | null>(null);
   const [documentModel, setDocumentModel] =
     useState<DocumentModel | null>(null);
   const [learningProgress, setLearningProgress] =
@@ -167,10 +156,8 @@ export default function Home() {
   const realtimeTutor = useRealtimeTutor({
     documentId: activeDocument?.id ?? null,
     documentUrl: activeDocument?.url ?? null,
-    documentLayout,
     documentModel,
     teachingPlan,
-    teachingGrounding,
     activeUnit,
     onPageChange: setCurrentPage,
     onProgressChange: setLearningProgress,
@@ -269,28 +256,14 @@ export default function Home() {
       setTeachingPlanLoading(true);
       setTeachingPlanError("");
       setTeachingPlan(null);
-      setDocumentLayout(null);
-      setTeachingGrounding(null);
       setDocumentModel(null);
       setLearningProgress(null);
 
       try {
-        const [
-          planResponse,
-          mapResponse,
-          layoutResponse,
-          groundingResponse,
-          progressResponse,
-        ] =
+        const [planResponse, mapResponse, progressResponse] =
           await Promise.all([
             fetch("/api/document/plan", { signal: controller.signal }),
             fetch("/api/document/map", { signal: controller.signal }),
-            fetch("/api/document/layout", {
-              signal: controller.signal,
-            }),
-            fetch("/api/document/grounding", {
-              signal: controller.signal,
-            }),
             fetch("/api/document/progress", {
               signal: controller.signal,
             }),
@@ -301,14 +274,6 @@ export default function Home() {
         };
         const mapData = (await mapResponse.json()) as {
           model?: DocumentModel;
-          message?: string;
-        };
-        const layoutData = (await layoutResponse.json()) as {
-          layout?: DocumentLayout;
-          message?: string;
-        };
-        const groundingData = (await groundingResponse.json()) as {
-          grounding?: TeachingGrounding;
           message?: string;
         };
         const progressData = (await progressResponse.json()) as {
@@ -328,19 +293,6 @@ export default function Home() {
           );
         }
 
-        if (!layoutResponse.ok || !layoutData.layout) {
-          throw new Error(
-            layoutData.message ?? "The document layout could not be loaded.",
-          );
-        }
-
-        if (!groundingResponse.ok || !groundingData.grounding) {
-          throw new Error(
-            groundingData.message ??
-              "The teaching grounding could not be loaded.",
-          );
-        }
-
         if (!progressResponse.ok || !progressData.progress) {
           throw new Error(
             progressData.message ?? "Learning progress could not be loaded.",
@@ -348,8 +300,6 @@ export default function Home() {
         }
 
         setTeachingPlan(planData.plan);
-        setDocumentLayout(layoutData.layout);
-        setTeachingGrounding(groundingData.grounding);
         setDocumentModel(mapData.model);
         setLearningProgress(progressData.progress);
         const initialUnit = findActiveTeachingUnit(
@@ -643,8 +593,6 @@ export default function Home() {
       setDocumentPreparationExpanded(true);
       setCurrentPage(1);
       setTeachingPlan(null);
-      setDocumentLayout(null);
-      setTeachingGrounding(null);
       setDocumentModel(null);
       setLearningProgress(null);
       setTeachingPlanError("");
@@ -1105,12 +1053,15 @@ export default function Home() {
                       <ChevronRight size={18} />
                     </button>
                   </div>
-                  {realtimeTutor.activeVisualFocus?.page_index ===
+                  {realtimeTutor.activeVisualGuide?.page_index ===
                     currentPage && (
-                    <div className="pdf-focus-context" aria-live="polite">
+                    <div
+                      className="pdf-visual-guide-context"
+                      aria-live="polite"
+                    >
                       <small>Now looking at</small>
                       <strong>
-                        {realtimeTutor.activeVisualFocus.teaching_point}
+                        {realtimeTutor.activeVisualGuide.label}
                       </strong>
                     </div>
                   )}
@@ -1121,11 +1072,11 @@ export default function Home() {
                     documentUrl={activeDocument.url}
                     documentName={activeDocument.name}
                     pageIndex={currentPage}
-                    highlightedBlocks={
-                      realtimeTutor.activeVisualFocus?.page_index ===
+                    visualGuide={
+                      realtimeTutor.activeVisualGuide?.page_index ===
                       currentPage
-                        ? realtimeTutor.activeVisualFocus.blocks
-                        : []
+                        ? realtimeTutor.activeVisualGuide
+                        : null
                     }
                   />
                 </div>

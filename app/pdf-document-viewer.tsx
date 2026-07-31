@@ -2,15 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { DocumentLayoutBlock } from "@/lib/document-layout";
 import { loadPdfDocument } from "@/lib/pdf-page-renderer";
+import {
+  getVisualGuideBounds,
+  type VisualGuideRegion,
+} from "@/lib/visual-guide";
 
 type PdfDocumentViewerProps = {
   documentId: string;
   documentUrl: string;
   documentName: string;
   pageIndex: number;
-  highlightedBlocks: DocumentLayoutBlock[];
+  visualGuide: VisualGuideRegion | null;
 };
 
 type PageSize = {
@@ -28,15 +31,18 @@ export function PdfDocumentViewer({
   documentUrl,
   documentName,
   pageIndex,
-  highlightedBlocks,
+  visualGuide,
 }: PdfDocumentViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const firstHighlightRef = useRef<HTMLSpanElement>(null);
+  const visualGuideRef = useRef<HTMLSpanElement>(null);
   const renderTaskRef = useRef<PdfRenderTask | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
   const [error, setError] = useState("");
+  const visualGuideBounds = visualGuide
+    ? getVisualGuideBounds(visualGuide)
+    : null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -155,16 +161,16 @@ export function PdfDocumentViewer({
   }, [containerWidth, documentId, documentUrl, pageIndex]);
 
   useEffect(() => {
-    if (!pageSize || highlightedBlocks.length === 0) {
+    if (!pageSize || !visualGuide) {
       return;
     }
 
-    firstHighlightRef.current?.scrollIntoView({
+    visualGuideRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "center",
       inline: "center",
     });
-  }, [highlightedBlocks, pageSize]);
+  }, [pageSize, visualGuide]);
 
   return (
     <div
@@ -189,21 +195,19 @@ export function PdfDocumentViewer({
           }
         >
           <canvas ref={canvasRef} />
-          {pageSize &&
-            highlightedBlocks.map((block, index) => (
-              <span
-                ref={index === 0 ? firstHighlightRef : undefined}
-                className="pdf-block-highlight"
-                key={block.id}
-                style={{
-                  left: `${block.bounds.x * 100}%`,
-                  top: `${block.bounds.y * 100}%`,
-                  width: `${block.bounds.width * 100}%`,
-                  height: `${block.bounds.height * 100}%`,
-                }}
-                aria-hidden="true"
-              />
-            ))}
+          {pageSize && visualGuideBounds && (
+            <span
+              ref={visualGuideRef}
+              className="pdf-visual-guide"
+              style={{
+                left: `${visualGuideBounds.x * 100}%`,
+                top: `${visualGuideBounds.y * 100}%`,
+                width: `${visualGuideBounds.width * 100}%`,
+                height: `${visualGuideBounds.height * 100}%`,
+              }}
+              aria-hidden="true"
+            />
+          )}
         </div>
       )}
     </div>

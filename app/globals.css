@@ -489,7 +489,7 @@ a:focus-visible {
   color: var(--ink);
 }
 
-.pdf-focus-context {
+.pdf-visual-guide-context {
   display: flex;
   min-width: 0;
   max-width: min(620px, calc(100% - 110px));
@@ -498,7 +498,7 @@ a:focus-visible {
   padding: 0 8px;
 }
 
-.pdf-focus-context small {
+.pdf-visual-guide-context small {
   flex: 0 0 auto;
   color: var(--blue-deep);
   font-size: 0.58rem;
@@ -507,7 +507,7 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
-.pdf-focus-context strong {
+.pdf-visual-guide-context strong {
   overflow: hidden;
   color: var(--ink);
   font-size: 0.75rem;
@@ -535,6 +535,7 @@ a:focus-visible {
 
 .pdf-page-surface {
   position: relative;
+  overflow: hidden;
   margin: 0 auto;
   background: #fff;
   box-shadow:
@@ -546,16 +547,22 @@ a:focus-visible {
   display: block;
 }
 
-.pdf-block-highlight {
+.pdf-visual-guide {
   position: absolute;
   z-index: 2;
-  border: 2px solid rgba(0, 113, 235, 0.78);
-  border-radius: 5px;
-  background: rgba(87, 170, 255, 0.22);
+  border: 3px solid rgba(0, 113, 235, 0.9);
+  border-radius: 8px;
+  background: rgba(87, 170, 255, 0.1);
   box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.72),
-    0 3px 12px rgba(0, 92, 190, 0.22);
+    0 0 0 9999px rgba(12, 30, 52, 0.26),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.72),
+    0 4px 18px rgba(0, 92, 190, 0.3);
   pointer-events: none;
+  transition:
+    left 180ms ease,
+    top 180ms ease,
+    width 180ms ease,
+    height 180ms ease;
 }
 
 .pdf-viewer-error {
@@ -2172,12 +2179,12 @@ kbd {
     padding: 8px;
   }
 
-  .pdf-focus-context {
+  .pdf-visual-guide-context {
     max-width: calc(100% - 102px);
     padding: 0 3px;
   }
 
-  .pdf-focus-context small {
+  .pdf-visual-guide-context small {
     display: none;
   }
 

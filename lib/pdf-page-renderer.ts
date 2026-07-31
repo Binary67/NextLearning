@@ -1,8 +1,13 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
+import {
+  VISUAL_GUIDE_CELLS,
+  VISUAL_GUIDE_GRID_SIZE,
+} from "@/lib/visual-guide";
+
 const pdfDocumentPromises = new Map<string, Promise<PDFDocumentProxy>>();
 
-export async function renderPdfPageAsImage(
+export async function renderPdfPageForTutor(
   documentId: string,
   documentUrl: string,
   pageIndex: number,
@@ -25,8 +30,61 @@ export async function renderPdfPageAsImage(
     viewport,
     background: "rgb(255,255,255)",
   }).promise;
+  drawVisualGuideGrid(canvas);
 
   return canvas.toDataURL("image/jpeg", 0.72);
+}
+
+function drawVisualGuideGrid(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("The source page image could not be prepared.");
+  }
+
+  const cellWidth = canvas.width / VISUAL_GUIDE_GRID_SIZE;
+  const cellHeight = canvas.height / VISUAL_GUIDE_GRID_SIZE;
+  const labelSize = Math.max(14, Math.round(canvas.width / 55));
+
+  context.save();
+  context.strokeStyle = "rgba(0, 93, 190, 0.72)";
+  context.lineWidth = 2;
+
+  for (let offset = 1; offset < VISUAL_GUIDE_GRID_SIZE; offset += 1) {
+    context.beginPath();
+    context.moveTo(offset * cellWidth, 0);
+    context.lineTo(offset * cellWidth, canvas.height);
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(0, offset * cellHeight);
+    context.lineTo(canvas.width, offset * cellHeight);
+    context.stroke();
+  }
+
+  context.font = `700 ${labelSize}px sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  for (const [index, cell] of VISUAL_GUIDE_CELLS.entries()) {
+    const row = Math.floor(index / VISUAL_GUIDE_GRID_SIZE);
+    const column = index % VISUAL_GUIDE_GRID_SIZE;
+    const centerX = column * cellWidth + labelSize;
+    const centerY = row * cellHeight + labelSize;
+    const badgeSize = labelSize * 1.65;
+
+    context.fillStyle = "rgba(255, 255, 255, 0.9)";
+    context.fillRect(
+      centerX - badgeSize / 2,
+      centerY - badgeSize / 2,
+      badgeSize,
+      badgeSize,
+    );
+    context.fillStyle = "rgb(0, 83, 170)";
+    context.fillText(cell, centerX, centerY);
+  }
+
+  context.restore();
 }
 
 export async function loadPdfDocument(
