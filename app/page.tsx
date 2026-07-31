@@ -72,6 +72,44 @@ type UploadedDocument = {
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
+const DOCUMENT_PREPARATION_STAGES = [
+  {
+    id: "analyzing",
+    label: "Analyzing document",
+    description: "Mapping key concepts and reading the page structure.",
+  },
+  {
+    id: "planning",
+    label: "Building teaching plan",
+    description: "Organizing the material into focused learning units.",
+  },
+  {
+    id: "grounding",
+    label: "Linking source material",
+    description: "Matching each lesson to relevant PDF passages.",
+  },
+  {
+    id: "saving",
+    label: "Finishing setup",
+    description: "Saving the tutorial and getting it ready to use.",
+  },
+] as const;
+type DocumentPreparationStage =
+  | "uploading"
+  | (typeof DOCUMENT_PREPARATION_STAGES)[number]["id"];
+type DocumentPreparationEvent =
+  | {
+      type: "progress";
+      stage: Exclude<DocumentPreparationStage, "uploading">;
+    }
+  | {
+      type: "complete";
+      document: UploadedDocument;
+    }
+  | {
+      type: "error";
+      message: string;
+    };
 
 export default function Home() {
   const [activeSection, setActiveSection] =
@@ -87,6 +125,8 @@ export default function Home() {
   const [documentError, setDocumentError] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [preparationStage, setPreparationStage] =
+    useState<DocumentPreparationStage | null>(null);
   const [removingDocument, setRemovingDocument] = useState(false);
   const [resettingProgress, setResettingProgress] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -157,6 +197,16 @@ export default function Home() {
     teachingPlan !== null &&
     learningProgress !== null &&
     activeUnit === null;
+  const preparationStageIndex = DOCUMENT_PREPARATION_STAGES.findIndex(
+    (stage) => stage.id === preparationStage,
+  );
+  const preparationStatus =
+    preparationStage === "uploading"
+      ? {
+          label: "Uploading PDF",
+          description: "Sending the document for preparation.",
+        }
+      : DOCUMENT_PREPARATION_STAGES[preparationStageIndex];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -490,6 +540,7 @@ export default function Home() {
 
     setPendingFile(file);
     setDocumentError("");
+    setPreparationStage(null);
     setModal("prepare-document");
   }
 
@@ -499,6 +550,7 @@ export default function Home() {
     }
 
     setUploading(true);
+    setPreparationStage("uploading");
     setDocumentError("");
     showToast("Building the document map, teaching plan, and visual guidance…");
 
@@ -509,21 +561,22 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      const data = (await response.json()) as {
-        document?: UploadedDocument;
-        message?: string;
-      };
 
-      if (!response.ok || !data.document) {
+      if (!response.ok) {
+        const data = (await response.json()) as { message?: string };
         throw new Error(data.message ?? "The document could not be uploaded.");
       }
 
+      const document = await readPreparedDocument(
+        response,
+        setPreparationStage,
+      );
       realtimeTutor.reset();
-      setActiveDocument(data.document);
+      setActiveDocument(document);
       setCurrentPage(1);
       setPendingFile(null);
       setModal(null);
-      showToast(`${data.document.name} is mapped and planned.`);
+      showToast(`${document.name} is mapped and planned.`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -532,6 +585,7 @@ export default function Home() {
       setDocumentError(message);
       showToast(message);
     } finally {
+      setPreparationStage(null);
       setUploading(false);
     }
   }
@@ -544,6 +598,7 @@ export default function Home() {
     if (modal === "prepare-document") {
       setPendingFile(null);
       setDocumentError("");
+      setPreparationStage(null);
     }
 
     setModal(null);
@@ -1432,7 +1487,11 @@ export default function Home() {
                   <Upload size={23} />
                 </div>
                 <p className="modal-eyebrow">Document preparation</p>
-                <h2 id="modal-title">Prepare this PDF?</h2>
+                <h2 id="modal-title">
+                  {uploading
+                    ? "Preparing your tutorial…"
+                    : "Prepare this PDF?"}
+                </h2>
                 <div className="pending-file">
                   <FileText size={23} aria-hidden="true" />
                   <span>
@@ -1440,11 +1499,55 @@ export default function Home() {
                     <small>{formatFileSize(pendingFile.size)}</small>
                   </span>
                 </div>
-                <p className="modal-copy">
-                  The complete PDF will be sent to Azure OpenAI to build its
-                  concept map, ordered teaching plan, and visual grounding. No
-                  AI request is made until you continue.
-                </p>
+                {uploading && preparationStatus ? (
+                  <div
+                    className="document-preparation-progress"
+                    aria-live="polite"
+                  >
+                    <div
+                      className="document-preparation-track"
+                      role="progressbar"
+                      aria-label="Document preparation progress"
+                      aria-valuemin={0}
+                      aria-valuemax={DOCUMENT_PREPARATION_STAGES.length}
+                      aria-valuenow={Math.max(
+                        preparationStageIndex + 1,
+                        0,
+                      )}
+                    >
+                      {DOCUMENT_PREPARATION_STAGES.map(
+                        (stage, stageIndex) => (
+                          <span
+                            className={`document-preparation-segment${
+                              stageIndex < preparationStageIndex
+                                ? " complete"
+                                : ""
+                            }${
+                              stageIndex ===
+                              Math.max(preparationStageIndex, 0)
+                                ? " current"
+                                : ""
+                            }`}
+                            key={stage.id}
+                          />
+                        ),
+                      )}
+                    </div>
+                    <p className="document-preparation-step">
+                      {preparationStage === "uploading"
+                        ? "Starting preparation"
+                        : `Stage ${preparationStageIndex + 1} of ${DOCUMENT_PREPARATION_STAGES.length}`}
+                    </p>
+                    <h3>{preparationStatus.label}</h3>
+                    <p>{preparationStatus.description}</p>
+                    <small>This may take a few minutes.</small>
+                  </div>
+                ) : (
+                  <p className="modal-copy">
+                    We’ll turn this PDF into a structured tutorial with key
+                    concepts, guided lessons, and source highlights.
+                  </p>
+                )}
                 {activeDocument && (
                   <p className="replacement-note">
                     Your current document remains available unless preparation
@@ -1675,6 +1778,53 @@ function TeachingUnitCard({
       )}
     </li>
   );
+}
+
+async function readPreparedDocument(
+  response: Response,
+  onProgress: (stage: DocumentPreparationStage) => void,
+) {
+  if (!response.body) {
+    throw new Error("The document could not be prepared.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let document: UploadedDocument | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line) {
+        continue;
+      }
+
+      const event = JSON.parse(line) as DocumentPreparationEvent;
+
+      if (event.type === "progress") {
+        onProgress(event.stage);
+      } else if (event.type === "error") {
+        throw new Error(event.message);
+      } else {
+        document = event.document;
+      }
+    }
+
+    if (done) {
+      break;
+    }
+  }
+
+  if (!document) {
+    throw new Error("The document could not be prepared.");
+  }
+
+  return document;
 }
 
 function formatFileSize(bytes: number) {

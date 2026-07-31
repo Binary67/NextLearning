@@ -1228,6 +1228,66 @@ a:focus-visible {
   line-height: 1.6;
 }
 
+.document-preparation-progress {
+  margin: 22px 0 26px;
+}
+
+.document-preparation-track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.document-preparation-segment {
+  height: 6px;
+  border-radius: 999px;
+  background: #e5e9ef;
+}
+
+.document-preparation-segment.complete {
+  background: var(--blue);
+}
+
+.document-preparation-segment.current {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 122, 255, 0.3),
+    var(--blue),
+    rgba(0, 122, 255, 0.3)
+  );
+  background-size: 200% 100%;
+  animation: document-preparation-pulse 1.4s ease-in-out infinite;
+}
+
+.document-preparation-step {
+  margin: 17px 0 5px;
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.document-preparation-progress h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.document-preparation-progress > p:last-of-type {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.document-preparation-progress small {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 .pending-file {
   display: flex;
   align-items: center;
@@ -1573,6 +1633,12 @@ kbd {
 @keyframes caption-in {
   from {
     opacity: 0;
+  }
+}
+
+@keyframes document-preparation-pulse {
+  50% {
+    background-position: 100% 0;
   }
 }
 

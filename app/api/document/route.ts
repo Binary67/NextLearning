@@ -33,6 +33,20 @@ import {
 
 export const runtime = "nodejs";
 
+type DocumentPreparationEvent =
+  | {
+      type: "progress";
+      stage: "analyzing" | "planning" | "grounding" | "saving";
+    }
+  | {
+      type: "complete";
+      document: ReturnType<typeof toDocumentResponse>;
+    }
+  | {
+      type: "error";
+      message: string;
+    };
+
 export async function GET() {
   const [
     document,
@@ -99,54 +113,72 @@ export async function POST(request: Request) {
 
   const documentId = randomUUID();
 
-  try {
-    const [model, generatedLayout] = await Promise.all([
-      generateDocumentModel(file, documentId),
-      generateDocumentLayout(file, documentId),
-    ]);
-    const layout = validateDocumentLayout(
-      generatedLayout,
-      documentId,
-      model.page_count,
-    );
-    const plan = await generateTeachingPlan(file, model);
-    const grounding = await generateTeachingGrounding(
-      model,
-      plan,
-      layout,
-    );
-    const document = await saveDocument(
-      file,
-      documentId,
-      model,
-      plan,
-      layout,
-      grounding,
-    );
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: DocumentPreparationEvent) => {
+        controller.enqueue(
+          encoder.encode(`${JSON.stringify(event)}\n`),
+        );
+      };
 
-    return Response.json({
-      document: toDocumentResponse(document, model, plan),
-    });
-  } catch (error) {
-    console.error("Document preparation failed:", error);
+      try {
+        send({ type: "progress", stage: "analyzing" });
+        const [model, generatedLayout] = await Promise.all([
+          generateDocumentModel(file, documentId),
+          generateDocumentLayout(file, documentId),
+        ]);
+        const layout = validateDocumentLayout(
+          generatedLayout,
+          documentId,
+          model.page_count,
+        );
 
-    if (error instanceof MissingAzureOpenAIConfigurationError) {
-      return Response.json(
-        {
+        send({ type: "progress", stage: "planning" });
+        const plan = await generateTeachingPlan(file, model);
+
+        send({ type: "progress", stage: "grounding" });
+        const grounding = await generateTeachingGrounding(
+          model,
+          plan,
+          layout,
+        );
+
+        send({ type: "progress", stage: "saving" });
+        const document = await saveDocument(
+          file,
+          documentId,
+          model,
+          plan,
+          layout,
+          grounding,
+        );
+
+        send({
+          type: "complete",
+          document: toDocumentResponse(document, model, plan),
+        });
+      } catch (error) {
+        console.error("Document preparation failed:", error);
+        send({
+          type: "error",
           message:
-            "Document preparation is not configured. Check the Azure OpenAI server settings.",
-        },
-        { status: 503 },
-      );
-    }
+            error instanceof MissingAzureOpenAIConfigurationError
+              ? "Document preparation is not configured. Check the server settings."
+              : "The document could not be prepared. Try again.",
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
-    return Response.json(
-      {
-        message: "The document could not be prepared. Try again.",
-      },
-      { status: 502 },
-    );
-  }
+  return new Response(stream, {
+    headers: {
+      "Cache-Control": "no-cache, no-transform",
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+    },
+  });
 }
 
 export async function DELETE() {
