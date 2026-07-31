@@ -916,6 +916,22 @@ a:focus-visible {
   line-height: 1.45;
 }
 
+.reset-progress-button {
+  width: 100%;
+  margin-top: 12px;
+  color: #a6342a;
+  font-size: 0.82rem;
+}
+
+.reset-progress-button:not(:disabled):hover {
+  border-color: #e5aaa5;
+  background: #fff0ee;
+}
+
+.reset-progress-button:disabled {
+  cursor: not-allowed;
+}
+
 .session-dock {
   position: fixed;
   right: 50%;

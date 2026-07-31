@@ -7,6 +7,7 @@ import {
   saveLearningProgress,
 } from "@/lib/document-storage";
 import {
+  createLearningProgress,
   findActiveTeachingUnit,
   markUnitMastered,
   validateLearningProgress,
@@ -30,6 +31,22 @@ export async function GET() {
     active_unit_id:
       findActiveTeachingUnit(prepared.plan, prepared.progress)?.id ?? null,
   });
+}
+
+export async function PUT() {
+  const prepared = await readPreparedTutorial();
+
+  if (!prepared) {
+    return Response.json(
+      { message: "No prepared tutorial is available." },
+      { status: 404 },
+    );
+  }
+
+  const progress = createLearningProgress(prepared.progress.document_id);
+  await saveLearningProgress(progress);
+
+  return Response.json({ progress });
 }
 
 export async function POST(request: Request) {

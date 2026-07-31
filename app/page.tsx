@@ -16,6 +16,7 @@ import {
   Mic,
   Pause,
   Play,
+  RotateCcw,
   Settings,
   Sparkles,
   Trash2,
@@ -57,6 +58,7 @@ type Modal =
   | "shortcuts"
   | "end-session"
   | "prepare-document"
+  | "reset-progress"
   | "remove-document"
   | null;
 type Popover = "settings" | "profile" | null;
@@ -87,6 +89,7 @@ export default function Home() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [removingDocument, setRemovingDocument] = useState(false);
+  const [resettingProgress, setResettingProgress] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageContext, setPageContext] =
     useState<PageLearningContext | null>(null);
@@ -121,6 +124,12 @@ export default function Home() {
     onProgressChange: setLearningProgress,
   });
   const sessionEnded = realtimeTutor.status === "ended";
+  const tutorSessionActive =
+    realtimeTutor.status === "connecting" ||
+    realtimeTutor.status === "connected";
+  const modalBusy =
+    (modal === "prepare-document" && uploading) ||
+    (modal === "reset-progress" && resettingProgress);
   const isUserTurn = realtimeTutor.isUserTurn;
   let userTurnActionLabel = "Raise hand to speak";
 
@@ -392,6 +401,10 @@ export default function Home() {
 
       const key = event.key.toLowerCase();
 
+      if (modalBusy) {
+        return;
+      }
+
       if (modal === "prepare-document") {
         if (key === "escape" && !uploading) {
           setPendingFile(null);
@@ -428,6 +441,7 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     modal,
+    modalBusy,
     realtimeTutor.status,
     realtimeTutor.tutorTranscripts.length,
     sessionEnded,
@@ -517,7 +531,7 @@ export default function Home() {
   }
 
   function closeModal() {
-    if (modal === "prepare-document" && uploading) {
+    if (modalBusy) {
       return;
     }
 
@@ -527,6 +541,48 @@ export default function Home() {
     }
 
     setModal(null);
+  }
+
+  async function resetProgress() {
+    setResettingProgress(true);
+
+    try {
+      const response = await fetch("/api/document/progress", {
+        method: "PUT",
+      });
+      const data = (await response.json()) as {
+        progress?: LearningProgress;
+        message?: string;
+      };
+
+      if (!response.ok || !data.progress) {
+        throw new Error(
+          data.message ?? "Learning progress could not be reset.",
+        );
+      }
+
+      realtimeTutor.reset();
+      setLearningProgress(data.progress);
+
+      const firstUnit = teachingPlan
+        ? findActiveTeachingUnit(teachingPlan, data.progress)
+        : null;
+
+      if (firstUnit) {
+        setCurrentPage(firstUnit.source_anchors[0].page_index);
+      }
+
+      setModal(null);
+      showToast("Learning progress reset.");
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Learning progress could not be reset.",
+      );
+    } finally {
+      setResettingProgress(false);
+    }
   }
 
   async function removeDocument() {
@@ -1181,6 +1237,24 @@ export default function Home() {
                   </p>
                 )}
               </div>
+              {activeDocument && learningProgress && (
+                <button
+                  className="secondary-button reset-progress-button"
+                  type="button"
+                  onClick={() => setModal("reset-progress")}
+                  disabled={
+                    masteredUnitCount === 0 || tutorSessionActive
+                  }
+                  title={
+                    tutorSessionActive
+                      ? "End the current tutor session before resetting progress."
+                      : undefined
+                  }
+                >
+                  <RotateCcw size={17} />
+                  Reset progress
+                </button>
+              )}
             </section>
           </aside>
         </div>
@@ -1199,7 +1273,7 @@ export default function Home() {
               type="button"
               onClick={closeModal}
               aria-label="Close dialog"
-              disabled={modal === "prepare-document" && uploading}
+              disabled={modalBusy}
             >
               <X size={21} />
             </button>
@@ -1431,6 +1505,41 @@ export default function Home() {
                   >
                     <Trash2 size={19} />
                     {removingDocument ? "Removing…" : "Remove Document"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modal === "reset-progress" && (
+              <>
+                <div className="modal-icon danger">
+                  <RotateCcw size={23} />
+                </div>
+                <p className="modal-eyebrow">Tutorial progress</p>
+                <h2 id="modal-title">Reset learning progress?</h2>
+                <p className="modal-copy">
+                  This clears {masteredUnitCount} mastered{" "}
+                  {masteredUnitCount === 1 ? "unit" : "units"} and all
+                  mastery evidence. The PDF and its prepared teaching
+                  materials will remain available.
+                </p>
+                <div className="modal-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={closeModal}
+                    disabled={resettingProgress}
+                  >
+                    Keep Progress
+                  </button>
+                  <button
+                    className="primary-button danger-button"
+                    type="button"
+                    onClick={resetProgress}
+                    disabled={resettingProgress}
+                  >
+                    <RotateCcw size={19} />
+                    {resettingProgress ? "Resetting…" : "Reset Progress"}
                   </button>
                 </div>
               </>
