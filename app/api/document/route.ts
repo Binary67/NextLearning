@@ -7,26 +7,42 @@ import {
 import {
   summarizeDocumentModel,
   type DocumentModel,
+  validateDocumentModel,
 } from "@/lib/document-model";
 import {
   deleteStoredDocument,
   MAX_DOCUMENT_SIZE,
   readDocumentModel,
   readStoredDocument,
+  readTeachingPlan,
   saveDocument,
   type StoredDocument,
 } from "@/lib/document-storage";
+import { generateTeachingPlan } from "@/lib/teaching-plan-generation";
+import {
+  summarizeTeachingPlan,
+  type TeachingPlan,
+  validateTeachingPlan,
+} from "@/lib/teaching-plan";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [document, model] = await Promise.all([
+  const [document, storedModel, storedPlan] = await Promise.all([
     readStoredDocument(),
     readDocumentModel(),
+    readTeachingPlan(),
   ]);
 
+  if (!document || !storedModel || !storedPlan) {
+    return Response.json({ document: null });
+  }
+
+  const model = validateDocumentModel(storedModel, document.id);
+  const plan = validateTeachingPlan(storedPlan, model);
+
   return Response.json({
-    document: document && model ? toDocumentResponse(document, model) : null,
+    document: toDocumentResponse(document, model, plan),
   });
 }
 
@@ -59,10 +75,11 @@ export async function POST(request: Request) {
 
   try {
     const model = await generateDocumentModel(file, documentId);
-    const document = await saveDocument(file, documentId, model);
+    const plan = await generateTeachingPlan(file, model);
+    const document = await saveDocument(file, documentId, model, plan);
 
     return Response.json({
-      document: toDocumentResponse(document, model),
+      document: toDocumentResponse(document, model, plan),
     });
   } catch (error) {
     console.error("Document preparation failed:", error);
@@ -101,6 +118,7 @@ function isPdf(file: File) {
 function toDocumentResponse(
   document: StoredDocument,
   model: DocumentModel,
+  plan: TeachingPlan,
 ) {
   return {
     id: document.id,
@@ -108,5 +126,6 @@ function toDocumentResponse(
     type: document.type,
     url: "/api/document/file",
     map: summarizeDocumentModel(model),
+    plan: summarizeTeachingPlan(plan),
   };
 }

@@ -28,6 +28,11 @@ import type {
   DocumentMapSummary,
   PageLearningContext,
 } from "@/lib/document-model";
+import type {
+  TeachingPlan,
+  TeachingPlanSummary,
+  TeachingUnit,
+} from "@/lib/teaching-plan";
 
 type NavSection = "Dashboard" | "Courses" | "Library";
 type Modal =
@@ -44,6 +49,7 @@ type UploadedDocument = {
   type: "pdf";
   url: string;
   map: DocumentMapSummary;
+  plan: TeachingPlanSummary;
 };
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
@@ -71,6 +77,10 @@ export default function Home() {
     useState<PageLearningContext | null>(null);
   const [pageContextLoading, setPageContextLoading] = useState(false);
   const [pageContextError, setPageContextError] = useState("");
+  const [teachingPlan, setTeachingPlan] =
+    useState<TeachingPlan | null>(null);
+  const [teachingPlanLoading, setTeachingPlanLoading] = useState(false);
+  const [teachingPlanError, setTeachingPlanError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -147,6 +157,49 @@ export default function Home() {
     loadPageContext();
     return () => controller.abort();
   }, [activeDocument, currentPage]);
+
+  useEffect(() => {
+    if (!activeDocument) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadTeachingPlan() {
+      setTeachingPlanLoading(true);
+      setTeachingPlanError("");
+      setTeachingPlan(null);
+
+      try {
+        const response = await fetch("/api/document/plan", {
+          signal: controller.signal,
+        });
+        const data = (await response.json()) as {
+          plan?: TeachingPlan;
+          message?: string;
+        };
+
+        if (!response.ok || !data.plan) {
+          throw new Error(
+            data.message ?? "The teaching blueprint could not be loaded.",
+          );
+        }
+
+        setTeachingPlan(data.plan);
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setTeachingPlanError(error.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setTeachingPlanLoading(false);
+        }
+      }
+    }
+
+    loadTeachingPlan();
+    return () => controller.abort();
+  }, [activeDocument]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -256,7 +309,7 @@ export default function Home() {
 
     setUploading(true);
     setDocumentError("");
-    showToast("Reading the full PDF and building its concept map…");
+    showToast("Building the document map and teaching blueprint…");
 
     try {
       const formData = new FormData();
@@ -278,7 +331,7 @@ export default function Home() {
       setCurrentPage(1);
       setPendingFile(null);
       setModal(null);
-      showToast(`${data.document.name} is mapped and ready.`);
+      showToast(`${data.document.name} is mapped and planned.`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -317,6 +370,8 @@ export default function Home() {
       setActiveDocument(null);
       setCurrentPage(1);
       setPageContext(null);
+      setTeachingPlan(null);
+      setTeachingPlanError("");
       setDocumentError("");
       setModal(null);
       showToast("Document removed from this machine.");
@@ -609,7 +664,7 @@ export default function Home() {
                 <h1>Upload your first document</h1>
                 <p>
                   Choose a PDF up to 10 MB. The full document will be read
-                  once to prepare its concept map.
+                  to prepare its concept map and teaching blueprint.
                 </p>
                 {documentError && (
                   <p className="document-error" role="alert">
@@ -702,33 +757,50 @@ export default function Home() {
           >
             <section className="insight-card understanding-card">
               <div className="card-eyebrow">
-                <span>Document map</span>
-                <Sparkles size={21} aria-hidden="true" />
-              </div>
-              <div className="understanding-summary">
-                <div
-                  className="progress-ring"
-                  role="progressbar"
-                  aria-label="Document preparation"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={activeDocument ? 100 : 0}
+                <span>Document preparation</span>
+                <span
+                  className={`preparation-indicator${activeDocument ? " ready" : ""}`}
+                  aria-hidden="true"
                 >
-                  <div>
-                    <strong>{activeDocument ? "100%" : "—"}</strong>
-                    <span>{activeDocument ? "Mapped" : "Waiting"}</span>
-                  </div>
-                </div>
-                {activeDocument ? (
-                  <p>
-                    {activeDocument.map.concept_count} concepts and{" "}
-                    {activeDocument.map.connection_count} connections across{" "}
-                    {activeDocument.map.page_count} pages.
-                  </p>
-                ) : (
-                  <p>Upload a PDF to prepare the tutor&apos;s document map.</p>
-                )}
+                  {activeDocument ? (
+                    <Check size={16} strokeWidth={2.5} />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                </span>
               </div>
+              {activeDocument ? (
+                <>
+                  <div className="preparation-status" role="status">
+                    <h3>Ready to learn</h3>
+                    <p>
+                      The concept map and teaching blueprint are prepared.
+                    </p>
+                  </div>
+                  <dl className="preparation-metrics">
+                    <div>
+                      <dt>Concepts</dt>
+                      <dd>{activeDocument.map.concept_count}</dd>
+                    </div>
+                    <div>
+                      <dt>Connections</dt>
+                      <dd>{activeDocument.map.connection_count}</dd>
+                    </div>
+                    <div>
+                      <dt>Teaching units</dt>
+                      <dd>{activeDocument.plan.unit_count}</dd>
+                    </div>
+                  </dl>
+                </>
+              ) : (
+                <div className="preparation-status empty">
+                  <h3>Waiting for a document</h3>
+                  <p>
+                    Upload a PDF to prepare its concept map and teaching
+                    blueprint.
+                  </p>
+                </div>
+              )}
             </section>
 
             <section className="insight-card takeaways-card" id="key-takeaways">
@@ -750,7 +822,7 @@ export default function Home() {
                 onClick={() => setModal("analysis")}
                 disabled={!activeDocument}
               >
-                View Document Map
+                View Teaching Blueprint
               </button>
             </section>
 
@@ -760,10 +832,11 @@ export default function Home() {
                 <span>Tutor handoff</span>
               </h2>
               <div className="log-entry">
-                <strong>Realtime context</strong>
+                <strong>Future tutor handoff</strong>
                 <p>
-                  The handoff is ready: use the visible page plus this compact
-                  map slice. No learner profile is stored in this version.
+                  The ordered teaching blueprint is ready. Realtime tutoring,
+                  learner state, and personalization are not part of this
+                  version.
                 </p>
               </div>
             </section>
@@ -774,7 +847,7 @@ export default function Home() {
       {modal && (
         <div className="modal-backdrop" role="presentation">
           <section
-            className="modal"
+            className={`modal${modal === "analysis" ? " teaching-plan-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
@@ -794,13 +867,14 @@ export default function Home() {
                 <div className="modal-icon">
                   <Sparkles size={23} />
                 </div>
-                <p className="modal-eyebrow">Prepared document</p>
+                <p className="modal-eyebrow">Teaching blueprint</p>
                 <h2 id="modal-title">
-                  {activeDocument?.map.title ?? "Document map"}
+                  {activeDocument?.map.title ?? "Teaching plan"}
                 </h2>
                 <p className="modal-copy">
-                  The preprocessing model reviewed the full PDF and created the
-                  concept map used to guide each page-level tutor interaction.
+                  A second planning pass reviewed the full PDF and its validated
+                  concept map, then ordered the material by learning dependency
+                  instead of page number.
                 </p>
                 <div className="analysis-grid">
                   <div>
@@ -812,11 +886,18 @@ export default function Home() {
                     <strong>{activeDocument?.map.concept_count ?? "—"}</strong>
                   </div>
                   <div>
-                    <span>Connections</span>
+                    <span>Teaching units</span>
                     <strong>
-                      {activeDocument?.map.connection_count ?? "—"}
+                      {activeDocument?.plan.unit_count ?? "—"}
                     </strong>
                   </div>
+                </div>
+                <div className="teaching-plan-content">
+                  <TeachingPlanContent
+                    plan={teachingPlan}
+                    loading={teachingPlanLoading}
+                    error={teachingPlanError}
+                  />
                 </div>
                 <button
                   className="primary-button modal-button"
@@ -841,7 +922,7 @@ export default function Home() {
                     <kbd>Space</kbd>
                   </p>
                   <p>
-                    <span>Open learning analysis</span>
+                    <span>Open teaching blueprint</span>
                     <kbd>A</kbd>
                   </p>
                   <p>
@@ -906,7 +987,8 @@ export default function Home() {
                 </div>
                 <p className="modal-copy">
                   The complete PDF will be sent to Azure OpenAI to build its
-                  concept map. No AI request is made until you continue.
+                  concept map and an ordered teaching blueprint. No AI request
+                  is made until you continue.
                 </p>
                 {activeDocument && (
                   <p className="replacement-note">
@@ -984,6 +1066,121 @@ export default function Home() {
   );
 }
 
+function TeachingPlanContent({
+  plan,
+  loading,
+  error,
+}: {
+  plan: TeachingPlan | null;
+  loading: boolean;
+  error: string;
+}) {
+  if (loading) {
+    return <p className="teaching-plan-status">Loading teaching units…</p>;
+  }
+
+  if (error) {
+    return (
+      <p className="modal-error" role="alert">
+        {error}
+      </p>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <p className="teaching-plan-status">
+        No teaching blueprint is available.
+      </p>
+    );
+  }
+
+  const unitTitlesById = new Map(
+    plan.units.map((unit) => [unit.id, unit.title]),
+  );
+
+  return (
+    <ol className="teaching-plan-list">
+      {plan.units.map((unit, index) => (
+        <TeachingUnitCard
+          key={unit.id}
+          unit={unit}
+          index={index}
+          unitTitlesById={unitTitlesById}
+        />
+      ))}
+    </ol>
+  );
+}
+
+function TeachingUnitCard({
+  unit,
+  index,
+  unitTitlesById,
+}: {
+  unit: TeachingUnit;
+  index: number;
+  unitTitlesById: ReadonlyMap<string, string>;
+}) {
+  const sourcePageLabels = Array.from(
+    new Set(unit.source_anchors.map((anchor) => anchor.page_label)),
+  ).join(", ");
+  const prerequisiteTitles = unit.prerequisite_unit_ids.length
+    ? unit.prerequisite_unit_ids
+        .map((id) => unitTitlesById.get(id) ?? id)
+        .join(", ")
+    : "None";
+
+  return (
+    <li className="teaching-unit">
+      <div className="teaching-unit-heading">
+        <span>{index + 1}</span>
+        <div>
+          <h3>{unit.title}</h3>
+          <small>
+            {unit.concept_ids.map(formatConceptId).join(" · ")}
+          </small>
+        </div>
+      </div>
+      <p className="teaching-unit-objective">{unit.objective}</p>
+      <dl className="teaching-unit-meta">
+        <div>
+          <dt>Pages</dt>
+          <dd>{sourcePageLabels}</dd>
+        </div>
+        <div>
+          <dt>Prerequisites</dt>
+          <dd>{prerequisiteTitles}</dd>
+        </div>
+      </dl>
+      <div className="teaching-unit-details">
+        <section>
+          <h4>Teaching guidance</h4>
+          <ul>
+            {unit.teaching_guidance.map((guidance) => (
+              <li key={guidance}>{guidance}</li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <h4>Mastery criteria</h4>
+          <ul>
+            {unit.mastery_criteria.map((criterion) => (
+              <li key={criterion}>{criterion}</li>
+            ))}
+          </ul>
+        </section>
+      </div>
+      {unit.common_difficulties.length > 0 && (
+        <p className="teaching-unit-difficulties">
+          <strong>Common difficulties:</strong>{" "}
+          {unit.common_difficulties.join(" ")}
+        </p>
+      )}
+    </li>
+  );
+}
+
 function formatFileSize(bytes: number) {
   return `${(bytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`;
 }
@@ -992,4 +1189,8 @@ function isPdf(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
   return extension === "pdf" && file.type === "application/pdf";
+}
+
+function formatConceptId(conceptId: string) {
+  return conceptId.replace("concept:", "").replaceAll("-", " ");
 }

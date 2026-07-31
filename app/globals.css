@@ -534,87 +534,111 @@ a:focus-visible {
 }
 
 .insight-card {
+  flex: 0 0 auto;
   border-radius: 20px;
 }
 
 .understanding-card {
-  min-height: 278px;
+  min-height: 224px;
   padding: 24px;
-  text-align: center;
+  text-align: left;
 }
 
 .card-eyebrow {
   justify-content: space-between;
-  color: #23263a;
-  font-size: 0.7rem;
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  text-align: left;
+  color: #55555d;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.065em;
   text-transform: uppercase;
 }
 
-.card-eyebrow svg {
+.preparation-indicator {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(118, 118, 128, 0.08);
+  color: var(--muted);
+}
+
+.preparation-indicator.ready {
+  background: var(--soft-blue);
   color: var(--blue);
 }
 
-.understanding-summary {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding-top: 24px;
-  text-align: left;
+.preparation-status {
+  padding: 20px 0 19px;
 }
 
-.progress-ring {
-  display: grid;
-  width: 126px;
-  height: 126px;
-  flex: 0 0 126px;
-  place-items: center;
-  border-radius: 50%;
-  background: conic-gradient(
-    from -4deg,
-    var(--blue-deep) 0deg 360deg
-  );
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.015);
-}
-
-.progress-ring > div {
-  display: grid;
-  width: 106px;
-  height: 106px;
-  place-content: center;
-  border-radius: 50%;
-  background: #fff;
-}
-
-.progress-ring strong,
-.progress-ring span {
-  display: block;
-}
-
-.progress-ring strong {
-  color: #111;
-  font-size: 1.72rem;
+.preparation-status h3 {
+  margin: 0;
+  color: #171719;
+  font-size: 1.25rem;
   font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.preparation-status p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.preparation-status.empty {
+  display: grid;
+  min-height: 148px;
+  align-content: center;
+}
+
+.preparation-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding-top: 17px;
+  border-top: 1px solid var(--hairline);
+  margin: 0;
+}
+
+.preparation-metrics > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0 10px;
+  text-align: center;
+}
+
+.preparation-metrics > div:first-child {
+  padding-left: 0;
+}
+
+.preparation-metrics > div:last-child {
+  padding-right: 0;
+}
+
+.preparation-metrics > div + div {
+  border-left: 1px solid var(--hairline);
+}
+
+.preparation-metrics dd {
+  order: -1;
+  margin: 0;
+  color: #171719;
+  font-size: 1.3rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
   line-height: 1;
 }
 
-.progress-ring span {
+.preparation-metrics dt {
   margin-top: 7px;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 0.59rem;
-  font-weight: 650;
-  text-transform: uppercase;
-}
-
-.understanding-summary > p {
-  margin: 0;
-  color: #3a3a3c;
-  font-size: 0.86rem;
-  font-weight: 450;
-  letter-spacing: 0;
-  line-height: 1.45;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .takeaways-card {
@@ -904,6 +928,13 @@ a:focus-visible {
   box-shadow: 0 28px 80px rgba(17, 26, 42, 0.28);
 }
 
+.teaching-plan-modal {
+  display: flex;
+  width: min(900px, 100%);
+  max-height: calc(100dvh - 40px);
+  flex-direction: column;
+}
+
 .modal-close {
   position: absolute;
   top: 18px;
@@ -1043,8 +1074,150 @@ a:focus-visible {
   font-size: 1.4rem;
 }
 
+.teaching-plan-content {
+  min-height: 180px;
+  flex: 1 1 auto;
+  padding-right: 8px;
+  margin-bottom: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.teaching-plan-status {
+  display: grid;
+  min-height: 180px;
+  margin: 0;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--background);
+  color: var(--muted);
+}
+
+.teaching-plan-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.teaching-unit {
+  padding: 22px;
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  margin-bottom: 14px;
+  background: #fff;
+}
+
+.teaching-unit:last-child {
+  margin-bottom: 0;
+}
+
+.teaching-unit-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+}
+
+.teaching-unit-heading > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.teaching-unit-heading h3 {
+  margin: 1px 0 4px;
+  font-size: 1rem;
+  letter-spacing: -0.015em;
+}
+
+.teaching-unit-heading small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}
+
+.teaching-unit-objective {
+  margin: 17px 0;
+  color: #353539;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.teaching-unit-meta {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.4fr) minmax(0, 1.6fr);
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.teaching-unit-meta > div {
+  padding: 11px 12px;
+  border-radius: 11px;
+  background: var(--background);
+}
+
+.teaching-unit-meta dt {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.teaching-unit-meta dd {
+  margin: 0;
+  color: #323238;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.teaching-unit-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.teaching-unit-details h4 {
+  margin: 0 0 9px;
+  color: #323238;
+  font-size: 0.75rem;
+}
+
+.teaching-unit-details ul {
+  padding-left: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.teaching-unit-details li + li {
+  margin-top: 5px;
+}
+
+.teaching-unit-difficulties {
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+  margin: 17px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.teaching-unit-difficulties strong {
+  color: #46464c;
+}
+
 .modal-button {
   width: 100%;
+  flex: 0 0 auto;
 }
 
 .shortcut-list {
@@ -1354,10 +1527,6 @@ kbd {
     padding: 25px 22px;
   }
 
-  .understanding-summary {
-    gap: 16px;
-  }
-
   .session-dock {
     bottom: 12px;
     grid-template-columns: 56px 1fr 56px;
@@ -1385,6 +1554,23 @@ kbd {
 
   .modal {
     padding: 32px 24px 24px;
+  }
+
+  .teaching-plan-modal {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .teaching-plan-content {
+    padding-right: 3px;
+  }
+
+  .teaching-unit {
+    padding: 18px;
+  }
+
+  .teaching-unit-meta,
+  .teaching-unit-details {
+    grid-template-columns: 1fr;
   }
 
   .analysis-grid {
