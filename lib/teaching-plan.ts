@@ -1,6 +1,6 @@
 import type { DocumentModel } from "@/lib/document-model";
 
-export const TEACHING_PLAN_SCHEMA_VERSION = 1;
+export const TEACHING_PLAN_SCHEMA_VERSION = 2;
 
 const sourcePurposes = [
   "introduce",
@@ -9,12 +9,34 @@ const sourcePurposes = [
   "apply",
 ] as const;
 
+const lessonStepKinds = [
+  "motivate",
+  "explain",
+  "demonstrate",
+  "contrast",
+  "connect",
+  "practice",
+  "assess",
+  "recap",
+] as const;
+
 export type TeachingSourcePurpose = (typeof sourcePurposes)[number];
+export type TeachingLessonStepKind = (typeof lessonStepKinds)[number];
 
 export type TeachingSourceAnchor = {
   page_index: number;
   page_label: string;
   purpose: TeachingSourcePurpose;
+};
+
+export type TeachingLessonStep = {
+  id: string;
+  kind: TeachingLessonStepKind;
+  title: string;
+  content: string;
+  learner_prompt: string | null;
+  expected_response: string | null;
+  remediation: string | null;
 };
 
 export type TeachingUnit = {
@@ -24,7 +46,7 @@ export type TeachingUnit = {
   concept_ids: string[];
   prerequisite_unit_ids: string[];
   source_anchors: TeachingSourceAnchor[];
-  teaching_guidance: string[];
+  lesson_steps: TeachingLessonStep[];
   mastery_criteria: string[];
   common_difficulties: string[];
 };
@@ -91,11 +113,47 @@ export const teachingPlanJsonSchema = {
               additionalProperties: false,
             },
           },
-          teaching_guidance: {
+          lesson_steps: {
             type: "array",
-            minItems: 1,
-            maxItems: 8,
-            items: { type: "string" },
+            minItems: 6,
+            maxItems: 10,
+            items: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  pattern: "^step:[a-z0-9]+(?:-[a-z0-9]+)*$",
+                },
+                kind: {
+                  type: "string",
+                  enum: lessonStepKinds,
+                },
+                title: { type: "string" },
+                content: {
+                  type: "string",
+                  minLength: 80,
+                },
+                learner_prompt: {
+                  type: ["string", "null"],
+                },
+                expected_response: {
+                  type: ["string", "null"],
+                },
+                remediation: {
+                  type: ["string", "null"],
+                },
+              },
+              required: [
+                "id",
+                "kind",
+                "title",
+                "content",
+                "learner_prompt",
+                "expected_response",
+                "remediation",
+              ],
+              additionalProperties: false,
+            },
           },
           mastery_criteria: {
             type: "array",
@@ -116,7 +174,7 @@ export const teachingPlanJsonSchema = {
           "concept_ids",
           "prerequisite_unit_ids",
           "source_anchors",
-          "teaching_guidance",
+          "lesson_steps",
           "mastery_criteria",
           "common_difficulties",
         ],
@@ -159,6 +217,7 @@ export function validateTeachingPlan(
     model.concepts.map((concept) => concept.id),
   );
   const earlierUnitIds = new Set<string>();
+  const lessonStepIds = new Set<string>();
 
   for (const unit of value.units) {
     if (!isRecord(unit)) {
@@ -172,7 +231,7 @@ export function validateTeachingPlan(
       concept_ids: conceptIds,
       prerequisite_unit_ids: prerequisiteUnitIds,
       source_anchors: sourceAnchors,
-      teaching_guidance: teachingGuidance,
+      lesson_steps: lessonSteps,
       mastery_criteria: masteryCriteria,
       common_difficulties: commonDifficulties,
     } = unit;
@@ -215,11 +274,46 @@ export function validateTeachingPlan(
     }
 
     if (
-      !isStringArray(teachingGuidance, 1, 8) ||
+      !Array.isArray(lessonSteps) ||
+      lessonSteps.length < 6 ||
+      lessonSteps.length > 10 ||
       !isStringArray(masteryCriteria, 1, 8) ||
       !isStringArray(commonDifficulties, 0, 8)
     ) {
       throw new Error("The generated teaching plan has an invalid unit.");
+    }
+
+    const unitStepKinds = new Set<TeachingLessonStepKind>();
+
+    for (const step of lessonSteps) {
+      if (
+        !isRecord(step) ||
+        !isLessonStepId(step.id) ||
+        lessonStepIds.has(step.id) ||
+        !isLessonStepKind(step.kind) ||
+        !isNonEmptyString(step.title) ||
+        !isSubstantiveString(step.content) ||
+        !hasValidInteraction(step)
+      ) {
+        throw new Error(
+          "The generated teaching plan has an invalid lesson step.",
+        );
+      }
+
+      lessonStepIds.add(step.id);
+      unitStepKinds.add(step.kind);
+    }
+
+    if (
+      lessonSteps[0].kind !== "motivate" ||
+      lessonSteps.at(-1)?.kind !== "recap" ||
+      !["explain", "demonstrate", "practice", "assess"].every((kind) =>
+        unitStepKinds.has(kind as TeachingLessonStepKind),
+      )
+    ) {
+      throw new Error(
+        "The generated teaching plan has an incomplete lesson flow.",
+      );
     }
 
     const groundedOccurrences = model.concepts
@@ -265,6 +359,38 @@ function isUnitId(value: unknown): value is string {
   );
 }
 
+function isLessonStepId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^step:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+  );
+}
+
+function isLessonStepKind(
+  value: unknown,
+): value is TeachingLessonStepKind {
+  return (
+    typeof value === "string" &&
+    lessonStepKinds.includes(value as TeachingLessonStepKind)
+  );
+}
+
+function hasValidInteraction(step: Record<string, unknown>) {
+  const values = [
+    step.learner_prompt,
+    step.expected_response,
+    step.remediation,
+  ];
+  const hasInteraction = values.every(isNonEmptyString);
+  const hasNoInteraction = values.every((value) => value === null);
+
+  if (step.kind === "practice" || step.kind === "assess") {
+    return hasInteraction;
+  }
+
+  return hasNoInteraction;
+}
+
 function isSourcePurpose(value: unknown): value is TeachingSourcePurpose {
   return (
     typeof value === "string" &&
@@ -291,6 +417,10 @@ function hasUniqueValues(values: string[]) {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSubstantiveString(value: unknown): value is string {
+  return isNonEmptyString(value) && value.trim().length >= 80;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,5 +1,6 @@
 import { MissingAzureOpenAIConfigurationError } from "@/lib/document-model-generation";
 import type { DocumentModel } from "@/lib/document-model";
+import { readAzureOpenAIResponseStream } from "@/lib/azure-openai-response-stream";
 import {
   teachingPlanJsonSchema,
   type TeachingPlan,
@@ -44,10 +45,11 @@ export async function generateTeachingPlan(
     body: JSON.stringify({
       model: deployment,
       store: false,
+      stream: true,
       reasoning: {
         effort: "high",
       },
-      max_output_tokens: 32000,
+      max_output_tokens: 64000,
       input: [
         {
           role: "user",
@@ -75,14 +77,11 @@ export async function generateTeachingPlan(
       },
     }),
   });
-  const result = (await response.json()) as AzureOpenAIResponse;
 
-  if (!response.ok) {
-    throw new Error(
-      result.error?.message ??
-        "Azure OpenAI could not build the teaching plan.",
-    );
-  }
+  const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
+    response,
+    "Azure OpenAI could not build the teaching plan.",
+  );
 
   if (result.status !== "completed") {
     throw new Error(
@@ -107,10 +106,19 @@ Create a learner-independent teaching plan for this document. Follow these rules
 - Ground every unit in the PDF. Each source anchor must use a page where at least one of the unit's concept IDs occurs in the document model.
 - Use page_index and page_label exactly as represented by the relevant document occurrence.
 - A source page may be revisited by multiple units when it serves different teaching purposes.
-- Keep teaching_guidance concise and actionable. Describe instructional moves, not a word-for-word tutor script.
-- Make mastery_criteria observable evidence that the knowledge point has been learned. Do not write a full quiz.
+- Give every lesson step a globally unique lowercase kebab-case ID beginning with "step:".
+- Build every unit as a six-to-ten-step mini-tutorial. The first step must be motivate and the last must be recap. Include at least one explain, demonstrate, practice, and assess step between them. Add contrast or connect steps when they improve understanding.
+- Keep every step tightly focused on the unit objective, but make content substantive. Use two to four complete sentences to state what the tutor must teach, including the relevant reasoning, mechanism, terminology, notation, or interpretation.
+- The motivate step must establish the problem and why the knowledge point matters in this document.
+- The explain step must give a precise account rather than only an analogy or simplified definition.
+- The demonstrate step must trace a concrete example, formula, architecture flow, figure, or table supported by the document.
+- Use contrast to distinguish a likely confusion or non-example. Use connect to relate the unit to a prerequisite or explain why a later concept follows.
+- Practice is a guided application. Assess is an independent mastery check. For both kinds, provide a learner_prompt, the expected_response used as a private rubric, and remediation that gives the tutor a specific alternative explanation. Set those three fields to null for every other step kind.
+- The recap step must synthesize two or three durable takeaways without adding new material.
+- Make mastery_criteria observable evidence that the learner can explain or apply the knowledge point. Do not accept recognition or repetition alone when the document supports a stronger check.
 - Record only likely, concept-specific common difficulties. Use an empty array when none are supported.
-- Do not generate learner personalization, session state, progress tracking, timing, realtime behavior, or external lessons that are not grounded in this PDF.
+- Source anchors must collectively support the lesson steps. Simple illustrative examples and contrasts may be constructed from the document's concepts, but do not introduce unrelated external lessons.
+- Do not generate learner personalization, session state, progress tracking, timing, or realtime behavior.
 
 Validated document model:
 ${JSON.stringify(model)}`;

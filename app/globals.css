@@ -1440,6 +1440,30 @@ a:focus-visible {
   margin-top: 5px;
 }
 
+.teaching-unit-steps {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.teaching-unit-steps li + li {
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+  margin-top: 10px;
+}
+
+.teaching-unit-steps strong {
+  color: #46464c;
+  font-size: 0.72rem;
+}
+
+.teaching-unit-steps p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
 .teaching-unit-difficulties {
   padding-top: 14px;
   border-top: 1px solid var(--hairline);

@@ -1646,12 +1646,17 @@ function TeachingUnitCard({
       </dl>
       <div className="teaching-unit-details">
         <section>
-          <h4>Teaching guidance</h4>
-          <ul>
-            {unit.teaching_guidance.map((guidance) => (
-              <li key={guidance}>{guidance}</li>
+          <h4>Lesson outline</h4>
+          <ol className="teaching-unit-steps">
+            {unit.lesson_steps.map((step) => (
+              <li key={step.id}>
+                <strong>
+                  {formatLessonStepKind(step.kind)} · {step.title}
+                </strong>
+                <p>{step.content}</p>
+              </li>
             ))}
-          </ul>
+          </ol>
         </section>
         <section>
           <h4>Mastery criteria</h4>
@@ -1684,6 +1689,10 @@ function isPdf(file: File) {
 
 function formatConceptId(conceptId: string) {
   return conceptId.replace("concept:", "").replaceAll("-", " ");
+}
+
+function formatLessonStepKind(kind: string) {
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 function getLatestTutorQuestion(transcript: string) {

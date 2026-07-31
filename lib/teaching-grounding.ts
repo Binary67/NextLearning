@@ -1,11 +1,11 @@
 import type { DocumentLayout } from "@/lib/document-layout";
 import type { TeachingPlan } from "@/lib/teaching-plan";
 
-export const TEACHING_GROUNDING_SCHEMA_VERSION = 1;
+export const TEACHING_GROUNDING_SCHEMA_VERSION = 2;
 
 export type TeachingVisualFocus = {
   id: string;
-  teaching_guidance_index: number;
+  lesson_step_id: string;
   teaching_point: string;
   page_index: number;
   block_ids: string[];
@@ -41,7 +41,7 @@ export const teachingGroundingJsonSchema = {
           focuses: {
             type: "array",
             minItems: 1,
-            maxItems: 16,
+            maxItems: 24,
             items: {
               type: "object",
               properties: {
@@ -49,11 +49,7 @@ export const teachingGroundingJsonSchema = {
                   type: "string",
                   pattern: "^focus:[a-z0-9]+(?:-[a-z0-9]+)*$",
                 },
-                teaching_guidance_index: {
-                  type: "integer",
-                  minimum: 0,
-                  maximum: 7,
-                },
+                lesson_step_id: { type: "string" },
                 teaching_point: { type: "string" },
                 page_index: { type: "integer", minimum: 1 },
                 block_ids: {
@@ -65,7 +61,7 @@ export const teachingGroundingJsonSchema = {
               },
               required: [
                 "id",
-                "teaching_guidance_index",
+                "lesson_step_id",
                 "teaching_point",
                 "page_index",
                 "block_ids",
@@ -111,7 +107,7 @@ export function validateTeachingGrounding(
       groundingUnit.unit_id !== planUnit.id ||
       !Array.isArray(groundingUnit.focuses) ||
       groundingUnit.focuses.length === 0 ||
-      groundingUnit.focuses.length > 16
+      groundingUnit.focuses.length > 24
     ) {
       throw new Error("The teaching grounding has an invalid unit.");
     }
@@ -119,17 +115,27 @@ export function validateTeachingGrounding(
     const sourcePages = new Set(
       planUnit.source_anchors.map((anchor) => anchor.page_index),
     );
-    const coveredGuidance = new Set<number>();
+    const lessonStepIndexes = new Map(
+      planUnit.lesson_steps.map((step, stepIndex) => [step.id, stepIndex]),
+    );
+    const coveredLessonSteps = new Set<string>();
+    let previousLessonStepIndex = -1;
 
     for (const focus of groundingUnit.focuses) {
+      const lessonStepIndex = isRecord(focus)
+        ? lessonStepIndexes.get(
+            typeof focus.lesson_step_id === "string"
+              ? focus.lesson_step_id
+              : "",
+          )
+        : undefined;
+
       if (
         !isRecord(focus) ||
         !isFocusId(focus.id) ||
         focusIds.has(focus.id) ||
-        !isGuidanceIndex(
-          focus.teaching_guidance_index,
-          planUnit.teaching_guidance.length,
-        ) ||
+        lessonStepIndex === undefined ||
+        lessonStepIndex < previousLessonStepIndex ||
         !isNonEmptyString(focus.teaching_point) ||
         !isPositiveInteger(focus.page_index) ||
         !sourcePages.has(focus.page_index) ||
@@ -151,16 +157,17 @@ export function validateTeachingGrounding(
       }
 
       focusIds.add(focus.id);
-      coveredGuidance.add(focus.teaching_guidance_index);
+      coveredLessonSteps.add(planUnit.lesson_steps[lessonStepIndex].id);
+      previousLessonStepIndex = lessonStepIndex;
     }
 
     if (
-      planUnit.teaching_guidance.some(
-        (_, guidanceIndex) => !coveredGuidance.has(guidanceIndex),
+      planUnit.lesson_steps.some(
+        (step) => !coveredLessonSteps.has(step.id),
       )
     ) {
       throw new Error(
-        "The teaching grounding does not cover every teaching move.",
+        "The teaching grounding does not cover every lesson step.",
       );
     }
   }
@@ -172,18 +179,6 @@ function isFocusId(value: unknown): value is string {
   return (
     typeof value === "string" &&
     /^focus:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
-  );
-}
-
-function isGuidanceIndex(
-  value: unknown,
-  guidanceCount: number,
-): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value < guidanceCount
   );
 }
 
