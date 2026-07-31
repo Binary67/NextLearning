@@ -107,7 +107,6 @@ export async function saveDocument(
   layout: DocumentLayout,
   grounding: TeachingGrounding,
 ): Promise<StoredDocument> {
-  const previousDocument = await readStoredDocument();
   const fileName = "current.pdf";
   const document: StoredDocument = {
     id: documentId,
@@ -133,16 +132,6 @@ export async function saveDocument(
     ),
   ]);
   await fs.writeFile(metadataPath, JSON.stringify(document, null, 2));
-
-  if (previousDocument && previousDocument.fileName !== fileName) {
-    await fs.unlink(
-      path.join(documentsDirectory, previousDocument.fileName),
-    ).catch((error: unknown) => {
-      if (!isMissingFileError(error)) {
-        throw error;
-      }
-    });
-  }
 
   return document;
 }

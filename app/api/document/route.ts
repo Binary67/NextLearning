@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  MissingAzureOpenAIConfigurationError,
-  generateDocumentModel,
-} from "@/lib/document-model-generation";
+import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
+import { generateDocumentModel } from "@/lib/document-model-generation";
 import { generateDocumentLayout } from "@/lib/document-layout-generation";
 import { validateDocumentLayout } from "@/lib/document-layout";
 import {

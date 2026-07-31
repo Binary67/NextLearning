@@ -889,8 +889,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       throw new Error("The source document is unavailable.");
     }
 
-    optionsRef.current.onPageChange(pageIndex);
-
     return renderPdfPageAsImage(documentId, documentUrl, pageIndex);
   }
 

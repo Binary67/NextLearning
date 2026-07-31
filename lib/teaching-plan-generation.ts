@@ -1,88 +1,69 @@
 import {
-  type AzureOpenAIErrorDetails,
   InvalidAzureOpenAIContentError,
+  readAzureOpenAIGenerationConfiguration,
   retryAzureOpenAIGeneration,
 } from "@/lib/azure-openai-generation-retry";
-import { MissingAzureOpenAIConfigurationError } from "@/lib/document-model-generation";
 import type { DocumentModel } from "@/lib/document-model";
-import { readAzureOpenAIResponseStream } from "@/lib/azure-openai-response-stream";
+import {
+  type AzureOpenAIResponse,
+  readAzureOpenAIOutputText,
+  readAzureOpenAIResponseStream,
+} from "@/lib/azure-openai-response";
 import {
   teachingPlanJsonSchema,
   type TeachingPlan,
   validateTeachingPlan,
 } from "@/lib/teaching-plan";
 
-type AzureOpenAIResponse = {
-  status?: string;
-  error?: AzureOpenAIErrorDetails;
-  output?: Array<{
-    content?: Array<{
-      type?: string;
-      text?: string;
-      refusal?: string;
-    }>;
-  }>;
-};
-
 export async function generateTeachingPlan(
   file: File,
   model: DocumentModel,
 ): Promise<TeachingPlan> {
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const deployment = process.env.AZURE_OPENAI_FLAGSHIP_DEPLOYMENT;
-
-  if (!endpoint || !apiKey || !deployment) {
-    throw new MissingAzureOpenAIConfigurationError(
-      "Azure OpenAI endpoint, API key, and flagship deployment are required.",
-    );
-  }
+  const { endpoint, apiKey, deployment } =
+    readAzureOpenAIGenerationConfiguration();
 
   const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
   return retryAzureOpenAIGeneration(async () => {
-    const response = await fetch(
-      `${endpoint.replace(/\/+$/, "")}/responses`,
-      {
-        method: "POST",
-        headers: {
-          "api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: deployment,
-          store: false,
-          stream: true,
-          reasoning: {
-            effort: "high",
-          },
-          input: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "input_file",
-                  filename: file.name,
-                  file_data: `data:application/pdf;base64,${fileData}`,
-                  detail: "high",
-                },
-                {
-                  type: "input_text",
-                  text: buildTeachingPlanPrompt(model),
-                },
-              ],
-            },
-          ],
-          text: {
-            format: {
-              type: "json_schema",
-              name: "teaching_plan",
-              schema: teachingPlanJsonSchema,
-              strict: true,
-            },
-          },
-        }),
+    const response = await fetch(`${endpoint}/responses`, {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model: deployment,
+        store: false,
+        stream: true,
+        reasoning: {
+          effort: "high",
+        },
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_file",
+                filename: file.name,
+                file_data: `data:application/pdf;base64,${fileData}`,
+                detail: "high",
+              },
+              {
+                type: "input_text",
+                text: buildTeachingPlanPrompt(model),
+              },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "teaching_plan",
+            schema: teachingPlanJsonSchema,
+            strict: true,
+          },
+        },
+      }),
+    });
 
     const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
       response,
@@ -95,7 +76,11 @@ export async function generateTeachingPlan(
       );
     }
 
-    const outputText = readOutputText(result);
+    const outputText = readAzureOpenAIOutputText(
+      result,
+      "Azure OpenAI declined to build the teaching plan.",
+      "Azure OpenAI returned no teaching plan.",
+    );
 
     try {
       const teachingPlan = JSON.parse(outputText) as unknown;
@@ -140,23 +125,4 @@ Create a learner-independent teaching plan for this document. Follow these rules
 
 Validated document model:
 ${JSON.stringify(model)}`;
-}
-
-function readOutputText(result: AzureOpenAIResponse) {
-  for (const item of result.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (content.type === "refusal") {
-        throw new Error(
-          content.refusal ??
-            "Azure OpenAI declined to build the teaching plan.",
-        );
-      }
-
-      if (content.type === "output_text" && content.text) {
-        return content.text;
-      }
-    }
-  }
-
-  throw new Error("Azure OpenAI returned no teaching plan.");
 }

@@ -3,6 +3,18 @@ import {
   createAzureOpenAIResponseError,
 } from "@/lib/azure-openai-generation-retry";
 
+export type AzureOpenAIResponse = {
+  status?: string;
+  error?: AzureOpenAIErrorDetails;
+  output?: Array<{
+    content?: Array<{
+      type?: string;
+      text?: string;
+      refusal?: string;
+    }>;
+  }>;
+};
+
 type AzureOpenAIResponseWithError = {
   error?: AzureOpenAIErrorDetails;
 };
@@ -67,6 +79,26 @@ export async function readAzureOpenAIResponseStream<
   }
 
   throw new Error(fallbackMessage);
+}
+
+export function readAzureOpenAIOutputText(
+  result: AzureOpenAIResponse,
+  refusalMessage: string,
+  missingOutputMessage: string,
+) {
+  for (const item of result.output ?? []) {
+    for (const content of item.content ?? []) {
+      if (content.type === "refusal") {
+        throw new Error(content.refusal ?? refusalMessage);
+      }
+
+      if (content.type === "output_text" && content.text) {
+        return content.text;
+      }
+    }
+  }
+
+  throw new Error(missingOutputMessage);
 }
 
 function parseStreamEvent<T>(

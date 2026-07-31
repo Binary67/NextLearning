@@ -1,87 +1,67 @@
 import {
-  type AzureOpenAIErrorDetails,
   createAzureOpenAIResponseError,
   InvalidAzureOpenAIContentError,
+  readAzureOpenAIGenerationConfiguration,
   retryAzureOpenAIGeneration,
 } from "@/lib/azure-openai-generation-retry";
+import {
+  type AzureOpenAIResponse,
+  readAzureOpenAIOutputText,
+} from "@/lib/azure-openai-response";
 import {
   documentModelJsonSchema,
   type DocumentModel,
   validateDocumentModel,
 } from "@/lib/document-model";
 
-type AzureOpenAIResponse = {
-  status?: string;
-  error?: AzureOpenAIErrorDetails;
-  output?: Array<{
-    content?: Array<{
-      type?: string;
-      text?: string;
-      refusal?: string;
-    }>;
-  }>;
-};
-
-export class MissingAzureOpenAIConfigurationError extends Error {}
-
 export async function generateDocumentModel(
   file: File,
   documentId: string,
 ): Promise<DocumentModel> {
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const deployment = process.env.AZURE_OPENAI_FLAGSHIP_DEPLOYMENT;
-
-  if (!endpoint || !apiKey || !deployment) {
-    throw new MissingAzureOpenAIConfigurationError(
-      "Azure OpenAI endpoint, API key, and flagship deployment are required.",
-    );
-  }
+  const { endpoint, apiKey, deployment } =
+    readAzureOpenAIGenerationConfiguration();
 
   const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
   return retryAzureOpenAIGeneration(async () => {
-    const response = await fetch(
-      `${endpoint.replace(/\/+$/, "")}/responses`,
-      {
-        method: "POST",
-        headers: {
-          "api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: deployment,
-          store: false,
-          reasoning: {
-            effort: "high",
-          },
-          input: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "input_file",
-                  filename: file.name,
-                  file_data: `data:application/pdf;base64,${fileData}`,
-                  detail: "high",
-                },
-                {
-                  type: "input_text",
-                  text: buildDocumentMapPrompt(documentId),
-                },
-              ],
-            },
-          ],
-          text: {
-            format: {
-              type: "json_schema",
-              name: "document_model",
-              schema: documentModelJsonSchema,
-              strict: true,
-            },
-          },
-        }),
+    const response = await fetch(`${endpoint}/responses`, {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model: deployment,
+        store: false,
+        reasoning: {
+          effort: "high",
+        },
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_file",
+                filename: file.name,
+                file_data: `data:application/pdf;base64,${fileData}`,
+                detail: "high",
+              },
+              {
+                type: "input_text",
+                text: buildDocumentMapPrompt(documentId),
+              },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "document_model",
+            schema: documentModelJsonSchema,
+            strict: true,
+          },
+        },
+      }),
+    });
     const result = (await response.json()) as AzureOpenAIResponse;
 
     if (!response.ok) {
@@ -98,7 +78,11 @@ export async function generateDocumentModel(
       );
     }
 
-    const outputText = readOutputText(result);
+    const outputText = readAzureOpenAIOutputText(
+      result,
+      "Azure OpenAI declined to prepare this document.",
+      "Azure OpenAI returned no document map.",
+    );
 
     try {
       const documentModel = JSON.parse(outputText) as unknown;
@@ -130,23 +114,4 @@ Create a compact concept map for an interactive tutor. Follow these rules:
 - Give every connection between one and 20 relevant_pages containing the pages that support it.
 - Keep every occurrence and connection confidence between 0 and 1 inclusive.
 - Do not generate a learner profile, learning progress, lesson script, quiz, or personalized plan.`;
-}
-
-function readOutputText(result: AzureOpenAIResponse) {
-  for (const item of result.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (content.type === "refusal") {
-        throw new Error(
-          content.refusal ??
-            "Azure OpenAI declined to prepare this document.",
-        );
-      }
-
-      if (content.type === "output_text" && content.text) {
-        return content.text;
-      }
-    }
-  }
-
-  throw new Error("Azure OpenAI returned no document map.");
 }

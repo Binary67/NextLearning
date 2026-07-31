@@ -27,16 +27,17 @@ import {
   type ChangeEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
 import type { DocumentLayout } from "@/lib/document-layout";
-import type {
-  DocumentModel,
-  DocumentMapSummary,
-  PageLearningContext,
+import {
+  buildPageLearningContext,
+  type DocumentModel,
+  type DocumentMapSummary,
 } from "@/lib/document-model";
 import {
   findActiveTeachingUnit,
@@ -130,10 +131,6 @@ export default function Home() {
   const [removingDocument, setRemovingDocument] = useState(false);
   const [resettingProgress, setResettingProgress] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageContext, setPageContext] =
-    useState<PageLearningContext | null>(null);
-  const [pageContextLoading, setPageContextLoading] = useState(false);
-  const [pageContextError, setPageContextError] = useState("");
   const [teachingPlan, setTeachingPlan] =
     useState<TeachingPlan | null>(null);
   const [documentLayout, setDocumentLayout] =
@@ -151,6 +148,15 @@ export default function Home() {
     teachingPlan && learningProgress
       ? findActiveTeachingUnit(teachingPlan, learningProgress)
       : null;
+  const pageContext = useMemo(
+    () =>
+      documentModel
+        ? buildPageLearningContext(documentModel, currentPage)
+        : null,
+    [currentPage, documentModel],
+  );
+  const pageContextLoading = activeDocument !== null && teachingPlanLoading;
+  const pageContextError = documentModel ? "" : teachingPlanError;
   const realtimeTutor = useRealtimeTutor({
     documentId: activeDocument?.id ?? null,
     documentUrl: activeDocument?.url ?? null,
@@ -235,49 +241,6 @@ export default function Home() {
     loadDocument();
     return () => controller.abort();
   }, []);
-
-  useEffect(() => {
-    if (!activeDocument) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    async function loadPageContext() {
-      setPageContextLoading(true);
-      setPageContextError("");
-
-      try {
-        const response = await fetch(
-          `/api/document/context?page=${currentPage}`,
-          { signal: controller.signal },
-        );
-        const data = (await response.json()) as {
-          context?: PageLearningContext;
-          message?: string;
-        };
-
-        if (!response.ok || !data.context) {
-          throw new Error(
-            data.message ?? "The page context could not be loaded.",
-          );
-        }
-
-        setPageContext(data.context);
-      } catch (error) {
-        if (error instanceof Error && error.name !== "AbortError") {
-          setPageContextError(error.message);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setPageContextLoading(false);
-        }
-      }
-    }
-
-    loadPageContext();
-    return () => controller.abort();
-  }, [activeDocument, currentPage]);
 
   useEffect(() => {
     if (!activeDocument) {
@@ -655,7 +618,6 @@ export default function Home() {
       realtimeTutor.reset();
       setActiveDocument(null);
       setCurrentPage(1);
-      setPageContext(null);
       setTeachingPlan(null);
       setDocumentLayout(null);
       setTeachingGrounding(null);

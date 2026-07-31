@@ -4,6 +4,8 @@ export type AzureOpenAIErrorDetails = {
   message?: string;
 } | null;
 
+export class MissingAzureOpenAIConfigurationError extends Error {}
+
 export class RetryableAzureOpenAIError extends Error {}
 
 export class InvalidAzureOpenAIContentError extends Error {
@@ -27,6 +29,24 @@ export async function retryAzureOpenAIGeneration<T>(
   }
 
   return generate();
+}
+
+export function readAzureOpenAIGenerationConfiguration() {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deployment = process.env.AZURE_OPENAI_FLAGSHIP_DEPLOYMENT;
+
+  if (!endpoint || !apiKey || !deployment) {
+    throw new MissingAzureOpenAIConfigurationError(
+      "Azure OpenAI endpoint, API key, and flagship deployment are required.",
+    );
+  }
+
+  return {
+    endpoint: endpoint.replace(/\/+$/, ""),
+    apiKey,
+    deployment,
+  };
 }
 
 export function createAzureOpenAIResponseError(

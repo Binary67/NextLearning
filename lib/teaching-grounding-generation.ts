@@ -1,12 +1,15 @@
 import {
-  type AzureOpenAIErrorDetails,
   InvalidAzureOpenAIContentError,
+  readAzureOpenAIGenerationConfiguration,
   retryAzureOpenAIGeneration,
 } from "@/lib/azure-openai-generation-retry";
-import { MissingAzureOpenAIConfigurationError } from "@/lib/document-model-generation";
 import type { DocumentLayout } from "@/lib/document-layout";
 import type { DocumentModel } from "@/lib/document-model";
-import { readAzureOpenAIResponseStream } from "@/lib/azure-openai-response-stream";
+import {
+  type AzureOpenAIResponse,
+  readAzureOpenAIOutputText,
+  readAzureOpenAIResponseStream,
+} from "@/lib/azure-openai-response";
 import {
   teachingGroundingJsonSchema,
   type TeachingGrounding,
@@ -14,71 +17,49 @@ import {
 } from "@/lib/teaching-grounding";
 import type { TeachingPlan } from "@/lib/teaching-plan";
 
-type AzureOpenAIResponse = {
-  status?: string;
-  error?: AzureOpenAIErrorDetails;
-  output?: Array<{
-    content?: Array<{
-      type?: string;
-      text?: string;
-      refusal?: string;
-    }>;
-  }>;
-};
-
 export async function generateTeachingGrounding(
   model: DocumentModel,
   plan: TeachingPlan,
   layout: DocumentLayout,
 ): Promise<TeachingGrounding> {
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const deployment = process.env.AZURE_OPENAI_FLAGSHIP_DEPLOYMENT;
-
-  if (!endpoint || !apiKey || !deployment) {
-    throw new MissingAzureOpenAIConfigurationError(
-      "Azure OpenAI endpoint, API key, and flagship deployment are required.",
-    );
-  }
+  const { endpoint, apiKey, deployment } =
+    readAzureOpenAIGenerationConfiguration();
 
   return retryAzureOpenAIGeneration(async () => {
-    const response = await fetch(
-      `${endpoint.replace(/\/+$/, "")}/responses`,
-      {
-        method: "POST",
-        headers: {
-          "api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: deployment,
-          store: false,
-          stream: true,
-          reasoning: {
-            effort: "high",
-          },
-          input: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "input_text",
-                  text: buildTeachingGroundingPrompt(model, plan, layout),
-                },
-              ],
-            },
-          ],
-          text: {
-            format: {
-              type: "json_schema",
-              name: "teaching_grounding",
-              schema: teachingGroundingJsonSchema,
-              strict: true,
-            },
-          },
-        }),
+    const response = await fetch(`${endpoint}/responses`, {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model: deployment,
+        store: false,
+        stream: true,
+        reasoning: {
+          effort: "high",
+        },
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: buildTeachingGroundingPrompt(model, plan, layout),
+              },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "teaching_grounding",
+            schema: teachingGroundingJsonSchema,
+            strict: true,
+          },
+        },
+      }),
+    });
     const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
       response,
       "Azure OpenAI could not ground the teaching plan.",
@@ -90,7 +71,11 @@ export async function generateTeachingGrounding(
       );
     }
 
-    const outputText = readOutputText(result);
+    const outputText = readAzureOpenAIOutputText(
+      result,
+      "Azure OpenAI declined to ground the teaching plan.",
+      "Azure OpenAI returned no teaching grounding.",
+    );
 
     try {
       const grounding = JSON.parse(outputText) as unknown;
@@ -154,23 +139,4 @@ ${JSON.stringify(plan)}
 
 Available extracted blocks:
 ${JSON.stringify(availableBlocks)}`;
-}
-
-function readOutputText(result: AzureOpenAIResponse) {
-  for (const item of result.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (content.type === "refusal") {
-        throw new Error(
-          content.refusal ??
-            "Azure OpenAI declined to ground the teaching plan.",
-        );
-      }
-
-      if (content.type === "output_text" && content.text) {
-        return content.text;
-      }
-    }
-  }
-
-  throw new Error("Azure OpenAI returned no teaching grounding.");
 }
