@@ -658,8 +658,22 @@ a:focus-visible {
   transform: rotate(90deg);
 }
 
-.insight-card-toggle:hover .insight-card-chevron {
+.insight-card-toggle:hover:not(:disabled) .insight-card-chevron {
   color: var(--blue);
+}
+
+.insight-card-toggle:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.insight-card-toggle:disabled .insight-card-icon {
+  background: var(--control);
+  color: var(--muted);
+}
+
+.insight-card-toggle:disabled .insight-card-chevron {
+  opacity: 0.4;
 }
 
 .insight-card-summary {
@@ -677,16 +691,9 @@ a:focus-visible {
   padding: 20px;
 }
 
-.live-transcript-header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.live-transcript-header h2 {
-  margin: 0;
+.live-transcript-card.collapsed {
+  height: auto;
+  min-height: 0;
 }
 
 .live-transcript-status {
