@@ -54,7 +54,6 @@ export async function generateDocumentModel(
           reasoning: {
             effort: "high",
           },
-          max_output_tokens: 64000,
           input: [
             {
               role: "user",
