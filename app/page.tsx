@@ -2,7 +2,6 @@
 
 import {
   ArrowDown,
-  BrainCircuit,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -10,14 +9,15 @@ import {
   Download,
   FileText,
   Hand,
-  History,
   Keyboard,
   LogOut,
   MessageSquareText,
   PanelRight,
   Pause,
   Play,
+  Route,
   RotateCcw,
+  ScanText,
   Settings,
   Sparkles,
   Trash2,
@@ -1234,7 +1234,13 @@ export default function Home() {
             >
               <InsightCardHeader
                 title="Document preparation"
-                icon={<Sparkles size={18} aria-hidden="true" />}
+                icon={
+                  <FileText
+                    size={19}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                }
                 expanded={documentPreparationExpanded}
                 contentId="document-preparation-content"
                 onToggle={() =>
@@ -1304,7 +1310,13 @@ export default function Home() {
             >
               <InsightCardHeader
                 title="Page Context"
-                icon={<BrainCircuit size={25} aria-hidden="true" />}
+                icon={
+                  <ScanText
+                    size={19}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                }
                 expanded={pageContextExpanded}
                 contentId="page-context-content"
                 onToggle={() =>
@@ -1346,7 +1358,9 @@ export default function Home() {
             >
               <InsightCardHeader
                 title="Learning path"
-                icon={<History size={24} aria-hidden="true" />}
+                icon={
+                  <Route size={19} strokeWidth={2} aria-hidden="true" />
+                }
                 expanded={learningPathExpanded}
                 contentId="learning-path-content"
                 onToggle={() =>
