@@ -3,26 +3,45 @@ import {
   readAzureOpenAIGenerationConfiguration,
   retryAzureOpenAIGeneration,
 } from "@/lib/azure-openai-generation-retry";
-import type { DocumentModel } from "@/lib/document-model";
 import {
   type AzureOpenAIResponse,
   readAzureOpenAIOutputText,
   readAzureOpenAIResponseStream,
 } from "@/lib/azure-openai-response";
 import {
+  documentModelJsonSchema,
+  type DocumentModel,
+  validateDocumentModel,
+} from "@/lib/document-model";
+import {
   teachingPlanJsonSchema,
   type TeachingPlan,
   validateTeachingPlan,
 } from "@/lib/teaching-plan";
 
-export async function generateTeachingPlan(
+type GeneratedTutorial = {
+  model: DocumentModel;
+  plan: TeachingPlan;
+};
+
+const generatedTutorialJsonSchema = {
+  type: "object",
+  properties: {
+    document_model: documentModelJsonSchema,
+    teaching_plan: teachingPlanJsonSchema,
+  },
+  required: ["document_model", "teaching_plan"],
+  additionalProperties: false,
+} as const;
+
+export async function generateTutorial(
   file: File,
-  model: DocumentModel,
-): Promise<TeachingPlan> {
+  tutorialId: string,
+): Promise<GeneratedTutorial> {
   const { endpoint, apiKey, deployment } =
     readAzureOpenAIGenerationConfiguration();
-
   const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
+
   return retryAzureOpenAIGeneration(async () => {
     const response = await fetch(`${endpoint}/responses`, {
       method: "POST",
@@ -49,7 +68,7 @@ export async function generateTeachingPlan(
               },
               {
                 type: "input_text",
-                text: buildTeachingPlanPrompt(model),
+                text: buildTutorialPrompt(tutorialId),
               },
             ],
           },
@@ -57,8 +76,8 @@ export async function generateTeachingPlan(
         text: {
           format: {
             type: "json_schema",
-            name: "teaching_plan",
-            schema: teachingPlanJsonSchema,
+            name: "tutorial",
+            schema: generatedTutorialJsonSchema,
             strict: true,
           },
         },
@@ -67,47 +86,72 @@ export async function generateTeachingPlan(
 
     const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
       response,
-      "Azure OpenAI could not build the teaching plan.",
+      "Azure OpenAI could not prepare the tutorial.",
     );
 
     if (result.status !== "completed") {
-      throw new Error(
-        "Azure OpenAI did not finish building the teaching plan.",
-      );
+      throw new Error("Azure OpenAI did not finish preparing the tutorial.");
     }
 
     const outputText = readAzureOpenAIOutputText(
       result,
-      "Azure OpenAI declined to build the teaching plan.",
-      "Azure OpenAI returned no teaching plan.",
+      "Azure OpenAI declined to prepare the tutorial.",
+      "Azure OpenAI returned no tutorial.",
     );
 
     try {
-      const teachingPlan = JSON.parse(outputText) as unknown;
-      return validateTeachingPlan(teachingPlan, model);
+      const tutorial = JSON.parse(outputText) as unknown;
+
+      if (!isRecord(tutorial)) {
+        throw new Error("The generated tutorial is not an object.");
+      }
+
+      const model = validateDocumentModel(
+        tutorial.document_model,
+        tutorialId,
+      );
+      const plan = validateTeachingPlan(tutorial.teaching_plan, model);
+
+      return { model, plan };
     } catch (error) {
       throw new InvalidAzureOpenAIContentError(
-        "Azure OpenAI returned an invalid teaching plan.",
+        "Azure OpenAI returned an invalid tutorial.",
         error,
       );
     }
   });
 }
 
-function buildTeachingPlanPrompt(model: DocumentModel) {
-  return `Review the complete PDF and the validated document model below before producing the teaching plan.
+function buildTutorialPrompt(tutorialId: string) {
+  return `Review the complete PDF once, then produce both the document_model and teaching_plan in the same response.
 
-Create a learner-independent teaching plan for this document. Follow these rules:
-- Set document_id to "${model.document_id}" exactly.
-- Set title to "${model.title}" exactly.
+First create document_model as a compact concept map for an interactive tutor. Follow these rules:
+- Set document_id to "${tutorialId}" exactly.
+- Use 1-based PDF order for page_index.
+- Use the printed page number for page_label when visible; otherwise use page_index as a string.
+- Give each concept a stable lowercase kebab-case ID beginning with "concept:".
+- Return no more than 120 concepts and no more than 400 connections.
+- Merge aliases and repeated explanations into one concept.
+- Keep definitions short and grounded in this document.
+- Give every concept between one and 40 meaningful occurrences. Use implicit references sparingly and lower their confidence.
+- Record at most one occurrence for a concept on each page. Choose the most useful teaching role.
+- Create only pedagogically useful, document-supported connections.
+- Make connection direction match the relationship name.
+- Give every connection between one and 20 relevant_pages containing the pages that support it.
+- Keep every occurrence and connection confidence between 0 and 1 inclusive.
+- Keep document_model limited to document structure and concepts. Put all lesson content in teaching_plan.
+
+Then create teaching_plan from the concepts and occurrences in document_model. Follow these rules:
+- Set document_id to "${tutorialId}" exactly.
+- Set title to the exact document_model title.
 - Return between one and 120 units.
 - Treat the units array order as the recommended teaching order. Optimize for learning rather than PDF page order.
 - Make each unit one small, assessable knowledge point with one observable objective. Split broad topics into multiple units.
-- Give each unit between one and 12 unique concept_ids, using only IDs that appear in the document model. A unit may use multiple concepts, and a concept may appear in multiple units when the objectives differ.
+- Give each unit between one and 12 unique concept_ids, using only IDs from document_model. A unit may use multiple concepts, and a concept may appear in multiple units when the objectives differ.
 - Give each unit no more than 12 unique prerequisite_unit_ids. They may reference only units that appear earlier in the units array. Add a prerequisite only when it is genuinely needed for the unit objective.
-- Ground every unit in the PDF. Each source anchor must use a page where at least one of the unit's concept IDs occurs in the document model.
+- Ground every unit in the PDF. Each source anchor must use a page where at least one of the unit's concept IDs occurs in document_model.
 - Give each unit between one and 20 source anchors.
-- Use page_index and page_label exactly as represented by the relevant document occurrence.
+- Use page_index and page_label exactly as represented by the relevant document_model occurrence.
 - A source page may be revisited by multiple units when it serves different teaching purposes.
 - Give every lesson step a globally unique lowercase kebab-case ID beginning with "step:".
 - Build every unit as a six-to-ten-step mini-tutorial. The first step must be motivate and the last must be recap. Include at least one explain, demonstrate, practice, and assess step between them. Add contrast or connect steps when they improve understanding.
@@ -121,8 +165,9 @@ Create a learner-independent teaching plan for this document. Follow these rules
 - Give each unit between one and eight mastery_criteria. Make them observable evidence that the learner can explain or apply the knowledge point. Do not accept recognition or repetition alone when the document supports a stronger check.
 - Give each unit no more than eight concept-specific common_difficulties. Use an empty array when none are supported.
 - Source anchors must collectively support the lesson steps. Simple illustrative examples and contrasts may be constructed from the document's concepts, but do not introduce unrelated external lessons.
-- Do not generate learner personalization, session state, progress tracking, timing, or realtime behavior.
+- Do not generate learner personalization, session state, progress tracking, timing, or realtime behavior.`;
+}
 
-Validated document model:
-${JSON.stringify(model)}`;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

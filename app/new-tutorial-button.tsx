@@ -20,13 +20,8 @@ const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
 const PREPARATION_STAGES = [
   {
     id: "analyzing",
-    label: "Analyzing document",
-    description: "Mapping the document’s key concepts.",
-  },
-  {
-    id: "planning",
-    label: "Building teaching plan",
-    description: "Organizing the material into focused learning units.",
+    label: "Analyzing and planning",
+    description: "Mapping concepts and organizing focused learning units.",
   },
   {
     id: "saving",

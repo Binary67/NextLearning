@@ -1,25 +1,24 @@
 import { randomUUID } from "node:crypto";
 
 import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
-import { generateDocumentModel } from "@/lib/document-model-generation";
 import {
   MAX_DOCUMENT_SIZE,
   saveTutorial,
 } from "@/lib/document-storage";
 import { createLearningProgress } from "@/lib/learning-progress";
-import { generateTeachingPlan } from "@/lib/teaching-plan-generation";
 import {
   listPreparedTutorials,
   type TutorialResponse,
   toTutorialResponse,
 } from "@/lib/tutorial";
+import { generateTutorial } from "@/lib/tutorial-generation";
 
 export const runtime = "nodejs";
 
-type DocumentPreparationEvent =
+type TutorialPreparationEvent =
   | {
       type: "progress";
-      stage: "analyzing" | "planning" | "saving";
+      stage: "analyzing" | "saving";
     }
   | {
       type: "complete";
@@ -67,7 +66,7 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: DocumentPreparationEvent) => {
+      const send = (event: TutorialPreparationEvent) => {
         controller.enqueue(
           encoder.encode(`${JSON.stringify(event)}\n`),
         );
@@ -75,10 +74,7 @@ export async function POST(request: Request) {
 
       try {
         send({ type: "progress", stage: "analyzing" });
-        const model = await generateDocumentModel(file, tutorialId);
-
-        send({ type: "progress", stage: "planning" });
-        const plan = await generateTeachingPlan(file, model);
+        const { model, plan } = await generateTutorial(file, tutorialId);
 
         send({ type: "progress", stage: "saving" });
         const tutorial = await saveTutorial(

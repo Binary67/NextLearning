@@ -1166,9 +1166,8 @@ export function TutorialWorkspace({
                   {activeTutorial?.map.title ?? "Teaching plan"}
                 </h2>
                 <p className="modal-copy">
-                  A second planning pass reviewed the full PDF and its validated
-                  concept map, then ordered the material by learning dependency
-                  instead of page number.
+                  A single preparation pass mapped the full PDF and ordered the
+                  material by learning dependency instead of page number.
                 </p>
                 <div className="analysis-grid">
                   <div>
