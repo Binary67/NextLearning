@@ -884,32 +884,235 @@ a:focus-visible {
 
 .session-card h2 {
   gap: 11px;
-  margin: 0 0 22px;
+  margin: 0 0 18px;
   font-size: 0.7rem;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.log-entry {
-  padding: 16px;
-  border: 0;
-  border-radius: 13px;
-  background: rgba(118, 118, 128, 0.08);
+.learning-path-summary {
+  padding: 0 0 17px;
+  border-bottom: 1px solid var(--hairline);
 }
 
-.log-entry strong {
+.learning-path-summary strong,
+.learning-path-summary span {
+  display: block;
+}
+
+.learning-path-summary strong {
   color: #293047;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.learning-path-summary span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.learning-path-status {
+  padding: 16px;
+  border-radius: 13px;
+  margin: 0;
+  background: rgba(118, 118, 128, 0.08);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.learning-path-list,
+.learning-path-unit-steps ol {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.learning-path-list {
+  margin-top: 4px;
+}
+
+.learning-path-unit {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.learning-path-unit-toggle {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 28px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 2px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.learning-path-unit-toggle:hover {
+  background: rgba(118, 118, 128, 0.06);
+}
+
+.learning-path-unit.active .learning-path-unit-toggle {
+  background: rgba(0, 122, 255, 0.055);
+}
+
+.learning-path-unit-marker {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(118, 118, 128, 0.1);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.learning-path-unit.mastered .learning-path-unit-marker {
+  background: #e7f6eb;
+  color: #218342;
+}
+
+.learning-path-unit.active .learning-path-unit-marker {
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+}
+
+.learning-path-unit-copy {
+  min-width: 0;
+}
+
+.learning-path-unit-copy strong,
+.learning-path-unit-copy small {
+  display: block;
+}
+
+.learning-path-unit-copy strong {
+  overflow: hidden;
+  color: #323238;
   font-size: 0.78rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.log-entry p {
-  margin: 13px 0 0;
-  font-size: 0.9rem;
-  line-height: 1.7;
+.learning-path-unit-copy small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.64rem;
 }
 
-.log-entry .tutor-error {
+.learning-path-unit.active .learning-path-unit-copy small {
+  color: var(--blue-deep);
+}
+
+.learning-path-chevron {
+  color: #8c8c92;
+  transition: transform 160ms ease;
+}
+
+.learning-path-unit-toggle[aria-expanded="true"] .learning-path-chevron {
+  transform: rotate(90deg);
+}
+
+.learning-path-unit-steps {
+  padding: 2px 2px 10px 38px;
+}
+
+.learning-path-step {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 17px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+}
+
+.learning-path-step + .learning-path-step {
+  border-top: 1px solid rgba(60, 60, 67, 0.08);
+}
+
+.learning-path-step-marker {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1.5px solid #c7c7cc;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.learning-path-step.covered .learning-path-step-marker {
+  border-color: #34a853;
+  background: #34a853;
+}
+
+.learning-path-step.current .learning-path-step-marker {
+  border-color: var(--blue);
+}
+
+.learning-path-step.current .learning-path-step-marker::after {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--blue);
+  content: "";
+}
+
+.learning-path-step-copy {
+  min-width: 0;
+}
+
+.learning-path-step-copy small,
+.learning-path-step-copy strong {
+  display: block;
+}
+
+.learning-path-step-copy small {
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.learning-path-step-copy strong {
+  color: #3a3a3f;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.learning-path-step.upcoming .learning-path-step-copy,
+.learning-path-unit.upcoming .learning-path-unit-copy {
+  opacity: 0.68;
+}
+
+.learning-path-step-status {
+  color: #8a8a90;
+  font-size: 0.56rem;
+  font-weight: 650;
+}
+
+.learning-path-step.covered .learning-path-step-status {
+  color: #218342;
+}
+
+.learning-path-step.current .learning-path-step-status {
+  color: var(--blue-deep);
+}
+
+.session-card > .tutor-error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin: 12px 0 0;
+  background: #fff0ee;
   color: #a22424;
   font-size: 0.78rem;
   font-weight: 650;

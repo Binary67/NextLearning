@@ -189,10 +189,6 @@ export default function Home() {
   const masteredUnitCount = learningProgress
     ? Object.keys(learningProgress.unit_progress).length
     : 0;
-  const activeUnitNumber =
-    activeUnit && teachingPlan
-      ? teachingPlan.units.findIndex((unit) => unit.id === activeUnit.id) + 1
-      : 0;
   const tutorialComplete =
     teachingPlan !== null &&
     learningProgress !== null &&
@@ -1270,30 +1266,22 @@ export default function Home() {
             <section className="insight-card session-card" id="session-log">
               <h2>
                 <History size={24} aria-hidden="true" />
-                <span>Tutorial progress</span>
+                <span>Learning path</span>
               </h2>
-              <div className="log-entry">
-                <strong>
-                  {tutorialComplete
-                    ? "Teaching blueprint mastered"
-                    : activeUnit?.title ?? "Preparing tutorial"}
-                </strong>
-                {teachingPlan && learningProgress ? (
-                  <p>
-                    {masteredUnitCount} of {teachingPlan.units.length} units
-                    mastered.
-                    {activeUnit &&
-                      ` Active unit ${activeUnitNumber} begins on page ${activeUnit.source_anchors[0].page_label}.`}
-                  </p>
-                ) : (
-                  <p>Learning progress is loading.</p>
-                )}
-                {realtimeTutor.error && (
-                  <p className="tutor-error" role="alert">
-                    {realtimeTutor.error}
-                  </p>
-                )}
-              </div>
+              <LearningPath
+                key={teachingPlan?.document_id ?? "learning-path"}
+                plan={teachingPlan}
+                progress={learningProgress}
+                activeUnitId={activeUnit?.id ?? null}
+                completedLessonStepIds={
+                  realtimeTutor.completedLessonStepIds
+                }
+              />
+              {realtimeTutor.error && (
+                <p className="tutor-error" role="alert">
+                  {realtimeTutor.error}
+                </p>
+              )}
               {activeDocument && learningProgress && (
                 <button
                   className="secondary-button reset-progress-button"
@@ -1657,6 +1645,195 @@ export default function Home() {
         {toast}
       </div>
     </main>
+  );
+}
+
+function LearningPath({
+  plan,
+  progress,
+  activeUnitId,
+  completedLessonStepIds,
+}: {
+  plan: TeachingPlan | null;
+  progress: LearningProgress | null;
+  activeUnitId: string | null;
+  completedLessonStepIds: string[];
+}) {
+  const [expandedUnitIds, setExpandedUnitIds] = useState(
+    () => new Set(activeUnitId ? [activeUnitId] : []),
+  );
+  const previousActiveUnitIdRef = useRef(activeUnitId);
+
+  useEffect(() => {
+    const previousActiveUnitId = previousActiveUnitIdRef.current;
+
+    if (previousActiveUnitId === activeUnitId) {
+      return;
+    }
+
+    setExpandedUnitIds((expandedIds) => {
+      const nextExpandedIds = new Set(expandedIds);
+
+      if (previousActiveUnitId) {
+        nextExpandedIds.delete(previousActiveUnitId);
+      }
+
+      if (activeUnitId) {
+        nextExpandedIds.add(activeUnitId);
+      }
+
+      return nextExpandedIds;
+    });
+    previousActiveUnitIdRef.current = activeUnitId;
+  }, [activeUnitId]);
+
+  if (!plan || !progress) {
+    return <p className="learning-path-status">Learning progress is loading.</p>;
+  }
+
+  const masteredUnitIds = new Set(
+    Object.keys(progress.unit_progress),
+  );
+  const completedStepIds = new Set(completedLessonStepIds);
+  const masteredCount = masteredUnitIds.size;
+  const activeUnit = plan.units.find(
+    (unit) => unit.id === activeUnitId,
+  );
+
+  function toggleUnit(unitId: string) {
+    setExpandedUnitIds((expandedIds) => {
+      const nextExpandedIds = new Set(expandedIds);
+
+      if (nextExpandedIds.has(unitId)) {
+        nextExpandedIds.delete(unitId);
+      } else {
+        nextExpandedIds.add(unitId);
+      }
+
+      return nextExpandedIds;
+    });
+  }
+
+  return (
+    <>
+      <div className="learning-path-summary">
+        <strong>
+          {activeUnit?.title ?? "Teaching blueprint mastered"}
+        </strong>
+        <span>
+          {masteredCount} of {plan.units.length} units mastered
+        </span>
+      </div>
+      <ol className="learning-path-list">
+        {plan.units.map((unit, unitIndex) => {
+          const isMastered = masteredUnitIds.has(unit.id);
+          const isActive = unit.id === activeUnitId;
+          let unitStatus = "upcoming";
+          let unitStatusLabel = "Upcoming";
+
+          if (isMastered) {
+            unitStatus = "mastered";
+            unitStatusLabel = "Mastered";
+          } else if (isActive) {
+            unitStatus = "active";
+            unitStatusLabel = "In progress";
+          }
+
+          const isExpanded = expandedUnitIds.has(unit.id);
+          const stepListId = `learning-path-unit-${unitIndex}`;
+          const currentStepId = isActive
+            ? unit.lesson_steps.find(
+                (step) => !completedStepIds.has(step.id),
+              )?.id
+            : null;
+
+          return (
+            <li
+              className={`learning-path-unit ${unitStatus}`}
+              key={unit.id}
+            >
+              <button
+                className="learning-path-unit-toggle"
+                type="button"
+                onClick={() => toggleUnit(unit.id)}
+                aria-controls={stepListId}
+                aria-expanded={isExpanded}
+              >
+                <span
+                  className="learning-path-unit-marker"
+                  aria-hidden="true"
+                >
+                  {isMastered ? (
+                    <Check size={15} strokeWidth={2.7} />
+                  ) : (
+                    unitIndex + 1
+                  )}
+                </span>
+                <span className="learning-path-unit-copy">
+                  <strong>{unit.title}</strong>
+                  <small>
+                    {unitStatusLabel} · {unit.lesson_steps.length} steps
+                  </small>
+                </span>
+                <ChevronRight
+                  className="learning-path-chevron"
+                  size={17}
+                  aria-hidden="true"
+                />
+              </button>
+              {isExpanded && (
+                <div className="learning-path-unit-steps" id={stepListId}>
+                  <ol>
+                    {unit.lesson_steps.map((step) => {
+                      let stepStatus = "upcoming";
+                      let stepStatusLabel = "Upcoming";
+
+                      if (isMastered || completedStepIds.has(step.id)) {
+                        stepStatus = "covered";
+                        stepStatusLabel = "Covered";
+                      } else if (step.id === currentStepId) {
+                        stepStatus = "current";
+                        stepStatusLabel = "Current";
+                      }
+
+                      return (
+                        <li
+                          className={`learning-path-step ${stepStatus}`}
+                          key={step.id}
+                          aria-current={
+                            stepStatus === "current"
+                              ? "step"
+                              : undefined
+                          }
+                        >
+                          <span
+                            className="learning-path-step-marker"
+                            aria-hidden="true"
+                          >
+                            {stepStatus === "covered" && (
+                              <Check size={12} strokeWidth={2.8} />
+                            )}
+                          </span>
+                          <span className="learning-path-step-copy">
+                            <small>
+                              {formatLessonStepKind(step.kind)}
+                            </small>
+                            <strong>{step.title}</strong>
+                          </span>
+                          <small className="learning-path-step-status">
+                            {stepStatusLabel}
+                          </small>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </>
   );
 }
 

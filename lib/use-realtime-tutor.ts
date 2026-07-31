@@ -102,6 +102,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   >([]);
   const [activeVisualFocus, setActiveVisualFocus] =
     useState<RealtimeVisualFocus | null>(null);
+  const [completedLessonStepIds, setCompletedLessonStepIds] = useState<
+    string[]
+  >([]);
   const [error, setError] = useState("");
   const optionsRef = useRef(options);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -428,11 +431,16 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     setError("");
   }
 
+  function resetCompletedLessonSteps() {
+    completedLessonStepIdsRef.current.clear();
+    setCompletedLessonStepIds([]);
+  }
+
   function clearTutorialDisplay() {
     stopTutorCaptionTimer();
     activeVisualFocusRef.current = null;
     viewedVisualFocusIdsRef.current.clear();
-    completedLessonStepIdsRef.current.clear();
+    resetCompletedLessonSteps();
     tutorTranscriptRef.current = "";
     spokenTutorTranscriptRef.current = "";
     tutorTranscriptDoneRef.current = false;
@@ -682,6 +690,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     completedLessonStepIdsRef.current.add(lessonStepId);
+    setCompletedLessonStepIds([...completedLessonStepIdsRef.current]);
     const remainingLessonStepIds = activeUnit.lesson_steps
       .filter(
         (step) => !completedLessonStepIdsRef.current.has(step.id),
@@ -800,7 +809,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     viewedVisualFocusIdsRef.current.clear();
-    completedLessonStepIdsRef.current.clear();
+    resetCompletedLessonSteps();
     const initialFocus = activateVisualFocus(
       unit,
       unitGrounding.focuses[0].id,
@@ -1169,6 +1178,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     tutorCaption,
     tutorTranscripts,
     activeVisualFocus,
+    completedLessonStepIds,
     error,
     start,
     toggleUserTurn,
