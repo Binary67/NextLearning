@@ -80,6 +80,10 @@ type ProgressResponse = {
   message?: string;
 };
 
+const CAPTION_WORDS_PER_PHRASE = 4;
+const CAPTION_MILLISECONDS_PER_WORD = 330;
+const CAPTION_SENTENCE_PAUSE_MILLISECONDS = 200;
+
 export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const [status, setStatus] = useState<RealtimeTutorStatus>("idle");
   const [isUserTurn, setIsUserTurn] = useState(false);
@@ -103,6 +107,11 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const responseInProgressRef = useRef(false);
   const outputAudioPlayingRef = useRef(false);
   const tutorTranscriptRef = useRef("");
+  const displayedTutorTranscriptRef = useRef("");
+  const captionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const pendingFunctionCallRef = useRef<RealtimeFunctionCall | null>(null);
   const activeVisualFocusRef = useRef<RealtimeVisualFocus | null>(null);
   const pendingServerEventsRef = useRef(
     new Map<string, PendingServerEvent>(),
@@ -132,7 +141,13 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     userTurnTransitionRef.current = false;
     responseInProgressRef.current = false;
     outputAudioPlayingRef.current = false;
+    pendingFunctionCallRef.current = null;
     activeVisualFocusRef.current = null;
+
+    if (captionTimerRef.current) {
+      clearTimeout(captionTimerRef.current);
+      captionTimerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -397,8 +412,10 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   function clearTutorialDisplay() {
+    stopTutorCaptionTimer();
     activeVisualFocusRef.current = null;
     tutorTranscriptRef.current = "";
+    displayedTutorTranscriptRef.current = "";
     setActiveVisualFocus(null);
     setTutorTranscript("");
     setTutorTranscriptHistory([]);
@@ -444,7 +461,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       case "response.created":
         responseInProgressRef.current = true;
         commitTutorTranscript();
-        setTutorTranscript("");
 
         if (isUserTurnRef.current) {
           sendEvent({ type: "response.cancel" });
@@ -467,24 +483,26 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
         setIsTutorResponding(true);
         setIsTutorSpeaking(true);
+        revealNextTutorCaptionPhrase();
         void playRemoteAudio();
         return;
       case "response.output_audio_transcript.delta":
         if (event.delta) {
           tutorTranscriptRef.current += event.delta;
-          setTutorTranscript(tutorTranscriptRef.current);
+          revealNextTutorCaptionPhrase();
         }
         return;
       case "response.output_audio_transcript.done":
         if (event.transcript) {
           tutorTranscriptRef.current = event.transcript;
-          setTutorTranscript(event.transcript);
+          revealNextTutorCaptionPhrase();
         }
         return;
       case "output_audio_buffer.stopped":
+        await finishTutorPlayback(true);
+        return;
       case "output_audio_buffer.cleared":
-        outputAudioPlayingRef.current = false;
-        setIsTutorSpeaking(false);
+        await finishTutorPlayback(false);
         return;
       case "response.done": {
         responseInProgressRef.current = false;
@@ -510,6 +528,11 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         );
 
         if (functionCall) {
+          if (outputAudioPlayingRef.current) {
+            pendingFunctionCallRef.current = functionCall;
+            return;
+          }
+
           await handleFunctionCall(functionCall);
           return;
         }
@@ -887,6 +910,68 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
   }
 
+  function revealNextTutorCaptionPhrase() {
+    if (
+      !outputAudioPlayingRef.current ||
+      captionTimerRef.current ||
+      !tutorTranscriptRef.current.startsWith(
+        displayedTutorTranscriptRef.current,
+      )
+    ) {
+      return;
+    }
+
+    const phrase = getNextTutorCaptionPhrase(
+      tutorTranscriptRef.current,
+      displayedTutorTranscriptRef.current.length,
+    );
+
+    if (!phrase) {
+      return;
+    }
+
+    displayedTutorTranscriptRef.current += phrase;
+    setTutorTranscript(displayedTutorTranscriptRef.current);
+    captionTimerRef.current = setTimeout(() => {
+      captionTimerRef.current = null;
+      revealNextTutorCaptionPhrase();
+    }, getTutorCaptionPhraseDuration(phrase));
+  }
+
+  function stopTutorCaptionTimer() {
+    if (!captionTimerRef.current) {
+      return;
+    }
+
+    clearTimeout(captionTimerRef.current);
+    captionTimerRef.current = null;
+  }
+
+  function finishTutorCaption() {
+    stopTutorCaptionTimer();
+    displayedTutorTranscriptRef.current = tutorTranscriptRef.current;
+    setTutorTranscript(tutorTranscriptRef.current);
+  }
+
+  async function finishTutorPlayback(revealFullTranscript: boolean) {
+    outputAudioPlayingRef.current = false;
+
+    if (revealFullTranscript) {
+      finishTutorCaption();
+    } else {
+      stopTutorCaptionTimer();
+    }
+
+    setIsTutorSpeaking(false);
+
+    const pendingFunctionCall = pendingFunctionCallRef.current;
+    pendingFunctionCallRef.current = null;
+
+    if (pendingFunctionCall) {
+      await handleFunctionCall(pendingFunctionCall);
+    }
+  }
+
   function failConnection(dataChannel: RTCDataChannel, message: string) {
     if (dataChannelRef.current !== dataChannel) {
       return;
@@ -900,7 +985,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   function commitTutorTranscript() {
-    const completedTranscript = tutorTranscriptRef.current.trim();
+    stopTutorCaptionTimer();
+    const completedTranscript =
+      displayedTutorTranscriptRef.current.trim();
 
     if (completedTranscript) {
       setTutorTranscriptHistory((history) => [
@@ -910,6 +997,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     tutorTranscriptRef.current = "";
+    displayedTutorTranscriptRef.current = "";
+    setTutorTranscript("");
   }
 
   const tutorTranscripts = tutorTranscript
@@ -931,6 +1020,39 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     end,
     reset,
   };
+}
+
+function getNextTutorCaptionPhrase(
+  transcript: string,
+  displayedLength: number,
+) {
+  const remainingTranscript = transcript.slice(displayedLength);
+  const words = remainingTranscript.matchAll(/\S+\s*/g);
+  let phraseEnd = 0;
+  let wordCount = 0;
+
+  for (const word of words) {
+    phraseEnd = (word.index ?? 0) + word[0].length;
+    wordCount += 1;
+
+    if (
+      wordCount === CAPTION_WORDS_PER_PHRASE ||
+      /[.!?]["'’”)\]]*\s*$/.test(word[0])
+    ) {
+      break;
+    }
+  }
+
+  return remainingTranscript.slice(0, phraseEnd);
+}
+
+function getTutorCaptionPhraseDuration(phrase: string) {
+  const wordCount = phrase.trim().split(/\s+/).filter(Boolean).length;
+  const sentencePause = /[.!?]["'’”)\]]*\s*$/.test(phrase)
+    ? CAPTION_SENTENCE_PAUSE_MILLISECONDS
+    : 0;
+
+  return wordCount * CAPTION_MILLISECONDS_PER_WORD + sentencePause;
 }
 
 function setAudioTracksEnabled(
