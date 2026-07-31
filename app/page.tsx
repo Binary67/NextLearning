@@ -126,6 +126,8 @@ export default function Home() {
     useState(true);
   const [pageContextExpanded, setPageContextExpanded] = useState(true);
   const [learningPathExpanded, setLearningPathExpanded] = useState(false);
+  const [tutorTranscriptExpanded, setTutorTranscriptExpanded] =
+    useState(false);
   const [toast, setToast] = useState("");
   const [activeDocument, setActiveDocument] =
     useState<UploadedDocument | null>(null);
@@ -179,6 +181,8 @@ export default function Home() {
   const tutorSessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
+  const isTutorTranscriptExpanded =
+    tutorSessionActive && tutorTranscriptExpanded;
   const modalBusy =
     (modal === "prepare-document" && uploading) ||
     (modal === "reset-progress" && resettingProgress);
@@ -669,8 +673,9 @@ export default function Home() {
     showToast("Session ended.");
   }
 
-  function startNewSession() {
+  function startTutor() {
     setTimerRunning(true);
+    setTutorTranscriptExpanded(true);
     void realtimeTutor.start();
   }
 
@@ -774,7 +779,7 @@ export default function Home() {
         <button
           className="primary-button end-button"
           type="button"
-          onClick={startNewSession}
+          onClick={startTutor}
           disabled={!activeUnit}
         >
           <Play size={20} />
@@ -803,7 +808,7 @@ export default function Home() {
       <button
         className="primary-button end-button"
         type="button"
-        onClick={() => void realtimeTutor.start()}
+        onClick={startTutor}
         disabled={!activeUnit}
       >
         <Play size={20} />
@@ -1218,15 +1223,18 @@ export default function Home() {
             id="learning-insights"
             aria-label="Learning insights"
           >
-            {tutorSessionActive && (
-              <TutorTranscriptCanvas
-                transcript={realtimeTutor.currentTutorTranscript}
-                isStreaming={
-                  realtimeTutor.isTutorResponding ||
-                  realtimeTutor.isTutorSpeaking
-                }
-              />
-            )}
+            <TutorTranscriptCard
+              transcript={realtimeTutor.currentTutorTranscript}
+              isActive={tutorSessionActive}
+              isStreaming={
+                realtimeTutor.isTutorResponding ||
+                realtimeTutor.isTutorSpeaking
+              }
+              expanded={isTutorTranscriptExpanded}
+              onToggle={() =>
+                setTutorTranscriptExpanded((expanded) => !expanded)
+              }
+            />
             <section
               className={`insight-card understanding-card${
                 documentPreparationExpanded ? "" : " collapsed"
@@ -1758,15 +1766,26 @@ export default function Home() {
   );
 }
 
-function TutorTranscriptCanvas({
+function TutorTranscriptCard({
   transcript,
+  isActive,
   isStreaming,
+  expanded,
+  onToggle,
 }: {
   transcript: string;
+  isActive: boolean;
   isStreaming: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [hasNewTextBelow, setHasNewTextBelow] = useState(false);
+  let status = "Inactive";
+
+  if (isActive) {
+    status = isStreaming ? "Live" : "Current turn";
+  }
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -1811,23 +1830,33 @@ function TutorTranscriptCanvas({
 
   return (
     <section
-      className="insight-card live-transcript-card"
-      aria-labelledby="live-transcript-title"
+      className={`insight-card live-transcript-card${
+        expanded ? "" : " collapsed"
+      }`}
+      aria-label="Tutor transcript"
     >
-      <div className="live-transcript-header">
-        <h2 className="insight-card-title" id="live-transcript-title">
-          <span className="insight-card-icon">
-            <MessageSquareText size={18} aria-hidden="true" />
+      <InsightCardHeader
+        title="Tutor transcript"
+        icon={<MessageSquareText size={18} aria-hidden="true" />}
+        status={
+          <span
+            className={`live-transcript-status${
+              isStreaming ? " streaming" : ""
+            }`}
+          >
+            {status}
           </span>
-          Tutor transcript
-        </h2>
-        <span
-          className={`live-transcript-status${isStreaming ? " streaming" : ""}`}
-        >
-          {isStreaming ? "Live" : "Current turn"}
-        </span>
-      </div>
-      <div className="live-transcript-canvas">
+        }
+        expanded={expanded}
+        contentId="live-transcript-content"
+        onToggle={onToggle}
+        disabled={!isActive}
+      />
+      <div
+        className="live-transcript-canvas"
+        id="live-transcript-content"
+        hidden={!expanded}
+      >
         <div
           ref={viewportRef}
           className="live-transcript-viewport"
@@ -1874,6 +1903,7 @@ function InsightCardHeader({
   expanded,
   contentId,
   onToggle,
+  disabled = false,
 }: {
   title: string;
   icon?: ReactNode;
@@ -1881,6 +1911,7 @@ function InsightCardHeader({
   expanded: boolean;
   contentId: string;
   onToggle: () => void;
+  disabled?: boolean;
 }) {
   return (
     <h2 className="insight-card-header">
@@ -1890,6 +1921,7 @@ function InsightCardHeader({
         onClick={onToggle}
         aria-controls={contentId}
         aria-expanded={expanded}
+        disabled={disabled}
       >
         <span className="insight-card-title">
           {icon && <span className="insight-card-icon">{icon}</span>}
