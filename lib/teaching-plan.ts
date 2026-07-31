@@ -73,36 +73,28 @@ export const teachingPlanJsonSchema = {
     title: { type: "string" },
     units: {
       type: "array",
-      minItems: 1,
-      maxItems: 120,
       items: {
         type: "object",
         properties: {
           id: {
             type: "string",
-            pattern: "^unit:[a-z0-9]+(?:-[a-z0-9]+)*$",
           },
           title: { type: "string" },
           objective: { type: "string" },
           concept_ids: {
             type: "array",
-            minItems: 1,
-            maxItems: 12,
             items: { type: "string" },
           },
           prerequisite_unit_ids: {
             type: "array",
-            maxItems: 12,
             items: { type: "string" },
           },
           source_anchors: {
             type: "array",
-            minItems: 1,
-            maxItems: 20,
             items: {
               type: "object",
               properties: {
-                page_index: { type: "integer", minimum: 1 },
+                page_index: { type: "integer" },
                 page_label: { type: "string" },
                 purpose: {
                   type: "string",
@@ -115,14 +107,11 @@ export const teachingPlanJsonSchema = {
           },
           lesson_steps: {
             type: "array",
-            minItems: 6,
-            maxItems: 10,
             items: {
               type: "object",
               properties: {
                 id: {
                   type: "string",
-                  pattern: "^step:[a-z0-9]+(?:-[a-z0-9]+)*$",
                 },
                 kind: {
                   type: "string",
@@ -131,7 +120,6 @@ export const teachingPlanJsonSchema = {
                 title: { type: "string" },
                 content: {
                   type: "string",
-                  minLength: 80,
                 },
                 learner_prompt: {
                   type: ["string", "null"],
@@ -157,13 +145,10 @@ export const teachingPlanJsonSchema = {
           },
           mastery_criteria: {
             type: "array",
-            minItems: 1,
-            maxItems: 8,
             items: { type: "string" },
           },
           common_difficulties: {
             type: "array",
-            maxItems: 8,
             items: { type: "string" },
           },
         },

@@ -1,15 +1,16 @@
+import {
+  type AzureOpenAIErrorDetails,
+  createAzureOpenAIResponseError,
+} from "@/lib/azure-openai-generation-retry";
+
 type AzureOpenAIResponseWithError = {
-  error?: {
-    message?: string;
-  } | null;
+  error?: AzureOpenAIErrorDetails;
 };
 
 type AzureOpenAIStreamEvent<T> = {
   type?: string;
   response?: T;
-  error?: {
-    message?: string;
-  };
+  error?: AzureOpenAIErrorDetails;
 };
 
 export async function readAzureOpenAIResponseStream<
@@ -17,7 +18,11 @@ export async function readAzureOpenAIResponseStream<
 >(response: Response, fallbackMessage: string): Promise<T> {
   if (!response.ok) {
     const result = (await response.json()) as T;
-    throw new Error(result.error?.message ?? fallbackMessage);
+    throw createAzureOpenAIResponseError(
+      response.status,
+      result.error,
+      fallbackMessage,
+    );
   }
 
   if (!response.body) {
@@ -48,10 +53,10 @@ export async function readAzureOpenAIResponseStream<
       }
 
       if (event.type === "response.failed" || event.type === "error") {
-        throw new Error(
-          event.response?.error?.message ??
-            event.error?.message ??
-            fallbackMessage,
+        throw createAzureOpenAIResponseError(
+          500,
+          event.response?.error ?? event.error,
+          fallbackMessage,
         );
       }
     }

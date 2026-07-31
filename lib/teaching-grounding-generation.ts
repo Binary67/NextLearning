@@ -1,3 +1,8 @@
+import {
+  type AzureOpenAIErrorDetails,
+  InvalidAzureOpenAIContentError,
+  retryAzureOpenAIGeneration,
+} from "@/lib/azure-openai-generation-retry";
 import { MissingAzureOpenAIConfigurationError } from "@/lib/document-model-generation";
 import type { DocumentLayout } from "@/lib/document-layout";
 import type { DocumentModel } from "@/lib/document-model";
@@ -11,9 +16,7 @@ import type { TeachingPlan } from "@/lib/teaching-plan";
 
 type AzureOpenAIResponse = {
   status?: string;
-  error?: {
-    message?: string;
-  } | null;
+  error?: AzureOpenAIErrorDetails;
   output?: Array<{
     content?: Array<{
       type?: string;
@@ -38,54 +41,68 @@ export async function generateTeachingGrounding(
     );
   }
 
-  const response = await fetch(`${endpoint.replace(/\/+$/, "")}/responses`, {
-    method: "POST",
-    headers: {
-      "api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: deployment,
-      store: false,
-      stream: true,
-      reasoning: {
-        effort: "high",
-      },
-      max_output_tokens: 64000,
-      input: [
-        {
-          role: "user",
-          content: [
+  return retryAzureOpenAIGeneration(async () => {
+    const response = await fetch(
+      `${endpoint.replace(/\/+$/, "")}/responses`,
+      {
+        method: "POST",
+        headers: {
+          "api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: deployment,
+          store: false,
+          stream: true,
+          reasoning: {
+            effort: "high",
+          },
+          max_output_tokens: 64000,
+          input: [
             {
-              type: "input_text",
-              text: buildTeachingGroundingPrompt(model, plan, layout),
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildTeachingGroundingPrompt(model, plan, layout),
+                },
+              ],
             },
           ],
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "teaching_grounding",
-          schema: teachingGroundingJsonSchema,
-          strict: true,
-        },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "teaching_grounding",
+              schema: teachingGroundingJsonSchema,
+              strict: true,
+            },
+          },
+        }),
       },
-    }),
-  });
-  const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
-    response,
-    "Azure OpenAI could not ground the teaching plan.",
-  );
-
-  if (result.status !== "completed") {
-    throw new Error(
-      "Azure OpenAI did not finish grounding the teaching plan.",
     );
-  }
+    const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
+      response,
+      "Azure OpenAI could not ground the teaching plan.",
+    );
 
-  const grounding = JSON.parse(readOutputText(result)) as unknown;
-  return validateTeachingGrounding(grounding, plan, layout);
+    if (result.status !== "completed") {
+      throw new Error(
+        "Azure OpenAI did not finish grounding the teaching plan.",
+      );
+    }
+
+    const outputText = readOutputText(result);
+
+    try {
+      const grounding = JSON.parse(outputText) as unknown;
+      return validateTeachingGrounding(grounding, plan, layout);
+    } catch (error) {
+      throw new InvalidAzureOpenAIContentError(
+        "Azure OpenAI returned invalid teaching grounding.",
+        error,
+      );
+    }
+  });
 }
 
 function buildTeachingGroundingPrompt(
@@ -118,6 +135,7 @@ function buildTeachingGroundingPrompt(
 Follow these rules:
 - Set document_id to "${plan.document_id}" exactly.
 - Return one units entry for every teaching-plan unit, in the same order, using the exact unit_id.
+- Give each unit between one and 24 focuses.
 - Cover every lesson_steps entry using its exact lesson_step_id, and keep focuses grouped in lesson-step order.
 - Create one focus for a lesson step when one source section is sufficient. Create another focus with the same lesson_step_id only when the step genuinely needs a distinct paragraph, formula, figure, or table.
 - Give every focus a globally unique lowercase kebab-case ID beginning with "focus:".

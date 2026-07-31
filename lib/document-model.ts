@@ -106,27 +106,23 @@ export const documentModelJsonSchema = {
     },
     document_id: { type: "string" },
     title: { type: "string" },
-    page_count: { type: "integer", minimum: 1 },
+    page_count: { type: "integer" },
     concepts: {
       type: "array",
-      maxItems: 120,
       items: {
         type: "object",
         properties: {
           id: {
             type: "string",
-            pattern: "^concept:[a-z0-9]+(?:-[a-z0-9]+)*$",
           },
           name: { type: "string" },
           definition: { type: "string" },
           occurrences: {
             type: "array",
-            minItems: 1,
-            maxItems: 40,
             items: {
               type: "object",
               properties: {
-                page_index: { type: "integer", minimum: 1 },
+                page_index: { type: "integer" },
                 page_label: { type: "string" },
                 role: { type: "string", enum: occurrenceRoles },
                 explicitness: {
@@ -135,8 +131,6 @@ export const documentModelJsonSchema = {
                 },
                 confidence: {
                   type: "number",
-                  minimum: 0,
-                  maximum: 1,
                 },
               },
               required: [
@@ -156,7 +150,6 @@ export const documentModelJsonSchema = {
     },
     connections: {
       type: "array",
-      maxItems: 400,
       items: {
         type: "object",
         properties: {
@@ -168,15 +161,11 @@ export const documentModelJsonSchema = {
           },
           relevant_pages: {
             type: "array",
-            minItems: 1,
-            maxItems: 20,
-            items: { type: "integer", minimum: 1 },
+            items: { type: "integer" },
           },
           teaching_reason: { type: "string" },
           confidence: {
             type: "number",
-            minimum: 0,
-            maximum: 1,
           },
         },
         required: [
@@ -336,7 +325,9 @@ export function validateDocumentModel(
     typeof value.title !== "string" ||
     !isPositiveInteger(value.page_count) ||
     !Array.isArray(value.concepts) ||
-    !Array.isArray(value.connections)
+    value.concepts.length > 120 ||
+    !Array.isArray(value.connections) ||
+    value.connections.length > 400
   ) {
     throw new Error("The generated document map has invalid metadata.");
   }
@@ -348,17 +339,19 @@ export function validateDocumentModel(
   for (const concept of concepts) {
     if (
       !isRecord(concept) ||
-      typeof concept.id !== "string" ||
+      !isConceptId(concept.id) ||
       typeof concept.name !== "string" ||
       typeof concept.definition !== "string" ||
       !Array.isArray(concept.occurrences) ||
       concept.occurrences.length === 0 ||
+      concept.occurrences.length > 40 ||
       conceptIds.has(concept.id)
     ) {
       throw new Error("The generated document map has an invalid concept.");
     }
 
     conceptIds.add(concept.id);
+    const occurrencePages = new Set<number>();
 
     for (const occurrence of concept.occurrences) {
       if (
@@ -370,12 +363,15 @@ export function validateDocumentModel(
         !explicitnessValues.includes(
           occurrence.explicitness as Explicitness,
         ) ||
-        !isConfidence(occurrence.confidence)
+        !isConfidence(occurrence.confidence) ||
+        occurrencePages.has(occurrence.page_index)
       ) {
         throw new Error(
           "The generated document map has an invalid occurrence.",
         );
       }
+
+      occurrencePages.add(occurrence.page_index);
     }
   }
 
@@ -391,6 +387,7 @@ export function validateDocumentModel(
       ) ||
       !Array.isArray(connection.relevant_pages) ||
       connection.relevant_pages.length === 0 ||
+      connection.relevant_pages.length > 20 ||
       !connection.relevant_pages.every(
         (page) => isPositiveInteger(page) && page <= pageCount,
       ) ||
@@ -420,6 +417,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isPositiveInteger(value: unknown): value is number {
   return (
     typeof value === "number" && Number.isInteger(value) && value > 0
+  );
+}
+
+function isConceptId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^concept:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
   );
 }
 

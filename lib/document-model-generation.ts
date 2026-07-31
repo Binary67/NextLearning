@@ -1,4 +1,10 @@
 import {
+  type AzureOpenAIErrorDetails,
+  createAzureOpenAIResponseError,
+  InvalidAzureOpenAIContentError,
+  retryAzureOpenAIGeneration,
+} from "@/lib/azure-openai-generation-retry";
+import {
   documentModelJsonSchema,
   type DocumentModel,
   validateDocumentModel,
@@ -6,9 +12,7 @@ import {
 
 type AzureOpenAIResponse = {
   status?: string;
-  error?: {
-    message?: string;
-  } | null;
+  error?: AzureOpenAIErrorDetails;
   output?: Array<{
     content?: Array<{
       type?: string;
@@ -35,63 +39,78 @@ export async function generateDocumentModel(
   }
 
   const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
-  const response = await fetch(`${endpoint.replace(/\/+$/, "")}/responses`, {
-    method: "POST",
-    headers: {
-      "api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: deployment,
-      store: false,
-      reasoning: {
-        effort: "high",
-      },
-      max_output_tokens: 64000,
-      input: [
-        {
-          role: "user",
-          content: [
+  return retryAzureOpenAIGeneration(async () => {
+    const response = await fetch(
+      `${endpoint.replace(/\/+$/, "")}/responses`,
+      {
+        method: "POST",
+        headers: {
+          "api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: deployment,
+          store: false,
+          reasoning: {
+            effort: "high",
+          },
+          max_output_tokens: 64000,
+          input: [
             {
-              type: "input_file",
-              filename: file.name,
-              file_data: `data:application/pdf;base64,${fileData}`,
-              detail: "high",
-            },
-            {
-              type: "input_text",
-              text: buildDocumentMapPrompt(documentId),
+              role: "user",
+              content: [
+                {
+                  type: "input_file",
+                  filename: file.name,
+                  file_data: `data:application/pdf;base64,${fileData}`,
+                  detail: "high",
+                },
+                {
+                  type: "input_text",
+                  text: buildDocumentMapPrompt(documentId),
+                },
+              ],
             },
           ],
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "document_model",
-          schema: documentModelJsonSchema,
-          strict: true,
-        },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "document_model",
+              schema: documentModelJsonSchema,
+              strict: true,
+            },
+          },
+        }),
       },
-    }),
-  });
-  const result = (await response.json()) as AzureOpenAIResponse;
+    );
+    const result = (await response.json()) as AzureOpenAIResponse;
 
-  if (!response.ok) {
-    throw new Error(
-      result.error?.message ??
+    if (!response.ok) {
+      throw createAzureOpenAIResponseError(
+        response.status,
+        result.error,
         "Azure OpenAI could not prepare this document.",
-    );
-  }
+      );
+    }
 
-  if (result.status !== "completed") {
-    throw new Error(
-      "Azure OpenAI did not finish preparing this document.",
-    );
-  }
+    if (result.status !== "completed") {
+      throw new Error(
+        "Azure OpenAI did not finish preparing this document.",
+      );
+    }
 
-  const documentModel = JSON.parse(readOutputText(result)) as unknown;
-  return validateDocumentModel(documentModel, documentId);
+    const outputText = readOutputText(result);
+
+    try {
+      const documentModel = JSON.parse(outputText) as unknown;
+      return validateDocumentModel(documentModel, documentId);
+    } catch (error) {
+      throw new InvalidAzureOpenAIContentError(
+        "Azure OpenAI returned an invalid document map.",
+        error,
+      );
+    }
+  });
 }
 
 function buildDocumentMapPrompt(documentId: string) {
@@ -102,13 +121,15 @@ Create a compact concept map for an interactive tutor. Follow these rules:
 - Use 1-based PDF order for page_index.
 - Use the printed page number for page_label when visible; otherwise use page_index as a string.
 - Give each concept a stable lowercase kebab-case ID beginning with "concept:".
+- Return no more than 120 concepts and no more than 400 connections.
 - Merge aliases and repeated explanations into one concept.
 - Keep definitions short and grounded in this document.
-- Record only meaningful occurrences. Use implicit references sparingly and lower their confidence.
+- Give every concept between one and 40 meaningful occurrences. Use implicit references sparingly and lower their confidence.
 - Record at most one occurrence for a concept on each page. Choose the most useful teaching role.
 - Create only pedagogically useful, document-supported connections.
 - Make connection direction match the relationship name.
-- relevant_pages must contain the pages that support the connection.
+- Give every connection between one and 20 relevant_pages containing the pages that support it.
+- Keep every occurrence and connection confidence between 0 and 1 inclusive.
 - Do not generate a learner profile, learning progress, lesson script, quiz, or personalized plan.`;
 }
 

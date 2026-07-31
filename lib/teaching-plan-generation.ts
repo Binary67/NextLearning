@@ -1,3 +1,8 @@
+import {
+  type AzureOpenAIErrorDetails,
+  InvalidAzureOpenAIContentError,
+  retryAzureOpenAIGeneration,
+} from "@/lib/azure-openai-generation-retry";
 import { MissingAzureOpenAIConfigurationError } from "@/lib/document-model-generation";
 import type { DocumentModel } from "@/lib/document-model";
 import { readAzureOpenAIResponseStream } from "@/lib/azure-openai-response-stream";
@@ -9,9 +14,7 @@ import {
 
 type AzureOpenAIResponse = {
   status?: string;
-  error?: {
-    message?: string;
-  } | null;
+  error?: AzureOpenAIErrorDetails;
   output?: Array<{
     content?: Array<{
       type?: string;
@@ -36,61 +39,75 @@ export async function generateTeachingPlan(
   }
 
   const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
-  const response = await fetch(`${endpoint.replace(/\/+$/, "")}/responses`, {
-    method: "POST",
-    headers: {
-      "api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: deployment,
-      store: false,
-      stream: true,
-      reasoning: {
-        effort: "high",
-      },
-      max_output_tokens: 64000,
-      input: [
-        {
-          role: "user",
-          content: [
+  return retryAzureOpenAIGeneration(async () => {
+    const response = await fetch(
+      `${endpoint.replace(/\/+$/, "")}/responses`,
+      {
+        method: "POST",
+        headers: {
+          "api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: deployment,
+          store: false,
+          stream: true,
+          reasoning: {
+            effort: "high",
+          },
+          max_output_tokens: 64000,
+          input: [
             {
-              type: "input_file",
-              filename: file.name,
-              file_data: `data:application/pdf;base64,${fileData}`,
-              detail: "high",
-            },
-            {
-              type: "input_text",
-              text: buildTeachingPlanPrompt(model),
+              role: "user",
+              content: [
+                {
+                  type: "input_file",
+                  filename: file.name,
+                  file_data: `data:application/pdf;base64,${fileData}`,
+                  detail: "high",
+                },
+                {
+                  type: "input_text",
+                  text: buildTeachingPlanPrompt(model),
+                },
+              ],
             },
           ],
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "teaching_plan",
-          schema: teachingPlanJsonSchema,
-          strict: true,
-        },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "teaching_plan",
+              schema: teachingPlanJsonSchema,
+              strict: true,
+            },
+          },
+        }),
       },
-    }),
-  });
-
-  const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
-    response,
-    "Azure OpenAI could not build the teaching plan.",
-  );
-
-  if (result.status !== "completed") {
-    throw new Error(
-      "Azure OpenAI did not finish building the teaching plan.",
     );
-  }
 
-  const teachingPlan = JSON.parse(readOutputText(result)) as unknown;
-  return validateTeachingPlan(teachingPlan, model);
+    const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
+      response,
+      "Azure OpenAI could not build the teaching plan.",
+    );
+
+    if (result.status !== "completed") {
+      throw new Error(
+        "Azure OpenAI did not finish building the teaching plan.",
+      );
+    }
+
+    const outputText = readOutputText(result);
+
+    try {
+      const teachingPlan = JSON.parse(outputText) as unknown;
+      return validateTeachingPlan(teachingPlan, model);
+    } catch (error) {
+      throw new InvalidAzureOpenAIContentError(
+        "Azure OpenAI returned an invalid teaching plan.",
+        error,
+      );
+    }
+  });
 }
 
 function buildTeachingPlanPrompt(model: DocumentModel) {
@@ -99,11 +116,13 @@ function buildTeachingPlanPrompt(model: DocumentModel) {
 Create a learner-independent teaching plan for this document. Follow these rules:
 - Set document_id to "${model.document_id}" exactly.
 - Set title to "${model.title}" exactly.
+- Return between one and 120 units.
 - Treat the units array order as the recommended teaching order. Optimize for learning rather than PDF page order.
 - Make each unit one small, assessable knowledge point with one observable objective. Split broad topics into multiple units.
-- Use only concept IDs that appear in the document model. A unit may use multiple concepts, and a concept may appear in multiple units when the objectives differ.
-- prerequisite_unit_ids may reference only units that appear earlier in the units array. Add a prerequisite only when it is genuinely needed for the unit objective.
+- Give each unit between one and 12 unique concept_ids, using only IDs that appear in the document model. A unit may use multiple concepts, and a concept may appear in multiple units when the objectives differ.
+- Give each unit no more than 12 unique prerequisite_unit_ids. They may reference only units that appear earlier in the units array. Add a prerequisite only when it is genuinely needed for the unit objective.
 - Ground every unit in the PDF. Each source anchor must use a page where at least one of the unit's concept IDs occurs in the document model.
+- Give each unit between one and 20 source anchors.
 - Use page_index and page_label exactly as represented by the relevant document occurrence.
 - A source page may be revisited by multiple units when it serves different teaching purposes.
 - Give every lesson step a globally unique lowercase kebab-case ID beginning with "step:".
@@ -115,8 +134,8 @@ Create a learner-independent teaching plan for this document. Follow these rules
 - Use contrast to distinguish a likely confusion or non-example. Use connect to relate the unit to a prerequisite or explain why a later concept follows.
 - Practice is a guided application. Assess is an independent mastery check. For both kinds, provide a learner_prompt, the expected_response used as a private rubric, and remediation that gives the tutor a specific alternative explanation. Set those three fields to null for every other step kind.
 - The recap step must synthesize two or three durable takeaways without adding new material.
-- Make mastery_criteria observable evidence that the learner can explain or apply the knowledge point. Do not accept recognition or repetition alone when the document supports a stronger check.
-- Record only likely, concept-specific common difficulties. Use an empty array when none are supported.
+- Give each unit between one and eight mastery_criteria. Make them observable evidence that the learner can explain or apply the knowledge point. Do not accept recognition or repetition alone when the document supports a stronger check.
+- Give each unit no more than eight concept-specific common_difficulties. Use an empty array when none are supported.
 - Source anchors must collectively support the lesson steps. Simple illustrative examples and contrasts may be constructed from the document's concepts, but do not introduce unrelated external lessons.
 - Do not generate learner personalization, session state, progress tracking, timing, or realtime behavior.
 

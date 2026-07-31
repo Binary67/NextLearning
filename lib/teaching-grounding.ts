@@ -32,30 +32,23 @@ export const teachingGroundingJsonSchema = {
     document_id: { type: "string" },
     units: {
       type: "array",
-      minItems: 1,
-      maxItems: 120,
       items: {
         type: "object",
         properties: {
           unit_id: { type: "string" },
           focuses: {
             type: "array",
-            minItems: 1,
-            maxItems: 24,
             items: {
               type: "object",
               properties: {
                 id: {
                   type: "string",
-                  pattern: "^focus:[a-z0-9]+(?:-[a-z0-9]+)*$",
                 },
                 lesson_step_id: { type: "string" },
                 teaching_point: { type: "string" },
-                page_index: { type: "integer", minimum: 1 },
+                page_index: { type: "integer" },
                 block_ids: {
                   type: "array",
-                  minItems: 1,
-                  maxItems: 6,
                   items: { type: "string" },
                 },
               },
