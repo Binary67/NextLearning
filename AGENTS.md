@@ -1,3 +1,9 @@
+# Project Policies
+
+- Do not write data or schema migration code.
+- Do not preserve backward compatibility with old data formats, schemas, or processing outputs.
+- Do not delete existing data. When a change makes data incompatible, tell the user what must be deleted and wait for the user to delete it.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

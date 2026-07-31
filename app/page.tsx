@@ -181,17 +181,26 @@ export default function Home() {
     (modal === "prepare-document" && uploading) ||
     (modal === "reset-progress" && resettingProgress);
   const isUserTurn = realtimeTutor.isUserTurn;
-  let userTurnActionLabel = "Raise hand to speak";
+  const isInterruptionTurn =
+    realtimeTutor.learnerTurnPurpose === "interruption";
+  let userTurnActionLabel = realtimeTutor.isAwaitingLearnerAnswer
+    ? "Answer tutor question"
+    : "Raise hand to ask a question";
 
   if (realtimeTutor.isSubmittingUserTurn) {
-    userTurnActionLabel = "Sending answer";
+    userTurnActionLabel = isInterruptionTurn
+      ? "Sending question"
+      : "Sending answer";
   } else if (isUserTurn) {
-    userTurnActionLabel = "Done speaking";
+    userTurnActionLabel = isInterruptionTurn
+      ? "Done asking"
+      : "Done answering";
   }
 
   const liveTutorCaption = realtimeTutor.tutorCaption;
   const tutorQuestion =
     realtimeTutor.status === "connected" &&
+    realtimeTutor.isAwaitingLearnerAnswer &&
     !realtimeTutor.isSubmittingUserTurn &&
     !realtimeTutor.isTutorResponding &&
     !realtimeTutor.isTutorSpeaking
@@ -391,14 +400,20 @@ export default function Home() {
   const toggleUserTurn = useCallback(async () => {
     const actionSucceeded = await realtimeTutor.toggleUserTurn();
 
-    if (actionSucceeded) {
-      showToast(
-        isUserTurn
-          ? "Answer sent. Waiting for the tutor."
-          : "Listening. Tap the check when you finish speaking.",
-      );
+    if (!actionSucceeded) {
+      return;
     }
-  }, [isUserTurn, realtimeTutor, showToast]);
+
+    let toastMessage = "Listening. Tap the check when you finish speaking.";
+
+    if (isUserTurn) {
+      toastMessage = isInterruptionTurn
+        ? "Question sent. Waiting for the tutor."
+        : "Answer sent. Waiting for the tutor.";
+    }
+
+    showToast(toastMessage);
+  }, [isInterruptionTurn, isUserTurn, realtimeTutor, showToast]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -678,22 +693,30 @@ export default function Home() {
       }
 
       if (isUserTurn) {
+        const listeningPrompt = isInterruptionTurn
+          ? "Ask your question, then tap the check"
+          : "Speak your answer, then tap the check";
+
         return (
           <span className="turn-state-copy">
             <small className="listening-label">
               <span className="listening-dot" aria-hidden="true" />
               Listening
             </small>
-            <strong>Speak your answer, then tap the check</strong>
+            <strong>{listeningPrompt}</strong>
           </span>
         );
       }
 
       if (realtimeTutor.isSubmittingUserTurn) {
+        const submissionLabel = isInterruptionTurn
+          ? "Sending your question…"
+          : "Sending your answer…";
+
         return (
           <span className="turn-state-copy">
             <small>Your turn</small>
-            <strong>Sending your answer…</strong>
+            <strong>{submissionLabel}</strong>
           </span>
         );
       }
@@ -721,7 +744,11 @@ export default function Home() {
       return (
         <span className="turn-state-copy">
           <small>Your turn</small>
-          <strong>Raise hand when you&apos;re ready</strong>
+          <strong>
+            {realtimeTutor.isAwaitingLearnerAnswer
+              ? "Answer when you’re ready"
+              : "Raise your hand to ask a question"}
+          </strong>
         </span>
       );
     }
