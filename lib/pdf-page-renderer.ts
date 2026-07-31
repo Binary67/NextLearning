@@ -29,7 +29,10 @@ export async function renderPdfPageAsImage(
   return canvas.toDataURL("image/jpeg", 0.72);
 }
 
-async function loadPdfDocument(documentId: string, documentUrl: string) {
+export async function loadPdfDocument(
+  documentId: string,
+  documentUrl: string,
+) {
   const existingDocument = pdfDocumentPromises.get(documentId);
 
   if (existingDocument) {

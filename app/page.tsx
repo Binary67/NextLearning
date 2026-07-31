@@ -30,6 +30,8 @@ import {
   useState,
 } from "react";
 
+import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
+import type { DocumentLayout } from "@/lib/document-layout";
 import type {
   DocumentModel,
   DocumentMapSummary,
@@ -39,6 +41,7 @@ import {
   findActiveTeachingUnit,
   type LearningProgress,
 } from "@/lib/learning-progress";
+import type { TeachingGrounding } from "@/lib/teaching-grounding";
 import type {
   TeachingPlan,
   TeachingPlanSummary,
@@ -89,6 +92,10 @@ export default function Home() {
   const [pageContextError, setPageContextError] = useState("");
   const [teachingPlan, setTeachingPlan] =
     useState<TeachingPlan | null>(null);
+  const [documentLayout, setDocumentLayout] =
+    useState<DocumentLayout | null>(null);
+  const [teachingGrounding, setTeachingGrounding] =
+    useState<TeachingGrounding | null>(null);
   const [documentModel, setDocumentModel] =
     useState<DocumentModel | null>(null);
   const [learningProgress, setLearningProgress] =
@@ -103,8 +110,10 @@ export default function Home() {
   const realtimeTutor = useRealtimeTutor({
     documentId: activeDocument?.id ?? null,
     documentUrl: activeDocument?.url ?? null,
+    documentLayout,
     documentModel,
     teachingPlan,
+    teachingGrounding,
     activeUnit,
     onPageChange: setCurrentPage,
     onProgressChange: setLearningProgress,
@@ -217,14 +226,28 @@ export default function Home() {
       setTeachingPlanLoading(true);
       setTeachingPlanError("");
       setTeachingPlan(null);
+      setDocumentLayout(null);
+      setTeachingGrounding(null);
       setDocumentModel(null);
       setLearningProgress(null);
 
       try {
-        const [planResponse, mapResponse, progressResponse] =
+        const [
+          planResponse,
+          mapResponse,
+          layoutResponse,
+          groundingResponse,
+          progressResponse,
+        ] =
           await Promise.all([
             fetch("/api/document/plan", { signal: controller.signal }),
             fetch("/api/document/map", { signal: controller.signal }),
+            fetch("/api/document/layout", {
+              signal: controller.signal,
+            }),
+            fetch("/api/document/grounding", {
+              signal: controller.signal,
+            }),
             fetch("/api/document/progress", {
               signal: controller.signal,
             }),
@@ -235,6 +258,14 @@ export default function Home() {
         };
         const mapData = (await mapResponse.json()) as {
           model?: DocumentModel;
+          message?: string;
+        };
+        const layoutData = (await layoutResponse.json()) as {
+          layout?: DocumentLayout;
+          message?: string;
+        };
+        const groundingData = (await groundingResponse.json()) as {
+          grounding?: TeachingGrounding;
           message?: string;
         };
         const progressData = (await progressResponse.json()) as {
@@ -254,6 +285,19 @@ export default function Home() {
           );
         }
 
+        if (!layoutResponse.ok || !layoutData.layout) {
+          throw new Error(
+            layoutData.message ?? "The document layout could not be loaded.",
+          );
+        }
+
+        if (!groundingResponse.ok || !groundingData.grounding) {
+          throw new Error(
+            groundingData.message ??
+              "The teaching grounding could not be loaded.",
+          );
+        }
+
         if (!progressResponse.ok || !progressData.progress) {
           throw new Error(
             progressData.message ?? "Learning progress could not be loaded.",
@@ -261,6 +305,8 @@ export default function Home() {
         }
 
         setTeachingPlan(planData.plan);
+        setDocumentLayout(layoutData.layout);
+        setTeachingGrounding(groundingData.grounding);
         setDocumentModel(mapData.model);
         setLearningProgress(progressData.progress);
         const initialUnit = findActiveTeachingUnit(
@@ -425,7 +471,7 @@ export default function Home() {
 
     setUploading(true);
     setDocumentError("");
-    showToast("Building the document map and teaching blueprint…");
+    showToast("Building the document map, teaching plan, and visual guidance…");
 
     try {
       const formData = new FormData();
@@ -489,6 +535,8 @@ export default function Home() {
       setCurrentPage(1);
       setPageContext(null);
       setTeachingPlan(null);
+      setDocumentLayout(null);
+      setTeachingGrounding(null);
       setDocumentModel(null);
       setLearningProgress(null);
       setTeachingPlanError("");
@@ -896,11 +944,37 @@ export default function Home() {
                     <ChevronRight size={20} />
                   </button>
                 </div>
-                <iframe
-                  key={currentPage}
-                  src={`${activeDocument.url}#page=${currentPage}&view=FitH`}
-                  title={activeDocument.name}
-                />
+                <div className="pdf-stage">
+                  <PdfDocumentViewer
+                    documentId={activeDocument.id}
+                    documentUrl={activeDocument.url}
+                    documentName={activeDocument.name}
+                    pageIndex={currentPage}
+                    highlightedBlocks={
+                      realtimeTutor.activeVisualFocus?.page_index ===
+                      currentPage
+                        ? realtimeTutor.activeVisualFocus.blocks
+                        : []
+                    }
+                  />
+                  {realtimeTutor.activeVisualFocus?.page_index ===
+                    currentPage && (
+                    <div className="visual-focus-chip" aria-live="polite">
+                      <span>Now looking at</span>
+                      <strong>
+                        {realtimeTutor.activeVisualFocus.teaching_point}
+                      </strong>
+                    </div>
+                  )}
+                  {realtimeTutor.tutorTranscript && (
+                    <div className="tutor-caption" aria-live="polite">
+                      <span>Tutor says</span>
+                      <p>
+                        {getCaptionTail(realtimeTutor.tutorTranscript)}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="document-state">
@@ -911,7 +985,8 @@ export default function Home() {
                 <h1>Upload your first document</h1>
                 <p>
                   Choose a PDF up to 10 MB. The full document will be read
-                  to prepare its concept map and teaching blueprint.
+                  to prepare its concept map, teaching plan, and visual
+                  guidance.
                 </p>
                 {documentError && (
                   <p className="document-error" role="alert">
@@ -997,7 +1072,7 @@ export default function Home() {
                   <div className="preparation-status" role="status">
                     <h3>Ready to learn</h3>
                     <p>
-                      The concept map and teaching blueprint are prepared.
+                      The teaching plan and visual guidance are prepared.
                     </p>
                   </div>
                   <dl className="preparation-metrics">
@@ -1019,8 +1094,8 @@ export default function Home() {
                 <div className="preparation-status empty">
                   <h3>Waiting for a document</h3>
                   <p>
-                    Upload a PDF to prepare its concept map and teaching
-                    blueprint.
+                    Upload a PDF to prepare its teaching plan and visual
+                    guidance.
                   </p>
                 </div>
               )}
@@ -1224,8 +1299,8 @@ export default function Home() {
                 </div>
                 <p className="modal-copy">
                   The complete PDF will be sent to Azure OpenAI to build its
-                  concept map and an ordered teaching blueprint. No AI request
-                  is made until you continue.
+                  concept map, ordered teaching plan, and visual grounding. No
+                  AI request is made until you continue.
                 </p>
                 {activeDocument && (
                   <p className="replacement-note">
@@ -1431,4 +1506,17 @@ function isPdf(file: File) {
 
 function formatConceptId(conceptId: string) {
   return conceptId.replace("concept:", "").replaceAll("-", " ");
+}
+
+function getCaptionTail(transcript: string) {
+  const maximumLength = 420;
+
+  if (transcript.length <= maximumLength) {
+    return transcript;
+  }
+
+  const tail = transcript.slice(-maximumLength);
+  const firstSpace = tail.indexOf(" ");
+
+  return `…${tail.slice(firstSpace + 1)}`;
 }

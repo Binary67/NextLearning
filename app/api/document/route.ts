@@ -4,6 +4,8 @@ import {
   MissingAzureOpenAIConfigurationError,
   generateDocumentModel,
 } from "@/lib/document-model-generation";
+import { generateDocumentLayout } from "@/lib/document-layout-generation";
+import { validateDocumentLayout } from "@/lib/document-layout";
 import {
   summarizeDocumentModel,
   type DocumentModel,
@@ -12,12 +14,16 @@ import {
 import {
   deleteStoredDocument,
   MAX_DOCUMENT_SIZE,
+  readDocumentLayout,
   readDocumentModel,
   readStoredDocument,
+  readTeachingGrounding,
   readTeachingPlan,
   saveDocument,
   type StoredDocument,
 } from "@/lib/document-storage";
+import { generateTeachingGrounding } from "@/lib/teaching-grounding-generation";
+import { validateTeachingGrounding } from "@/lib/teaching-grounding";
 import { generateTeachingPlan } from "@/lib/teaching-plan-generation";
 import {
   summarizeTeachingPlan,
@@ -28,18 +34,38 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [document, storedModel, storedPlan] = await Promise.all([
+  const [
+    document,
+    storedModel,
+    storedLayout,
+    storedPlan,
+    storedGrounding,
+  ] = await Promise.all([
     readStoredDocument(),
     readDocumentModel(),
+    readDocumentLayout(),
     readTeachingPlan(),
+    readTeachingGrounding(),
   ]);
 
-  if (!document || !storedModel || !storedPlan) {
+  if (
+    !document ||
+    !storedModel ||
+    !storedLayout ||
+    !storedPlan ||
+    !storedGrounding
+  ) {
     return Response.json({ document: null });
   }
 
   const model = validateDocumentModel(storedModel, document.id);
+  const layout = validateDocumentLayout(
+    storedLayout,
+    document.id,
+    model.page_count,
+  );
   const plan = validateTeachingPlan(storedPlan, model);
+  validateTeachingGrounding(storedGrounding, plan, layout);
 
   return Response.json({
     document: toDocumentResponse(document, model, plan),
@@ -74,9 +100,29 @@ export async function POST(request: Request) {
   const documentId = randomUUID();
 
   try {
-    const model = await generateDocumentModel(file, documentId);
+    const [model, generatedLayout] = await Promise.all([
+      generateDocumentModel(file, documentId),
+      generateDocumentLayout(file, documentId),
+    ]);
+    const layout = validateDocumentLayout(
+      generatedLayout,
+      documentId,
+      model.page_count,
+    );
     const plan = await generateTeachingPlan(file, model);
-    const document = await saveDocument(file, documentId, model, plan);
+    const grounding = await generateTeachingGrounding(
+      model,
+      plan,
+      layout,
+    );
+    const document = await saveDocument(
+      file,
+      documentId,
+      model,
+      plan,
+      layout,
+      grounding,
+    );
 
     return Response.json({
       document: toDocumentResponse(document, model, plan),

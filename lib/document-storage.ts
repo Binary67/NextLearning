@@ -1,11 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import type { DocumentLayout } from "@/lib/document-layout";
 import type { DocumentModel } from "@/lib/document-model";
 import {
   createLearningProgress,
   type LearningProgress,
 } from "@/lib/learning-progress";
+import type { TeachingGrounding } from "@/lib/teaching-grounding";
 import type { TeachingPlan } from "@/lib/teaching-plan";
 
 export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
@@ -23,9 +25,17 @@ const documentModelPath = path.join(
   documentsDirectory,
   "document-model.json",
 );
+const documentLayoutPath = path.join(
+  documentsDirectory,
+  "document-layout.json",
+);
 const teachingPlanPath = path.join(
   documentsDirectory,
   "teaching-plan.json",
+);
+const teachingGroundingPath = path.join(
+  documentsDirectory,
+  "teaching-grounding.json",
 );
 const learningProgressPath = path.join(
   documentsDirectory,
@@ -44,8 +54,18 @@ export async function readDocumentModel(): Promise<DocumentModel | null> {
   return readJsonFile<DocumentModel>(documentModelPath);
 }
 
+export async function readDocumentLayout(): Promise<DocumentLayout | null> {
+  return readJsonFile<DocumentLayout>(documentLayoutPath);
+}
+
 export async function readTeachingPlan(): Promise<TeachingPlan | null> {
   return readJsonFile<TeachingPlan>(teachingPlanPath);
+}
+
+export async function readTeachingGrounding(): Promise<
+  TeachingGrounding | null
+> {
+  return readJsonFile<TeachingGrounding>(teachingGroundingPath);
 }
 
 export async function readLearningProgress(): Promise<LearningProgress | null> {
@@ -68,7 +88,9 @@ export async function deleteStoredDocument() {
 
   await fs.rm(metadataPath, { force: true });
   await fs.rm(documentModelPath, { force: true });
+  await fs.rm(documentLayoutPath, { force: true });
   await fs.rm(teachingPlanPath, { force: true });
+  await fs.rm(teachingGroundingPath, { force: true });
   await fs.rm(learningProgressPath, { force: true });
   await fs.rm(path.join(documentsDirectory, document.fileName), {
     force: true,
@@ -82,6 +104,8 @@ export async function saveDocument(
   documentId: string,
   model: DocumentModel,
   plan: TeachingPlan,
+  layout: DocumentLayout,
+  grounding: TeachingGrounding,
 ): Promise<StoredDocument> {
   const previousDocument = await readStoredDocument();
   const fileName = "current.pdf";
@@ -97,7 +121,12 @@ export async function saveDocument(
   await Promise.all([
     fs.writeFile(path.join(documentsDirectory, fileName), fileData),
     fs.writeFile(documentModelPath, JSON.stringify(model, null, 2)),
+    fs.writeFile(documentLayoutPath, JSON.stringify(layout, null, 2)),
     fs.writeFile(teachingPlanPath, JSON.stringify(plan, null, 2)),
+    fs.writeFile(
+      teachingGroundingPath,
+      JSON.stringify(grounding, null, 2),
+    ),
     fs.writeFile(
       learningProgressPath,
       JSON.stringify(createLearningProgress(documentId), null, 2),

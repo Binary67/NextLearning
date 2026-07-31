@@ -231,18 +231,25 @@ export function validateTeachingPlan(
         !isRecord(anchor) ||
         !isPositiveInteger(anchor.page_index) ||
         anchor.page_index > model.page_count ||
-        !isNonEmptyString(anchor.page_label) ||
-        !isSourcePurpose(anchor.purpose) ||
-        !groundedOccurrences.some(
-          (occurrence) =>
-            occurrence.page_index === anchor.page_index &&
-            occurrence.page_label === anchor.page_label,
-        )
+        typeof anchor.page_label !== "string" ||
+        !isSourcePurpose(anchor.purpose)
       ) {
         throw new Error(
           "The generated teaching plan has an invalid source anchor.",
         );
       }
+
+      const groundedOccurrence = groundedOccurrences.find(
+        (occurrence) => occurrence.page_index === anchor.page_index,
+      );
+
+      if (!groundedOccurrence) {
+        throw new Error(
+          "The generated teaching plan has an invalid source anchor.",
+        );
+      }
+
+      anchor.page_label = groundedOccurrence.page_label;
     }
 
     earlierUnitIds.add(id);
