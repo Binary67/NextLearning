@@ -71,9 +71,6 @@ a:focus-visible {
 .header-actions,
 .main-nav,
 .lesson-toolbar > div,
-.card-eyebrow,
-.session-card h2,
-.takeaways-card h2,
 .profile-summary {
   display: flex;
   align-items: center;
@@ -630,14 +627,73 @@ a:focus-visible {
   border-radius: 20px;
 }
 
+.insight-card.collapsed {
+  min-height: 0;
+}
+
+.insight-card-header {
+  margin: 0;
+}
+
+.insight-card-toggle {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.insight-card-title,
+.insight-card-controls {
+  display: flex;
+  align-items: center;
+}
+
+.insight-card-title {
+  min-width: 0;
+  gap: 11px;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.insight-card-controls {
+  gap: 8px;
+}
+
+.insight-card-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.insight-card-toggle[aria-expanded="true"] .insight-card-chevron {
+  transform: rotate(90deg);
+}
+
+.insight-card-toggle:hover .insight-card-chevron {
+  color: var(--blue);
+}
+
+.insight-card-summary {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
 .understanding-card {
   min-height: 224px;
   padding: 24px;
   text-align: left;
 }
 
-.card-eyebrow {
-  justify-content: space-between;
+.document-preparation-title {
   color: #55555d;
   font-size: 0.68rem;
   font-weight: 700;
@@ -738,16 +794,12 @@ a:focus-visible {
   padding: 25px 24px 24px;
 }
 
-.takeaways-card h2 {
-  gap: 11px;
+.takeaways-card .insight-card-header {
   margin: 0 0 25px;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
-.takeaways-card h2 svg,
-.session-card h2 svg {
+.takeaways-card .insight-card-title svg,
+.session-card .insight-card-title svg {
   color: var(--blue);
 }
 
@@ -819,7 +871,9 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
-.takeaways-card h2 + .context-section-label {
+.takeaways-card
+  .insight-card-content
+  > .context-section-label:first-child {
   margin-top: 0;
 }
 
@@ -880,13 +934,19 @@ a:focus-visible {
   padding: 25px 24px;
 }
 
-.session-card h2 {
-  gap: 11px;
+.session-card .insight-card-header {
   margin: 0 0 18px;
+}
+
+.session-card .insight-card-title {
   font-size: 0.7rem;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.insight-card.collapsed .insight-card-header {
+  margin-bottom: 0;
 }
 
 .learning-path-summary {

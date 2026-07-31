@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -119,6 +120,10 @@ export default function Home() {
   const [popover, setPopover] = useState<Popover>(null);
   const [timerRunning, setTimerRunning] = useState(true);
   const [insightsVisible, setInsightsVisible] = useState(true);
+  const [documentPreparationExpanded, setDocumentPreparationExpanded] =
+    useState(true);
+  const [pageContextExpanded, setPageContextExpanded] = useState(true);
+  const [learningPathExpanded, setLearningPathExpanded] = useState(false);
   const [toast, setToast] = useState("");
   const [activeDocument, setActiveDocument] =
     useState<UploadedDocument | null>(null);
@@ -227,6 +232,7 @@ export default function Home() {
           document: UploadedDocument | null;
         };
         setActiveDocument(data.document);
+        setDocumentPreparationExpanded(!data.document);
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
           setDocumentError(error.message);
@@ -532,6 +538,7 @@ export default function Home() {
       );
       realtimeTutor.reset();
       setActiveDocument(document);
+      setDocumentPreparationExpanded(false);
       setCurrentPage(1);
       setPendingFile(null);
       setModal(null);
@@ -617,6 +624,7 @@ export default function Home() {
 
       realtimeTutor.reset();
       setActiveDocument(null);
+      setDocumentPreparationExpanded(true);
       setCurrentPage(1);
       setTeachingPlan(null);
       setDocumentLayout(null);
@@ -783,6 +791,36 @@ export default function Home() {
   const insightsToggleLabel = insightsVisible
     ? "Hide insights"
     : "Show insights";
+  const documentPreparationSummary = activeDocument
+    ? `Ready · ${activeDocument.map.concept_count} concepts · ${activeDocument.plan.unit_count} units`
+    : "Waiting for a document";
+  let pageContextSummary = "Waiting for a document";
+
+  if (activeDocument) {
+    pageContextSummary = `Page ${currentPage}`;
+
+    if (pageContextLoading) {
+      pageContextSummary += " · Loading context";
+    } else if (pageContextError) {
+      pageContextSummary += " · Context unavailable";
+    } else if (pageContext) {
+      const conceptCount = pageContext.current_concepts.length;
+      const conceptLabel = conceptCount === 1 ? "concept" : "concepts";
+      const futureConnectionCount =
+        pageContext.future_connections.length;
+      pageContextSummary +=
+        ` · ${conceptCount} ${conceptLabel} · ${futureConnectionCount} later`;
+    }
+  }
+
+  let learningPathSummary = "Waiting for a document";
+
+  if (activeDocument) {
+    learningPathSummary =
+      teachingPlan && learningProgress
+        ? `${masteredUnitCount} of ${teachingPlan.units.length} units mastered`
+        : "Learning progress is loading";
+  }
 
   function renderCurrentConcepts() {
     if (pageContextLoading) {
@@ -1154,113 +1192,174 @@ export default function Home() {
             id="learning-insights"
             aria-label="Learning insights"
           >
-            <section className="insight-card understanding-card">
-              <div className="card-eyebrow">
-                <span>Document preparation</span>
-                <span
-                  className={`preparation-indicator${activeDocument ? " ready" : ""}`}
-                  aria-hidden="true"
-                >
-                  {activeDocument ? (
-                    <Check size={16} strokeWidth={2.5} />
-                  ) : (
-                    <Sparkles size={16} />
-                  )}
-                </span>
-              </div>
-              {activeDocument ? (
-                <>
-                  <div className="preparation-status" role="status">
-                    <h3>Ready to learn</h3>
-                    <p>
-                      The teaching plan and visual guidance are prepared.
-                    </p>
-                  </div>
-                  <dl className="preparation-metrics">
-                    <div>
-                      <dt>Concepts</dt>
-                      <dd>{activeDocument.map.concept_count}</dd>
-                    </div>
-                    <div>
-                      <dt>Connections</dt>
-                      <dd>{activeDocument.map.connection_count}</dd>
-                    </div>
-                    <div>
-                      <dt>Teaching units</dt>
-                      <dd>{activeDocument.plan.unit_count}</dd>
-                    </div>
-                  </dl>
-                </>
-              ) : (
-                <div className="preparation-status empty">
-                  <h3>Waiting for a document</h3>
-                  <p>
-                    Upload a PDF to prepare its teaching plan and visual
-                    guidance.
-                  </p>
-                </div>
-              )}
-            </section>
-
-            <section className="insight-card takeaways-card" id="key-takeaways">
-              <h2>
-                <BrainCircuit size={25} aria-hidden="true" />
-                Page Context
-              </h2>
-              <p className="context-section-label">
-                Current page · {currentPage}
-              </p>
-              <ul>{renderCurrentConcepts()}</ul>
-              <p className="context-section-label">Useful later</p>
-              <ul className="future-context-list">
-                {renderFutureConnections()}
-              </ul>
-              <button
-                className="primary-button analysis-button"
-                type="button"
-                onClick={() => setModal("analysis")}
-                disabled={!activeDocument}
-              >
-                View Teaching Blueprint
-              </button>
-            </section>
-
-            <section className="insight-card session-card" id="session-log">
-              <h2>
-                <History size={24} aria-hidden="true" />
-                <span>Learning path</span>
-              </h2>
-              <LearningPath
-                key={teachingPlan?.document_id ?? "learning-path"}
-                plan={teachingPlan}
-                progress={learningProgress}
-                activeUnitId={activeUnit?.id ?? null}
-                completedLessonStepIds={
-                  realtimeTutor.completedLessonStepIds
+            <section
+              className={`insight-card understanding-card${
+                documentPreparationExpanded ? "" : " collapsed"
+              }`}
+            >
+              <InsightCardHeader
+                title="Document preparation"
+                titleClassName="document-preparation-title"
+                expanded={documentPreparationExpanded}
+                contentId="document-preparation-content"
+                onToggle={() =>
+                  setDocumentPreparationExpanded((expanded) => !expanded)
+                }
+                status={
+                  <span
+                    className={`preparation-indicator${activeDocument ? " ready" : ""}`}
+                    aria-hidden="true"
+                  >
+                    {activeDocument ? (
+                      <Check size={16} strokeWidth={2.5} />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                  </span>
                 }
               />
-              {realtimeTutor.error && (
-                <p className="tutor-error" role="alert">
-                  {realtimeTutor.error}
+              <div
+                className="insight-card-content"
+                id="document-preparation-content"
+                hidden={!documentPreparationExpanded}
+              >
+                {activeDocument ? (
+                  <>
+                    <div className="preparation-status" role="status">
+                      <h3>Ready to learn</h3>
+                      <p>
+                        The teaching plan and visual guidance are prepared.
+                      </p>
+                    </div>
+                    <dl className="preparation-metrics">
+                      <div>
+                        <dt>Concepts</dt>
+                        <dd>{activeDocument.map.concept_count}</dd>
+                      </div>
+                      <div>
+                        <dt>Connections</dt>
+                        <dd>{activeDocument.map.connection_count}</dd>
+                      </div>
+                      <div>
+                        <dt>Teaching units</dt>
+                        <dd>{activeDocument.plan.unit_count}</dd>
+                      </div>
+                    </dl>
+                  </>
+                ) : (
+                  <div className="preparation-status empty">
+                    <h3>Waiting for a document</h3>
+                    <p>
+                      Upload a PDF to prepare its teaching plan and visual
+                      guidance.
+                    </p>
+                  </div>
+                )}
+              </div>
+              {!documentPreparationExpanded && (
+                <p className="insight-card-summary">
+                  {documentPreparationSummary}
                 </p>
               )}
-              {activeDocument && learningProgress && (
+            </section>
+
+            <section
+              className={`insight-card takeaways-card${
+                pageContextExpanded ? "" : " collapsed"
+              }`}
+              id="key-takeaways"
+            >
+              <InsightCardHeader
+                title="Page Context"
+                icon={<BrainCircuit size={25} aria-hidden="true" />}
+                expanded={pageContextExpanded}
+                contentId="page-context-content"
+                onToggle={() =>
+                  setPageContextExpanded((expanded) => !expanded)
+                }
+              />
+              <div
+                className="insight-card-content"
+                id="page-context-content"
+                hidden={!pageContextExpanded}
+              >
+                <p className="context-section-label">
+                  Current page · {currentPage}
+                </p>
+                <ul>{renderCurrentConcepts()}</ul>
+                <p className="context-section-label">Useful later</p>
+                <ul className="future-context-list">
+                  {renderFutureConnections()}
+                </ul>
                 <button
-                  className="secondary-button reset-progress-button"
+                  className="primary-button analysis-button"
                   type="button"
-                  onClick={() => setModal("reset-progress")}
-                  disabled={
-                    masteredUnitCount === 0 || tutorSessionActive
-                  }
-                  title={
-                    tutorSessionActive
-                      ? "End the current tutor session before resetting progress."
-                      : undefined
-                  }
+                  onClick={() => setModal("analysis")}
+                  disabled={!activeDocument}
                 >
-                  <RotateCcw size={17} />
-                  Reset progress
+                  View Teaching Blueprint
                 </button>
+              </div>
+              {!pageContextExpanded && (
+                <p className="insight-card-summary">{pageContextSummary}</p>
+              )}
+            </section>
+
+            <section
+              className={`insight-card session-card${
+                learningPathExpanded ? "" : " collapsed"
+              }`}
+              id="session-log"
+            >
+              <InsightCardHeader
+                title="Learning path"
+                icon={<History size={24} aria-hidden="true" />}
+                expanded={learningPathExpanded}
+                contentId="learning-path-content"
+                onToggle={() =>
+                  setLearningPathExpanded((expanded) => !expanded)
+                }
+              />
+              <div
+                className="insight-card-content"
+                id="learning-path-content"
+                hidden={!learningPathExpanded}
+              >
+                <LearningPath
+                  key={teachingPlan?.document_id ?? "learning-path"}
+                  plan={teachingPlan}
+                  progress={learningProgress}
+                  activeUnitId={activeUnit?.id ?? null}
+                  completedLessonStepIds={
+                    realtimeTutor.completedLessonStepIds
+                  }
+                />
+                {realtimeTutor.error && (
+                  <p className="tutor-error" role="alert">
+                    {realtimeTutor.error}
+                  </p>
+                )}
+                {activeDocument && learningProgress && (
+                  <button
+                    className="secondary-button reset-progress-button"
+                    type="button"
+                    onClick={() => setModal("reset-progress")}
+                    disabled={
+                      masteredUnitCount === 0 || tutorSessionActive
+                    }
+                    title={
+                      tutorSessionActive
+                        ? "End the current tutor session before resetting progress."
+                        : undefined
+                    }
+                  >
+                    <RotateCcw size={17} />
+                    Reset progress
+                  </button>
+                )}
+              </div>
+              {!learningPathExpanded && (
+                <p className="insight-card-summary">{learningPathSummary}</p>
               )}
             </section>
           </aside>
@@ -1607,6 +1706,53 @@ export default function Home() {
         {toast}
       </div>
     </main>
+  );
+}
+
+function InsightCardHeader({
+  title,
+  titleClassName,
+  icon,
+  status,
+  expanded,
+  contentId,
+  onToggle,
+}: {
+  title: string;
+  titleClassName?: string;
+  icon?: ReactNode;
+  status?: ReactNode;
+  expanded: boolean;
+  contentId: string;
+  onToggle: () => void;
+}) {
+  const titleClasses = titleClassName
+    ? `insight-card-title ${titleClassName}`
+    : "insight-card-title";
+
+  return (
+    <h2 className="insight-card-header">
+      <button
+        className="insight-card-toggle"
+        type="button"
+        onClick={onToggle}
+        aria-controls={contentId}
+        aria-expanded={expanded}
+      >
+        <span className={titleClasses}>
+          {icon}
+          <span>{title}</span>
+        </span>
+        <span className="insight-card-controls">
+          {status}
+          <ChevronRight
+            className="insight-card-chevron"
+            size={17}
+            aria-hidden="true"
+          />
+        </span>
+      </button>
+    </h2>
   );
 }
 
