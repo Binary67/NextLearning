@@ -1,0 +1,2023 @@
+{
+  "schema_version": 1,
+  "document_id": "a3bf85bc-c444-497e-a9da-6327bb130713",
+  "title": "Attention Is All You Need",
+  "page_count": 15,
+  "concepts": [
+    {
+      "id": "concept:sequence-transduction",
+      "name": "Sequence transduction",
+      "definition": "Tasks that map an input symbol sequence to an output symbol sequence, such as machine translation.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.85
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.8
+        }
+      ]
+    },
+    {
+      "id": "concept:encoder-decoder-architecture",
+      "name": "Encoder-decoder architecture",
+      "definition": "A structure where an encoder maps input symbols to continuous representations and a decoder generates output symbols from them.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        },
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.88
+        }
+      ]
+    },
+    {
+      "id": "concept:recurrent-neural-networks",
+      "name": "Recurrent neural networks",
+      "definition": "Sequence models that compute hidden states step by step using prior hidden states.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.94
+        },
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.93
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.78
+        }
+      ]
+    },
+    {
+      "id": "concept:sequential-computation-constraint",
+      "name": "Sequential computation constraint",
+      "definition": "The training limitation caused when computation must proceed in sequence-position order.",
+      "occurrences": [
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.92
+        }
+      ]
+    },
+    {
+      "id": "concept:attention-mechanisms",
+      "name": "Attention mechanisms",
+      "definition": "Mechanisms that model dependencies by weighting information from positions according to relevance.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:transformer",
+      "name": "Transformer",
+      "definition": "The paper's sequence transduction architecture based solely on attention, without recurrence or convolutions.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.91
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "id": "concept:self-attention",
+      "name": "Self-attention",
+      "definition": "Attention within a single sequence, relating positions of that sequence to compute its representation.",
+      "occurrences": [
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 13,
+          "page_label": "13",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:convolutional-sequence-models",
+      "name": "Convolutional sequence models",
+      "definition": "Sequence transduction models that use convolutional layers as their main building block.",
+      "occurrences": [
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.93
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.77
+        }
+      ]
+    },
+    {
+      "id": "concept:encoder-stack",
+      "name": "Encoder stack",
+      "definition": "The Transformer encoder, composed of N identical layers with self-attention and feed-forward sublayers.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "id": "concept:decoder-stack",
+      "name": "Decoder stack",
+      "definition": "The Transformer decoder, composed of N identical layers with masked self-attention, encoder-decoder attention, and feed-forward sublayers.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "concept:auto-regressive-decoding",
+      "name": "Auto-regressive decoding",
+      "definition": "Generating output symbols one at a time while conditioning on previously generated symbols.",
+      "occurrences": [
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "id": "concept:query-key-value-attention",
+      "name": "Query-key-value attention",
+      "definition": "An attention function that maps a query and key-value pairs to an output vector.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 4,
+          "page_label": "4",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:softmax-attention-weights",
+      "name": "Softmax attention weights",
+      "definition": "Weights on values obtained by applying softmax to query-key compatibility scores.",
+      "occurrences": [
+        {
+          "page_index": 4,
+          "page_label": "4",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.88
+        }
+      ]
+    },
+    {
+      "id": "concept:scaled-dot-product-attention",
+      "name": "Scaled dot-product attention",
+      "definition": "The attention computation softmax(QK^T / sqrt(dk))V used by the Transformer.",
+      "occurrences": [
+        {
+          "page_index": 4,
+          "page_label": "4",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:sqrt-dk-scaling",
+      "name": "sqrt(dk) scaling",
+      "definition": "Dividing dot products by sqrt(dk) to reduce softmax saturation for large key dimensions.",
+      "occurrences": [
+        {
+          "page_index": 4,
+          "page_label": "4",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:additive-attention",
+      "name": "Additive attention",
+      "definition": "An attention variant whose compatibility function is computed by a feed-forward network with one hidden layer.",
+      "occurrences": [
+        {
+          "page_index": 4,
+          "page_label": "4",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:multi-head-attention",
+      "name": "Multi-head attention",
+      "definition": "Parallel attention heads over learned projections whose outputs are concatenated and projected.",
+      "occurrences": [
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.82
+        },
+        {
+          "page_index": 4,
+          "page_label": "4",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.92
+        }
+      ]
+    },
+    {
+      "id": "concept:attention-heads",
+      "name": "Attention heads",
+      "definition": "Individual parallel attention layers within multi-head attention, often attending to different information.",
+      "occurrences": [
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 13,
+          "page_label": "13",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 14,
+          "page_label": "14",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 15,
+          "page_label": "15",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "id": "concept:linear-projections",
+      "name": "Learned linear projections",
+      "definition": "Learned matrices that project queries, keys, and values into per-head subspaces.",
+      "occurrences": [
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "concept:encoder-decoder-attention",
+      "name": "Encoder-decoder attention",
+      "definition": "Decoder attention whose queries come from the decoder and keys and values come from the encoder output.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:masked-decoder-self-attention",
+      "name": "Masked decoder self-attention",
+      "definition": "Decoder self-attention that blocks attention to subsequent output positions.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "concept:position-wise-feed-forward-network",
+      "name": "Position-wise feed-forward network",
+      "definition": "A two-layer ReLU feed-forward network applied separately and identically at each position.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.83
+        }
+      ]
+    },
+    {
+      "id": "concept:residual-connections",
+      "name": "Residual connections",
+      "definition": "Connections that add each sublayer input to its output before normalization.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "id": "concept:layer-normalization",
+      "name": "Layer normalization",
+      "definition": "Normalization applied after adding a sublayer output to its residual input.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "concept:embeddings",
+      "name": "Token embeddings",
+      "definition": "Learned vector representations of input and output tokens with dimension dmodel.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.86
+        },
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "concept:output-softmax",
+      "name": "Output softmax",
+      "definition": "The learned linear transformation and softmax used to produce next-token probabilities.",
+      "occurrences": [
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "concept:weight-sharing",
+      "name": "Embedding and softmax weight sharing",
+      "definition": "Sharing the same weight matrix between embeddings and the pre-softmax linear transformation.",
+      "occurrences": [
+        {
+          "page_index": 5,
+          "page_label": "5",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:positional-encoding",
+      "name": "Positional encoding",
+      "definition": "Information added to embeddings so an attention-only model can use token order.",
+      "occurrences": [
+        {
+          "page_index": 3,
+          "page_label": "3",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.86
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "concept:sinusoidal-positional-encoding",
+      "name": "Sinusoidal positional encoding",
+      "definition": "The fixed sine and cosine positional encoding used in the paper.",
+      "occurrences": [
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.86
+        }
+      ]
+    },
+    {
+      "id": "concept:learned-positional-embeddings",
+      "name": "Learned positional embeddings",
+      "definition": "A learned alternative to sinusoidal positional encodings that performed nearly identically in the reported experiments.",
+      "occurrences": [
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.92
+        }
+      ]
+    },
+    {
+      "id": "concept:long-range-dependencies",
+      "name": "Long-range dependencies",
+      "definition": "Dependencies between distant positions in a sequence, whose learnability depends on path length.",
+      "occurrences": [
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.85
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 13,
+          "page_label": "13",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "id": "concept:computational-complexity",
+      "name": "Computational complexity per layer",
+      "definition": "The asymptotic amount of computation required by different layer types.",
+      "occurrences": [
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "implicit",
+          "confidence": 0.64
+        }
+      ]
+    },
+    {
+      "id": "concept:parallelization",
+      "name": "Parallelization",
+      "definition": "The ability to compute positions simultaneously rather than sequentially within an example.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.93
+        },
+        {
+          "page_index": 2,
+          "page_label": "2",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "implicit",
+          "confidence": 0.7
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "concept:maximum-path-length",
+      "name": "Maximum path length",
+      "definition": "The longest computation path signals traverse between positions in a network.",
+      "occurrences": [
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "id": "concept:restricted-self-attention",
+      "name": "Restricted self-attention",
+      "definition": "A proposed variant where each position attends only to a neighborhood of size r.",
+      "occurrences": [
+        {
+          "page_index": 6,
+          "page_label": "6",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "referenced",
+          "explicitness": "explicit",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "id": "concept:subword-tokenization",
+      "name": "Subword tokenization",
+      "definition": "Byte-pair or word-piece tokenization used to form shared vocabularies for translation datasets.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "id": "concept:training-data-and-batching",
+      "name": "Training data and batching",
+      "definition": "The paper's use of WMT datasets and batches grouped by approximate sequence length and token count.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:adam-optimizer-schedule",
+      "name": "Adam optimizer schedule",
+      "definition": "The training optimizer setup using Adam with specified beta values, epsilon, and a changing learning rate.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "concept:learning-rate-warmup",
+      "name": "Learning-rate warmup",
+      "definition": "The initial linear increase of learning rate before inverse-square-root decay.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "concept:residual-dropout",
+      "name": "Residual dropout",
+      "definition": "Dropout applied to sublayer outputs and to embedding-plus-position sums during training.",
+      "occurrences": [
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.92
+        }
+      ]
+    },
+    {
+      "id": "concept:label-smoothing",
+      "name": "Label smoothing",
+      "definition": "A regularization method that makes targets less certain, improving accuracy and BLEU despite worse perplexity.",
+      "occurrences": [
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.88
+        }
+      ]
+    },
+    {
+      "id": "concept:beam-search-inference",
+      "name": "Beam search inference",
+      "definition": "The decoding procedure used for reported translation and parsing outputs, with beam size and length penalty choices.",
+      "occurrences": [
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.96
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.86
+        }
+      ]
+    },
+    {
+      "id": "concept:bleu-score",
+      "name": "BLEU score",
+      "definition": "The machine translation quality metric used to report English-German and English-French results.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "concept:training-cost-flops",
+      "name": "Training cost in FLOPs",
+      "definition": "The estimated floating-point operations used to compare model training expense.",
+      "occurrences": [
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        }
+      ]
+    },
+    {
+      "id": "concept:machine-translation-evaluation",
+      "name": "Machine translation evaluation",
+      "definition": "Evaluation on WMT 2014 English-German and English-French translation tasks.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:base-and-big-transformers",
+      "name": "Base and big Transformer configurations",
+      "definition": "Two reported model sizes, with the big model using larger dimensions, more heads, and longer training.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.88
+        },
+        {
+          "page_index": 8,
+          "page_label": "8",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.92
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:model-variation-ablation",
+      "name": "Model variation ablation",
+      "definition": "Experiments varying heads, dimensions, dropout, positional encoding, and model size to measure their effects.",
+      "occurrences": [
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "defined",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:english-constituency-parsing",
+      "name": "English constituency parsing",
+      "definition": "A non-translation task used to test whether the Transformer generalizes beyond machine translation.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.86
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.98
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:semi-supervised-parsing",
+      "name": "Semi-supervised parsing setting",
+      "definition": "A parsing setup using additional high-confidence and BerkeleyParser corpora beyond WSJ training data.",
+      "occurrences": [
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.97
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "concept:attention-visualizations",
+      "name": "Attention visualizations",
+      "definition": "Figures showing learned attention patterns such as long-distance dependencies and anaphora-related behavior.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.8
+        },
+        {
+          "page_index": 13,
+          "page_label": "13",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 14,
+          "page_label": "14",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        },
+        {
+          "page_index": 15,
+          "page_label": "15",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.99
+        }
+      ]
+    },
+    {
+      "id": "concept:syntactic-and-semantic-structure",
+      "name": "Syntactic and semantic structure",
+      "definition": "Sentence-structure behavior that some attention heads appear to capture.",
+      "occurrences": [
+        {
+          "page_index": 7,
+          "page_label": "7",
+          "role": "explained",
+          "explicitness": "explicit",
+          "confidence": 0.83
+        },
+        {
+          "page_index": 15,
+          "page_label": "15",
+          "role": "illustrated",
+          "explicitness": "explicit",
+          "confidence": 0.94
+        }
+      ]
+    },
+    {
+      "id": "concept:generalization-to-other-tasks",
+      "name": "Generalization to other tasks",
+      "definition": "Evidence that the Transformer can be successfully applied outside translation.",
+      "occurrences": [
+        {
+          "page_index": 1,
+          "page_label": "1",
+          "role": "introduced",
+          "explicitness": "explicit",
+          "confidence": 0.88
+        },
+        {
+          "page_index": 9,
+          "page_label": "9",
+          "role": "applied",
+          "explicitness": "explicit",
+          "confidence": 0.9
+        },
+        {
+          "page_index": 10,
+          "page_label": "10",
+          "role": "assessed",
+          "explicitness": "explicit",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "concept:recurrent-neural-networks",
+      "to": "concept:sequential-computation-constraint",
+      "relationship": "causes",
+      "relevant_pages": [
+        2,
+        6
+      ],
+      "teaching_reason": "RNNs align sequence positions with computation steps, producing the paper's central efficiency bottleneck.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:sequential-computation-constraint",
+      "to": "concept:parallelization",
+      "relationship": "contrasts_with",
+      "relevant_pages": [
+        1,
+        2,
+        6
+      ],
+      "teaching_reason": "The document motivates the Transformer by contrasting sequential recurrence with parallelizable attention.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:transformer",
+      "to": "concept:recurrent-neural-networks",
+      "relationship": "contrasts_with",
+      "relevant_pages": [
+        1,
+        2,
+        10
+      ],
+      "teaching_reason": "The Transformer is presented as replacing recurrent layers rather than improving them.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:transformer",
+      "to": "concept:convolutional-sequence-models",
+      "relationship": "contrasts_with",
+      "relevant_pages": [
+        1,
+        2,
+        6,
+        10
+      ],
+      "teaching_reason": "The paper explicitly removes both recurrence and convolutions from the main architecture.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:sequence-transduction",
+      "to": "concept:encoder-decoder-architecture",
+      "relationship": "uses",
+      "relevant_pages": [
+        2,
+        3
+      ],
+      "teaching_reason": "The target tasks are described using encoder-decoder sequence transduction models.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:transformer",
+      "to": "concept:encoder-decoder-architecture",
+      "relationship": "uses",
+      "relevant_pages": [
+        2,
+        3
+      ],
+      "teaching_reason": "The Transformer follows the encoder-decoder structure while changing the internal layers.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:encoder-stack",
+      "to": "concept:transformer",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3
+      ],
+      "teaching_reason": "The encoder stack is one half of the architecture shown in Figure 1.",
+      "confidence": 0.99
+    },
+    {
+      "from": "concept:decoder-stack",
+      "to": "concept:transformer",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3
+      ],
+      "teaching_reason": "The decoder stack is the other half of the architecture shown in Figure 1.",
+      "confidence": 0.99
+    },
+    {
+      "from": "concept:self-attention",
+      "to": "concept:encoder-stack",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "Encoder layers contain multi-head self-attention over the previous encoder layer.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:masked-decoder-self-attention",
+      "to": "concept:decoder-stack",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "Masked self-attention is the first decoder sublayer.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:encoder-decoder-attention",
+      "to": "concept:decoder-stack",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "Encoder-decoder attention is inserted as the decoder's third attention-related sublayer.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:position-wise-feed-forward-network",
+      "to": "concept:encoder-stack",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "Each encoder layer includes a feed-forward sublayer.",
+      "confidence": 0.95
+    },
+    {
+      "from": "concept:position-wise-feed-forward-network",
+      "to": "concept:decoder-stack",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "Each decoder layer includes a feed-forward sublayer.",
+      "confidence": 0.95
+    },
+    {
+      "from": "concept:residual-connections",
+      "to": "concept:encoder-stack",
+      "relationship": "supports",
+      "relevant_pages": [
+        3
+      ],
+      "teaching_reason": "Residual connections wrap encoder sublayers in the layer formula.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:residual-connections",
+      "to": "concept:decoder-stack",
+      "relationship": "supports",
+      "relevant_pages": [
+        3
+      ],
+      "teaching_reason": "Residual connections also wrap decoder sublayers.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:layer-normalization",
+      "to": "concept:encoder-stack",
+      "relationship": "supports",
+      "relevant_pages": [
+        3
+      ],
+      "teaching_reason": "Layer normalization follows each residual addition in encoder layers.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:layer-normalization",
+      "to": "concept:decoder-stack",
+      "relationship": "supports",
+      "relevant_pages": [
+        3
+      ],
+      "teaching_reason": "Layer normalization follows each residual addition in decoder layers.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:attention-mechanisms",
+      "to": "concept:query-key-value-attention",
+      "relationship": "has_subcategory",
+      "relevant_pages": [
+        3,
+        4
+      ],
+      "teaching_reason": "The paper formalizes its attention mechanism through queries, keys, and values.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:query-key-value-attention",
+      "to": "concept:scaled-dot-product-attention",
+      "relationship": "prerequisite_for",
+      "relevant_pages": [
+        3,
+        4
+      ],
+      "teaching_reason": "Understanding Q, K, and V is required to interpret the scaled dot-product formula.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:scaled-dot-product-attention",
+      "to": "concept:multi-head-attention",
+      "relationship": "part_of",
+      "relevant_pages": [
+        4,
+        5
+      ],
+      "teaching_reason": "Each head in multi-head attention runs a scaled dot-product attention function.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:scaled-dot-product-attention",
+      "to": "concept:softmax-attention-weights",
+      "relationship": "uses",
+      "relevant_pages": [
+        4
+      ],
+      "teaching_reason": "The formula obtains attention weights through softmax over scaled dot products.",
+      "confidence": 0.97
+    },
+    {
+      "from": "concept:scaled-dot-product-attention",
+      "to": "concept:sqrt-dk-scaling",
+      "relationship": "uses",
+      "relevant_pages": [
+        4
+      ],
+      "teaching_reason": "The defining difference from unscaled dot-product attention is division by sqrt(dk).",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:sqrt-dk-scaling",
+      "to": "concept:softmax-attention-weights",
+      "relationship": "supports",
+      "relevant_pages": [
+        4
+      ],
+      "teaching_reason": "Scaling prevents large dot products from pushing softmax into very small-gradient regions.",
+      "confidence": 0.95
+    },
+    {
+      "from": "concept:scaled-dot-product-attention",
+      "to": "concept:additive-attention",
+      "relationship": "contrasts_with",
+      "relevant_pages": [
+        4
+      ],
+      "teaching_reason": "The paper compares dot-product attention with additive attention in speed and large-dimension behavior.",
+      "confidence": 0.91
+    },
+    {
+      "from": "concept:multi-head-attention",
+      "to": "concept:linear-projections",
+      "relationship": "uses",
+      "relevant_pages": [
+        5
+      ],
+      "teaching_reason": "Multi-head attention begins by projecting Q, K, and V into per-head spaces.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:attention-heads",
+      "to": "concept:multi-head-attention",
+      "relationship": "part_of",
+      "relevant_pages": [
+        4,
+        5
+      ],
+      "teaching_reason": "Multiple attention heads are the parallel components that give the mechanism its name.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:multi-head-attention",
+      "to": "concept:self-attention",
+      "relationship": "applies",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "The Transformer applies multi-head attention as self-attention in encoder and decoder layers.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:multi-head-attention",
+      "to": "concept:encoder-decoder-attention",
+      "relationship": "applies",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "The Transformer also uses multi-head attention for decoder queries over encoder outputs.",
+      "confidence": 0.95
+    },
+    {
+      "from": "concept:masked-decoder-self-attention",
+      "to": "concept:auto-regressive-decoding",
+      "relationship": "supports",
+      "relevant_pages": [
+        3,
+        5
+      ],
+      "teaching_reason": "Masking prevents the decoder from seeing future output positions during prediction.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:auto-regressive-decoding",
+      "to": "concept:decoder-stack",
+      "relationship": "prerequisite_for",
+      "relevant_pages": [
+        2,
+        3
+      ],
+      "teaching_reason": "The decoder's masking and shifted outputs are motivated by auto-regressive generation.",
+      "confidence": 0.91
+    },
+    {
+      "from": "concept:embeddings",
+      "to": "concept:transformer",
+      "relationship": "part_of",
+      "relevant_pages": [
+        3,
+        5,
+        6
+      ],
+      "teaching_reason": "Input and output embeddings form the bottom of the Transformer stacks.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:output-softmax",
+      "to": "concept:decoder-stack",
+      "relationship": "part_of",
+      "relevant_pages": [
+        5
+      ],
+      "teaching_reason": "The decoder output is converted to next-token probabilities by a linear layer and softmax.",
+      "confidence": 0.89
+    },
+    {
+      "from": "concept:weight-sharing",
+      "to": "concept:embeddings",
+      "relationship": "supports",
+      "relevant_pages": [
+        5
+      ],
+      "teaching_reason": "The paper shares the embedding and pre-softmax weight matrix.",
+      "confidence": 0.89
+    },
+    {
+      "from": "concept:positional-encoding",
+      "to": "concept:embeddings",
+      "relationship": "supports",
+      "relevant_pages": [
+        3,
+        6
+      ],
+      "teaching_reason": "Position information is added to token embeddings before the stacks.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:positional-encoding",
+      "to": "concept:transformer",
+      "relationship": "enables",
+      "relevant_pages": [
+        6
+      ],
+      "teaching_reason": "Because the Transformer has no recurrence or convolution, position encodings let it use sequence order.",
+      "confidence": 0.98
+    },
+    {
+      "from": "concept:sinusoidal-positional-encoding",
+      "to": "concept:positional-encoding",
+      "relationship": "has_subcategory",
+      "relevant_pages": [
+        6
+      ],
+      "teaching_reason": "The paper's chosen positional encoding is the sinusoidal version.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:learned-positional-embeddings",
+      "to": "concept:positional-encoding",
+      "relationship": "has_subcategory",
+      "relevant_pages": [
+        6,
+        9
+      ],
+      "teaching_reason": "Learned positional embeddings are the alternative positional encoding tested.",
+      "confidence": 0.89
+    },
+    {
+      "from": "concept:sinusoidal-positional-encoding",
+      "to": "concept:learned-positional-embeddings",
+      "relationship": "contrasts_with",
+      "relevant_pages": [
+        6,
+        9
+      ],
+      "teaching_reason": "The paper reports nearly identical results but chooses sinusoids for possible length extrapolation.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:self-attention",
+      "to": "concept:long-range-dependencies",
+      "relationship": "enables",
+      "relevant_pages": [
+        2,
+        6,
+        13
+      ],
+      "teaching_reason": "Self-attention directly connects positions, helping represent distant dependencies.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:self-attention",
+      "to": "concept:parallelization",
+      "relationship": "enables",
+      "relevant_pages": [
+        1,
+        2,
+        6
+      ],
+      "teaching_reason": "Self-attention computes all positions with O(1) sequential operations per layer.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:maximum-path-length",
+      "to": "concept:long-range-dependencies",
+      "relationship": "supports",
+      "relevant_pages": [
+        6,
+        7
+      ],
+      "teaching_reason": "Shorter paths are presented as a reason long-range dependencies are easier to learn.",
+      "confidence": 0.95
+    },
+    {
+      "from": "concept:self-attention",
+      "to": "concept:maximum-path-length",
+      "relationship": "supports",
+      "relevant_pages": [
+        6
+      ],
+      "teaching_reason": "A self-attention layer has constant maximum path length between positions.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:computational-complexity",
+      "to": "concept:self-attention",
+      "relationship": "supports",
+      "relevant_pages": [
+        6,
+        7
+      ],
+      "teaching_reason": "The complexity comparison explains when self-attention is faster than recurrent layers.",
+      "confidence": 0.91
+    },
+    {
+      "from": "concept:convolutional-sequence-models",
+      "to": "concept:maximum-path-length",
+      "relationship": "related_to",
+      "relevant_pages": [
+        6,
+        7
+      ],
+      "teaching_reason": "Convolutional layers require multiple layers or dilation to connect distant positions.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:restricted-self-attention",
+      "to": "concept:self-attention",
+      "relationship": "related_to",
+      "relevant_pages": [
+        6,
+        7,
+        10
+      ],
+      "teaching_reason": "Restricted attention is a proposed efficiency variant of full self-attention.",
+      "confidence": 0.88
+    },
+    {
+      "from": "concept:restricted-self-attention",
+      "to": "concept:computational-complexity",
+      "relationship": "supports",
+      "relevant_pages": [
+        6,
+        7
+      ],
+      "teaching_reason": "Restricting the neighborhood lowers complexity for very long sequences at the cost of longer paths.",
+      "confidence": 0.89
+    },
+    {
+      "from": "concept:subword-tokenization",
+      "to": "concept:training-data-and-batching",
+      "relationship": "part_of",
+      "relevant_pages": [
+        7
+      ],
+      "teaching_reason": "The WMT datasets are encoded with byte-pair or word-piece vocabularies before batching.",
+      "confidence": 0.91
+    },
+    {
+      "from": "concept:training-data-and-batching",
+      "to": "concept:machine-translation-evaluation",
+      "relationship": "supports",
+      "relevant_pages": [
+        7,
+        8
+      ],
+      "teaching_reason": "The described datasets and batches underlie the reported translation experiments.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:adam-optimizer-schedule",
+      "to": "concept:transformer",
+      "relationship": "supports",
+      "relevant_pages": [
+        7
+      ],
+      "teaching_reason": "The optimizer schedule is part of the training regime for Transformer models.",
+      "confidence": 0.86
+    },
+    {
+      "from": "concept:learning-rate-warmup",
+      "to": "concept:adam-optimizer-schedule",
+      "relationship": "part_of",
+      "relevant_pages": [
+        7
+      ],
+      "teaching_reason": "Warmup is explicitly included in the learning-rate formula for Adam training.",
+      "confidence": 0.96
+    },
+    {
+      "from": "concept:residual-dropout",
+      "to": "concept:model-variation-ablation",
+      "relationship": "applies",
+      "relevant_pages": [
+        8,
+        9
+      ],
+      "teaching_reason": "Dropout settings are both defined in training and varied in ablation results.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:label-smoothing",
+      "to": "concept:bleu-score",
+      "relationship": "supports",
+      "relevant_pages": [
+        8
+      ],
+      "teaching_reason": "The paper says label smoothing improves accuracy and BLEU score.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:beam-search-inference",
+      "to": "concept:machine-translation-evaluation",
+      "relationship": "applies",
+      "relevant_pages": [
+        8
+      ],
+      "teaching_reason": "Reported translation scores use beam search with stated beam size and length penalty.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:machine-translation-evaluation",
+      "to": "concept:bleu-score",
+      "relationship": "uses",
+      "relevant_pages": [
+        1,
+        8
+      ],
+      "teaching_reason": "BLEU is the main translation quality metric in the reported WMT experiments.",
+      "confidence": 0.97
+    },
+    {
+      "from": "concept:training-cost-flops",
+      "to": "concept:machine-translation-evaluation",
+      "relationship": "supports",
+      "relevant_pages": [
+        8
+      ],
+      "teaching_reason": "Table 2 compares translation quality with estimated training cost.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:base-and-big-transformers",
+      "to": "concept:machine-translation-evaluation",
+      "relationship": "applies",
+      "relevant_pages": [
+        8,
+        9
+      ],
+      "teaching_reason": "Base and big configurations are the Transformer variants evaluated in translation.",
+      "confidence": 0.93
+    },
+    {
+      "from": "concept:model-variation-ablation",
+      "to": "concept:multi-head-attention",
+      "relationship": "applies",
+      "relevant_pages": [
+        9
+      ],
+      "teaching_reason": "Ablations vary the number of attention heads and key/value dimensions.",
+      "confidence": 0.93
+    },
+    {
+      "from": "concept:model-variation-ablation",
+      "to": "concept:positional-encoding",
+      "relationship": "applies",
+      "relevant_pages": [
+        9
+      ],
+      "teaching_reason": "The ablation compares sinusoidal encodings with learned positional embeddings.",
+      "confidence": 0.92
+    },
+    {
+      "from": "concept:model-variation-ablation",
+      "to": "concept:base-and-big-transformers",
+      "relationship": "supports",
+      "relevant_pages": [
+        9
+      ],
+      "teaching_reason": "The table shows larger model dimensions improve development BLEU.",
+      "confidence": 0.9
+    },
+    {
+      "from": "concept:transformer",
+      "to": "concept:english-constituency-parsing",
+      "relationship": "applies",
+      "relevant_pages": [
+        9,
+        10
+      ],
+      "teaching_reason": "The paper applies a Transformer to English constituency parsing to test generalization.",
+      "confidence": 0.95
+    },
+    {
+      "from": "concept:semi-supervised-parsing",
+      "to": "concept:english-constituency-parsing",
+      "relationship": "part_of",
+      "relevant_pages": [
+        9,
+        10
+      ],
+      "teaching_reason": "Semi-supervised parsing is one of the parsing settings in the paper.",
+      "confidence": 0.93
+    },
+    {
+      "from": "concept:english-constituency-parsing",
+      "to": "concept:generalization-to-other-tasks",
+      "relationship": "supports",
+      "relevant_pages": [
+        1,
+        9,
+        10
+      ],
+      "teaching_reason": "Parsing results are used as evidence that the architecture generalizes beyond translation.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:attention-visualizations",
+      "to": "concept:attention-heads",
+      "relationship": "supports",
+      "relevant_pages": [
+        13,
+        14,
+        15
+      ],
+      "teaching_reason": "The appendix figures show individual heads attending in different patterns.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:attention-visualizations",
+      "to": "concept:long-range-dependencies",
+      "relationship": "supports",
+      "relevant_pages": [
+        13
+      ],
+      "teaching_reason": "Figure 3 illustrates attention following a distant dependency around 'making'.",
+      "confidence": 0.94
+    },
+    {
+      "from": "concept:attention-heads",
+      "to": "concept:syntactic-and-semantic-structure",
+      "relationship": "related_to",
+      "relevant_pages": [
+        7,
+        14,
+        15
+      ],
+      "teaching_reason": "The paper interprets several heads as capturing anaphora and sentence-structure behavior.",
+      "confidence": 0.83
+    },
+    {
+      "from": "concept:attention-visualizations",
+      "to": "concept:syntactic-and-semantic-structure",
+      "relationship": "supports",
+      "relevant_pages": [
+        14,
+        15
+      ],
+      "teaching_reason": "Figures 4 and 5 visualize heads apparently tied to anaphora and sentence structure.",
+      "confidence": 0.86
+    }
+  ]
+}

@@ -151,9 +151,12 @@ Then create teaching_plan from the concepts and occurrences in document_model. F
 - Give each unit no more than 12 unique prerequisite_unit_ids. They may reference only units that appear earlier in the units array. Add a prerequisite only when it is genuinely needed for the unit objective.
 - Ground every unit in the PDF. Each source anchor must use a page where at least one of the unit's concept IDs occurs in document_model.
 - Give each unit between one and 20 source anchors.
+- Give every source anchor a globally unique lowercase kebab-case ID beginning with "source:".
 - Use page_index and page_label exactly as represented by the relevant document_model occurrence.
 - A source page may be revisited by multiple units when it serves different teaching purposes.
 - Give every lesson step a globally unique lowercase kebab-case ID beginning with "step:".
+- Set visual_source_anchor_id on a lesson step to the ID of the one source anchor the tutor should see while teaching that step. Use only anchors from the same unit. Set it to null when a page image would not materially help the explanation.
+- Reuse the same source anchor ID across steps when they need the same page. Do not create unused source anchors or duplicate page metadata in lesson steps.
 - Build every unit as a six-to-ten-step mini-tutorial. The first step must be motivate and the last must be recap. Include at least one explain, demonstrate, practice, and assess step between them. Add contrast or connect steps when they improve understanding.
 - Keep every step tightly focused on the unit objective, but make content substantive. Use two to four complete sentences to state what the tutor must teach, including the relevant reasoning, mechanism, terminology, notation, or interpretation.
 - The motivate step must establish the problem and why the knowledge point matters in this document.
