@@ -244,14 +244,6 @@ a:focus-visible {
   transform: rotate(45deg);
 }
 
-.popover-title {
-  margin: 7px 10px 9px;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .popover > button {
   display: flex;
   width: 100%;
@@ -310,17 +302,14 @@ a:focus-visible {
 }
 
 .lesson-card {
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
+  border-radius: 20px;
   background: var(--surface);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.025),
     0 8px 24px rgba(0, 0, 0, 0.025);
-}
-
-.lesson-card {
-  min-width: 0;
-  overflow: hidden;
-  border-radius: 20px;
 }
 
 .lesson-toolbar {
@@ -501,6 +490,13 @@ a:focus-visible {
   white-space: nowrap;
 }
 
+.pdf-clear-selection-button {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 8px;
+}
+
 .pdf-stage {
   position: relative;
   min-width: 0;
@@ -600,13 +596,11 @@ a:focus-visible {
   color: var(--blue);
 }
 
-.selection-card,
 .context-card,
 .compact-transcript-card {
   padding: 20px;
 }
 
-.selection-card h2,
 .context-card h2,
 .compact-transcript-card h2 {
   display: flex;
@@ -618,25 +612,14 @@ a:focus-visible {
   font-weight: 650;
 }
 
-.selection-card > strong {
-  display: block;
-  color: var(--blue-deep);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.selection-card > p,
 .compact-transcript-card > p {
-  display: -webkit-box;
-  overflow: hidden;
+  max-height: 210px;
+  overflow-y: auto;
   margin: 9px 0 0;
   color: #3a3a3c;
   font-size: 0.82rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 7;
 }
 
 .selection-placeholder {
@@ -644,7 +627,6 @@ a:focus-visible {
   font-style: italic;
 }
 
-.clear-selection-button,
 .transcript-open-button {
   width: 100%;
   min-height: 38px;
@@ -704,7 +686,11 @@ a:focus-visible {
 }
 
 .compact-transcript-card {
+  position: sticky;
+  z-index: 1;
+  top: 0;
   min-height: 0;
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .primary-button,
@@ -1204,31 +1190,6 @@ a:focus-visible {
   flex: 0 0 auto;
 }
 
-.shortcut-list {
-  padding: 8px 0 20px;
-}
-
-.shortcut-list p {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 14px 0;
-  border-bottom: 1px solid #ebebef;
-  margin: 0;
-}
-
-kbd {
-  min-width: 38px;
-  padding: 7px 9px;
-  border: 1px solid #d7d7dc;
-  border-bottom-width: 3px;
-  border-radius: 7px;
-  background: #f8f8fa;
-  font-size: 0.76rem;
-  text-align: center;
-}
-
 .modal-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1488,20 +1449,6 @@ kbd {
   font-weight: 650;
 }
 
-.tutorial-progress {
-  overflow: hidden;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(118, 118, 128, 0.12);
-}
-
-.tutorial-progress span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--blue), #34a853);
-}
-
 .tutorial-card-footer {
   margin-top: 18px;
   color: var(--muted);
@@ -1691,7 +1638,7 @@ kbd {
 
   .insights-column {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 18px;
     overflow: visible;
     border: 0;
@@ -1716,7 +1663,7 @@ kbd {
   }
 
   .compact-transcript-card {
-    grid-column: 1 / -1;
+    position: static;
   }
 }
 
@@ -1795,7 +1742,6 @@ kbd {
     display: flex;
   }
 
-  .selection-card,
   .context-card,
   .compact-transcript-card {
     padding: 25px 22px;

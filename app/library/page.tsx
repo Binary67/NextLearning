@@ -114,9 +114,6 @@ export default function LibraryPage() {
       <AppHeader
         activeSection="library"
         dashboardHref={dashboardHref}
-        onCoursesClick={() =>
-          showToast("Courses are ready for future learning paths.")
-        }
         settingsOpen={settingsOpen}
         onOpenSettings={() => setSettingsOpen(true)}
         onShowMessage={showToast}

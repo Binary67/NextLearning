@@ -91,10 +91,6 @@ export function TutorialWorkspace({
         : null,
     [documentModel, selection],
   );
-  const selectionPageLabel = selection
-    ? (documentModel?.pages[selection.page_index - 1]?.page_label ??
-      String(selection.page_index))
-    : "";
   const realtimeTutor = useRealtimeTutor({
     documentId: activeTutorial?.id ?? null,
     documentModel,
@@ -375,13 +371,10 @@ export function TutorialWorkspace({
   }
 
   return (
-    <main className="app-shell dashboard-shell">
+    <main className="app-shell">
       <AppHeader
         activeSection="dashboard"
         dashboardHref={`/tutorials/${tutorialId}`}
-        onCoursesClick={() =>
-          showToast("Courses are not part of read-and-ask mode.")
-        }
         settingsOpen={modal === "settings"}
         onOpenSettings={() => setModal("settings")}
         onShowMessage={showToast}
@@ -406,7 +399,7 @@ export function TutorialWorkspace({
                   <Download size={18} />
                 </button>
                 <button
-                  className="icon-button small"
+                  className="icon-button small danger-icon-button"
                   type="button"
                   onClick={() => setModal("delete-tutorial")}
                   disabled={!activeTutorial}
@@ -469,6 +462,17 @@ export function TutorialWorkspace({
                       ? "Selection ready—ask your question"
                       : "Draw a rectangle around anything you want explained"}
                   </strong>
+                  {selection && (
+                    <button
+                      className="icon-button pdf-clear-selection-button"
+                      type="button"
+                      onClick={() => setSelection(null)}
+                      aria-label="Clear selection"
+                      title="Clear selection"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="pdf-stage">
@@ -493,35 +497,15 @@ export function TutorialWorkspace({
         </section>
 
         <aside className="insights-column" aria-label="Reading context">
-          <section className="insight-card selection-card">
-            <h2>
-              <span className="insight-card-icon">
-                <ScanText size={18} aria-hidden="true" />
-              </span>
-              Active selection
-            </h2>
-            {selection ? (
-              <>
-                <strong>Page {selectionPageLabel}</strong>
-                <p>
-                  {selection.text ||
-                    "This region has no native PDF text. The tutor will use the image."}
-                </p>
-                <button
-                  className="secondary-button clear-selection-button"
-                  type="button"
-                  onClick={() => setSelection(null)}
-                >
-                  <X size={16} />
-                  Clear selection
-                </button>
-              </>
-            ) : (
-              <p className="selection-placeholder">
-                Draw a rectangle over a paragraph, formula, table, or diagram.
-              </p>
-            )}
-          </section>
+          <TutorTranscriptCard
+            transcript={realtimeTutor.currentTutorTranscript}
+            history={realtimeTutor.tutorTranscripts}
+            isStreaming={
+              realtimeTutor.isTutorResponding ||
+              realtimeTutor.isTutorSpeaking
+            }
+            onOpen={() => setModal("transcript")}
+          />
 
           <section className="insight-card context-card">
             <h2>
@@ -547,16 +531,6 @@ export function TutorialWorkspace({
               )}
             </ul>
           </section>
-
-          <TutorTranscriptCard
-            transcript={realtimeTutor.currentTutorTranscript}
-            history={realtimeTutor.tutorTranscripts}
-            isStreaming={
-              realtimeTutor.isTutorResponding ||
-              realtimeTutor.isTutorSpeaking
-            }
-            onOpen={() => setModal("transcript")}
-          />
         </aside>
       </div>
 
