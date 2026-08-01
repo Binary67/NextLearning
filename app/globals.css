@@ -490,6 +490,13 @@ a:focus-visible {
   white-space: nowrap;
 }
 
+.pdf-clear-selection-button {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 8px;
+}
+
 .pdf-stage {
   position: relative;
   min-width: 0;
@@ -589,13 +596,11 @@ a:focus-visible {
   color: var(--blue);
 }
 
-.selection-card,
 .context-card,
 .compact-transcript-card {
   padding: 20px;
 }
 
-.selection-card h2,
 .context-card h2,
 .compact-transcript-card h2 {
   display: flex;
@@ -607,25 +612,14 @@ a:focus-visible {
   font-weight: 650;
 }
 
-.selection-card > strong {
-  display: block;
-  color: var(--blue-deep);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.selection-card > p,
 .compact-transcript-card > p {
-  display: -webkit-box;
-  overflow: hidden;
+  max-height: 210px;
+  overflow-y: auto;
   margin: 9px 0 0;
   color: #3a3a3c;
   font-size: 0.82rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 7;
 }
 
 .selection-placeholder {
@@ -633,7 +627,6 @@ a:focus-visible {
   font-style: italic;
 }
 
-.clear-selection-button,
 .transcript-open-button {
   width: 100%;
   min-height: 38px;
@@ -693,7 +686,11 @@ a:focus-visible {
 }
 
 .compact-transcript-card {
+  position: sticky;
+  z-index: 1;
+  top: 0;
   min-height: 0;
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .context-section-label {
@@ -1650,7 +1647,7 @@ a:focus-visible {
 
   .insights-column {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 18px;
     overflow: visible;
     border: 0;
@@ -1675,7 +1672,7 @@ a:focus-visible {
   }
 
   .compact-transcript-card {
-    grid-column: 1 / -1;
+    position: static;
   }
 }
 
@@ -1754,7 +1751,6 @@ a:focus-visible {
     display: flex;
   }
 
-  .selection-card,
   .context-card,
   .compact-transcript-card {
     padding: 25px 22px;

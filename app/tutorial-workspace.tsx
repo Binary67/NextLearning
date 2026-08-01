@@ -458,6 +458,17 @@ export function TutorialWorkspace({
                       ? "Selection ready—ask your question"
                       : "Draw a rectangle around anything you want explained"}
                   </strong>
+                  {selection && (
+                    <button
+                      className="icon-button pdf-clear-selection-button"
+                      type="button"
+                      onClick={() => setSelection(null)}
+                      aria-label="Clear selection"
+                      title="Clear selection"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="pdf-stage">
@@ -482,35 +493,15 @@ export function TutorialWorkspace({
         </section>
 
         <aside className="insights-column" aria-label="Reading context">
-          <section className="insight-card selection-card">
-            <h2>
-              <span className="insight-card-icon">
-                <ScanText size={18} aria-hidden="true" />
-              </span>
-              Active selection
-            </h2>
-            {selection ? (
-              <>
-                <strong>Page {pageContext?.current_page.page_label}</strong>
-                <p>
-                  {selection.text ||
-                    "This region has no native PDF text. The tutor will use the image."}
-                </p>
-                <button
-                  className="secondary-button clear-selection-button"
-                  type="button"
-                  onClick={() => setSelection(null)}
-                >
-                  <X size={16} />
-                  Clear selection
-                </button>
-              </>
-            ) : (
-              <p className="selection-placeholder">
-                Draw a rectangle over a paragraph, formula, table, or diagram.
-              </p>
-            )}
-          </section>
+          <TutorTranscriptCard
+            transcript={realtimeTutor.currentTutorTranscript}
+            history={realtimeTutor.tutorTranscripts}
+            isStreaming={
+              realtimeTutor.isTutorResponding ||
+              realtimeTutor.isTutorSpeaking
+            }
+            onOpen={() => setModal("transcript")}
+          />
 
           <section className="insight-card context-card">
             <h2>
@@ -551,16 +542,6 @@ export function TutorialWorkspace({
               )}
             </ul>
           </section>
-
-          <TutorTranscriptCard
-            transcript={realtimeTutor.currentTutorTranscript}
-            history={realtimeTutor.tutorTranscripts}
-            isStreaming={
-              realtimeTutor.isTutorResponding ||
-              realtimeTutor.isTutorSpeaking
-            }
-            onOpen={() => setModal("transcript")}
-          />
         </aside>
       </div>
 
