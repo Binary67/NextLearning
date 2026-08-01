@@ -50,6 +50,7 @@ export async function generateTutorial(
   fileData: Buffer,
   fileName: string,
   tutorialId: string,
+  sourcePageCount: number,
 ): Promise<GeneratedTutorial> {
   const encodedFile = fileData.toString("base64");
 
@@ -64,7 +65,7 @@ export async function generateTutorial(
         },
         {
           type: "input_text",
-          text: buildTutorialPrompt(tutorialId),
+          text: buildTutorialPrompt(tutorialId, sourcePageCount),
         },
       ],
       generatedTutorialJsonSchema,
@@ -83,6 +84,13 @@ export async function generateTutorial(
         tutorial.document_model,
         tutorialId,
       );
+
+      if (model.page_count !== sourcePageCount) {
+        throw new Error(
+          "The generated document map has an incorrect page count.",
+        );
+      }
+
       const plan = validateTeachingPlan(tutorial.teaching_plan, model);
       const firstUnit = plan.units[0];
       const firstUnitDetails = validateTeachingUnitDetails(
@@ -187,11 +195,15 @@ async function requestStructuredGeneration(
   );
 }
 
-function buildTutorialPrompt(tutorialId: string) {
+function buildTutorialPrompt(
+  tutorialId: string,
+  sourcePageCount: number,
+) {
   return `Review the complete PDF once, then produce document_model, a compact teaching_plan, and detailed content for only the first teaching unit.
 
 First create document_model as a compact concept map for an interactive tutor. Follow these rules:
 - Set document_id to "${tutorialId}" exactly.
+- Set page_count to ${sourcePageCount} exactly.
 - Use 1-based PDF order for page_index.
 - Use the printed page number for page_label when visible; otherwise use page_index as a string.
 - Give each concept a stable lowercase kebab-case ID beginning with "concept:".
