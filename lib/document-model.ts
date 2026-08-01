@@ -160,10 +160,6 @@ const STOP_WORDS = new Set([
   "where",
   "with",
 ]);
-const MINIMUM_SELECTION_TOKEN_COUNT = 2;
-const MINIMUM_MATCHED_TOKEN_COUNT = 2;
-const MINIMUM_SELECTION_MATCH_SCORE = 0.25;
-const MINIMUM_SELECTION_MATCH_MARGIN = 0.05;
 const MINIMUM_RELATED_OCCURRENCE_PRIORITY = 2;
 const RELATED_PAGE_LIMIT = 3;
 const OCCURRENCE_PRIORITIES: Record<OccurrenceRole, number> = {
@@ -309,55 +305,26 @@ export function summarizeDocumentModel(
 export function buildTextSelectionContext(
   model: DocumentModel,
   pageIndex: number,
+  selectedChunk: DocumentChunk,
   selectionText: string,
 ): TextSelectionContext | null {
   const page = model.pages[pageIndex - 1];
 
-  if (!page) {
-    return null;
-  }
-
-  const selectionTokens = tokenize(selectionText);
-
-  if (selectionTokens.size < MINIMUM_SELECTION_TOKEN_COUNT) {
+  if (!page?.chunks.some((chunk) => chunk.id === selectedChunk.id)) {
     return null;
   }
 
   const conceptNamesById = new Map(
     model.concepts.map((concept) => [concept.id, concept.name]),
   );
-  const rankedCurrentChunks = page.chunks
-    .map((chunk) => {
-      const match = scoreChunkMatch(
-        selectionTokens,
-        getChunkTokens(chunk, conceptNamesById),
-      );
-
-      return { chunk, ...match };
-    })
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        left.chunk.id.localeCompare(right.chunk.id),
-    );
-  const bestMatch = rankedCurrentChunks[0];
-  const nextBestScore = rankedCurrentChunks[1]?.score ?? 0;
-
-  if (
-    !bestMatch ||
-    bestMatch.matchedTokenCount < MINIMUM_MATCHED_TOKEN_COUNT ||
-    bestMatch.score < MINIMUM_SELECTION_MATCH_SCORE ||
-    bestMatch.score - nextBestScore < MINIMUM_SELECTION_MATCH_MARGIN
-  ) {
-    return null;
-  }
+  const selectionTokens = tokenize(selectionText);
 
   return {
-    selected_chunk: bestMatch.chunk,
+    selected_chunk: selectedChunk,
     related_pages: findRelatedPages(
       model,
       pageIndex,
-      bestMatch.chunk,
+      selectedChunk,
       selectionTokens,
       conceptNamesById,
     ),
@@ -367,7 +334,7 @@ export function buildTextSelectionContext(
 export function buildSelectionGrounding(
   model: DocumentModel,
   pageIndex: number,
-  selectionText: string,
+  textSelection: TextSelectionContext | null,
 ): SelectionGrounding {
   const page = model.pages[pageIndex - 1];
   const currentOccurrences = getPageConceptOccurrences(model, pageIndex);
@@ -430,11 +397,7 @@ export function buildSelectionGrounding(
       reason: connection.reason,
     })),
     related_chunks: relatedChunks,
-    text_selection: buildTextSelectionContext(
-      model,
-      pageIndex,
-      selectionText,
-    ),
+    text_selection: textSelection,
   };
 }
 
@@ -511,8 +474,12 @@ function findRelatedPages(
 
       const chunkTokens = getChunkTokens(chunk, conceptNamesById);
       const textSimilarity =
-        countTokenMatches(selectionTokens, combineChunkTokens(chunkTokens)) /
-        selectionTokens.size;
+        selectionTokens.size === 0
+          ? 0
+          : countTokenMatches(
+              selectionTokens,
+              combineChunkTokens(chunkTokens),
+            ) / selectionTokens.size;
 
       candidates.push({
         ...chunk,
@@ -605,32 +572,6 @@ function getChunkTokens(
         .join(" "),
     ),
     summary: tokenize(chunk.summary),
-  };
-}
-
-function scoreChunkMatch(
-  selectionTokens: ReadonlySet<string>,
-  chunkTokens: ChunkTokens,
-) {
-  let matchedTokenCount = 0;
-  let weightedMatches = 0;
-
-  for (const token of selectionTokens) {
-    if (chunkTokens.title.has(token)) {
-      matchedTokenCount += 1;
-      weightedMatches += 2;
-    } else if (chunkTokens.concepts.has(token)) {
-      matchedTokenCount += 1;
-      weightedMatches += 1.5;
-    } else if (chunkTokens.summary.has(token)) {
-      matchedTokenCount += 1;
-      weightedMatches += 1;
-    }
-  }
-
-  return {
-    matchedTokenCount,
-    score: weightedMatches / selectionTokens.size,
   };
 }
 

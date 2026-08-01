@@ -5,6 +5,7 @@ import {
   validateDocumentModel,
 } from "@/lib/document-model";
 import {
+  hasDocumentEmbeddings,
   listStoredTutorialIds,
   readDocumentModel,
   readStoredTutorial,
@@ -56,12 +57,13 @@ export async function listPreparedTutorials() {
 export async function readPreparedTutorial(
   tutorialId: string,
 ): Promise<PreparedTutorial | null> {
-  const [tutorial, storedModel] = await Promise.all([
+  const [tutorial, storedModel, embeddingsAvailable] = await Promise.all([
     readStoredTutorial(tutorialId),
     readDocumentModel(tutorialId),
+    hasDocumentEmbeddings(tutorialId),
   ]);
 
-  if (!tutorial || !storedModel) {
+  if (!tutorial || !storedModel || !embeddingsAvailable) {
     return null;
   }
 

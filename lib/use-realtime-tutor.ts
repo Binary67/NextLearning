@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildSelectionGrounding,
   type DocumentModel,
+  type TextSelectionContext,
 } from "@/lib/document-model";
 import type { DocumentSelection } from "@/lib/document-selection";
 
@@ -19,6 +20,8 @@ type RealtimeTutorOptions = {
   documentId: string | null;
   documentModel: DocumentModel | null;
   selection: DocumentSelection | null;
+  textSelectionContext: TextSelectionContext | null;
+  relatedPagesLoading: boolean;
   audioInputDeviceId: string;
   audioOutputDeviceId: string;
 };
@@ -343,10 +346,20 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   async function beginUserTurn() {
-    const { documentModel, selection } = optionsRef.current;
+    const {
+      documentModel,
+      selection,
+      textSelectionContext,
+      relatedPagesLoading,
+    } = optionsRef.current;
 
     if (!documentModel || !selection) {
       setError("Draw a rectangle around something before asking.");
+      return false;
+    }
+
+    if (selection.text && relatedPagesLoading) {
+      setError("Wait for the related pages to finish loading.");
       return false;
     }
 
@@ -374,7 +387,11 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         outputAudioPlayingRef.current = false;
       }
 
-      await syncSelectionContext(documentModel, selection);
+      await syncSelectionContext(
+        documentModel,
+        selection,
+        textSelectionContext,
+      );
       setAudioTracksEnabled(mediaStreamRef.current, true);
       setIsUserTurn(true);
       setIsTutorResponding(false);
@@ -439,11 +456,13 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   async function syncSelectionContext(
     model: DocumentModel,
     selection: DocumentSelection,
+    textSelection: TextSelectionContext | null,
   ) {
     const selectionKey = JSON.stringify({
       page_index: selection.page_index,
       bounds: selection.bounds,
       text: selection.text,
+      text_selection: textSelection,
     });
     const currentItem = selectionContextItemRef.current;
 
@@ -463,7 +482,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     const event = await sendEventAndWait(
-      buildSelectionContextEvent(model, selection),
+      buildSelectionContextEvent(model, selection, textSelection),
       "conversation.item.added",
     );
     const itemId = event.item?.id;
@@ -775,11 +794,12 @@ Response policy:
 function buildSelectionContextEvent(
   model: DocumentModel,
   selection: DocumentSelection,
+  textSelection: TextSelectionContext | null,
 ) {
   const grounding = buildSelectionGrounding(
     model,
     selection.page_index,
-    selection.text,
+    textSelection,
   );
 
   return {

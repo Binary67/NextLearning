@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import type { DocumentEmbeddings } from "@/lib/document-embeddings";
 import type { DocumentModel } from "@/lib/document-model";
 
 export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
@@ -17,6 +18,7 @@ const tutorialsDirectory = path.join(process.cwd(), "data", "tutorials");
 const tutorialMetadataFileName = "tutorial.json";
 const documentFileName = "source.pdf";
 const documentModelFileName = "document-model.json";
+const documentEmbeddingsFileName = "document-embeddings.json";
 const tutorialIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -66,6 +68,29 @@ export async function readDocumentModel(
   );
 }
 
+export async function readDocumentEmbeddings(
+  tutorialId: string,
+): Promise<DocumentEmbeddings | null> {
+  return readJsonFile<DocumentEmbeddings>(
+    tutorialFilePath(tutorialId, documentEmbeddingsFileName),
+  );
+}
+
+export async function hasDocumentEmbeddings(tutorialId: string) {
+  try {
+    await fs.access(
+      tutorialFilePath(tutorialId, documentEmbeddingsFileName),
+    );
+    return true;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 export async function deleteStoredTutorial(tutorialId: string) {
   const tutorial = await readStoredTutorial(tutorialId);
 
@@ -86,6 +111,7 @@ export async function saveTutorial(
   fileData: Buffer,
   tutorialId: string,
   model: DocumentModel,
+  embeddings: DocumentEmbeddings,
 ): Promise<StoredTutorial> {
   const tutorial: StoredTutorial = {
     id: tutorialId,
@@ -100,6 +126,10 @@ export async function saveTutorial(
     writeJsonFileAtomically(
       tutorialFilePath(tutorialId, documentModelFileName),
       model,
+    ),
+    writeJsonFileAtomically(
+      tutorialFilePath(tutorialId, documentEmbeddingsFileName),
+      embeddings,
     ),
     writeJsonFileAtomically(
       tutorialFilePath(tutorialId, tutorialMetadataFileName),

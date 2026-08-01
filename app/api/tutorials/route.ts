@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
+import { generateDocumentEmbeddings } from "@/lib/document-embeddings";
 import {
   MAX_DOCUMENT_SIZE,
   saveTutorial,
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
           tutorialId,
           sourcePageCount,
         );
+        const embeddings = await generateDocumentEmbeddings(model);
 
         send({ type: "progress", stage: "saving" });
         const tutorial = await saveTutorial(
@@ -100,6 +102,7 @@ export async function POST(request: Request) {
           fileData,
           tutorialId,
           model,
+          embeddings,
         );
 
         send({

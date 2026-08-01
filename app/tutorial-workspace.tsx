@@ -21,7 +21,6 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
@@ -34,9 +33,9 @@ import { NewTutorialButton } from "@/app/new-tutorial-button";
 import {
   PdfDocumentViewer,
 } from "@/app/pdf-document-viewer";
-import {
-  buildTextSelectionContext,
-  type DocumentModel,
+import type {
+  DocumentModel,
+  TextSelectionContext,
 } from "@/lib/document-model";
 import type { DocumentSelection } from "@/lib/document-selection";
 import type { TutorialResponse } from "@/lib/tutorial";
@@ -52,6 +51,19 @@ type Modal =
 type TutorialDataResponse = {
   tutorial?: TutorialResponse;
   model?: DocumentModel;
+  message?: string;
+};
+
+type RelatedPagesStatus = "idle" | "loading" | "ready" | "error";
+
+type RelatedPagesResult = {
+  selectionKey: string;
+  status: "ready" | "error";
+  context: TextSelectionContext | null;
+};
+
+type RelatedPagesResponse = {
+  text_selection?: TextSelectionContext | null;
   message?: string;
 };
 
@@ -80,21 +92,26 @@ export function TutorialWorkspace({
     audioInputDeviceId,
     audioOutputDeviceId,
   } = useLearningSettings();
-  const textSelectionContext = useMemo(
-    () =>
-      documentModel && selection?.text
-        ? buildTextSelectionContext(
-            documentModel,
-            selection.page_index,
-            selection.text,
-          )
-        : null,
-    [documentModel, selection],
+  const { textSelectionContext, relatedPagesStatus } = useRelatedPages(
+    tutorialId,
+    documentModel,
+    selection,
   );
+  const relatedPagesLoading = relatedPagesStatus === "loading";
+  let learnerTurnPrompt = "Draw a rectangle on the PDF";
+
+  if (selection) {
+    learnerTurnPrompt = relatedPagesLoading
+      ? "Finding related pages…"
+      : `Press ${raiseHandShortcutLabel} to ask`;
+  }
+
   const realtimeTutor = useRealtimeTutor({
     documentId: activeTutorial?.id ?? null,
     documentModel,
     selection,
+    textSelectionContext,
+    relatedPagesLoading,
     audioInputDeviceId,
     audioOutputDeviceId,
   });
@@ -192,7 +209,8 @@ export function TutorialWorkspace({
         key === raiseHandShortcut &&
         realtimeTutor.status === "connected" &&
         modal === null &&
-        selection
+        selection &&
+        !relatedPagesLoading
       ) {
         event.preventDefault();
         void toggleUserTurn();
@@ -206,6 +224,7 @@ export function TutorialWorkspace({
     raiseHandShortcut,
     realtimeTutor.status,
     realtimeTutor.tutorTranscripts.length,
+    relatedPagesLoading,
     selection,
     sessionActive,
     toggleUserTurn,
@@ -315,11 +334,7 @@ export function TutorialWorkspace({
       return (
         <span className="turn-state-copy">
           <small>Your turn</small>
-          <strong>
-            {selection
-              ? `Press ${raiseHandShortcutLabel} to ask`
-              : "Draw a rectangle on the PDF"}
-          </strong>
+          <strong>{learnerTurnPrompt}</strong>
         </span>
       );
     }
@@ -524,9 +539,12 @@ export function TutorialWorkspace({
                 ))
               ) : (
                 <li className="waiting">
-                  {selection?.text
-                    ? "No reliable related pages found."
-                    : "Select text to find related pages."}
+                  {getRelatedPagesMessage(
+                    selection,
+                    documentModel,
+                    textSelectionContext,
+                    relatedPagesStatus,
+                  )}
                 </li>
               )}
             </ul>
@@ -546,6 +564,7 @@ export function TutorialWorkspace({
               disabled={
                 realtimeTutor.status !== "connected" ||
                 realtimeTutor.isSubmittingUserTurn ||
+                relatedPagesLoading ||
                 !selection
               }
               aria-label={
@@ -599,7 +618,7 @@ export function TutorialWorkspace({
         <ConfirmationModal
           eyebrow="Document management"
           title="Delete this document?"
-          message="The source PDF and its prepared document model will be permanently deleted from this machine."
+          message="The source PDF and its prepared tutorial data will be permanently deleted from this machine."
           confirmLabel={deletingTutorial ? "Deleting…" : "Delete Document"}
           icon={<Trash2 size={23} />}
           destructive
@@ -813,6 +832,80 @@ function ConfirmationModal({
   );
 }
 
+function useRelatedPages(
+  tutorialId: string,
+  model: DocumentModel | null,
+  selection: DocumentSelection | null,
+) {
+  const [result, setResult] = useState<RelatedPagesResult | null>(null);
+  const selectionKey = getSelectionKey(selection);
+  const activeResult =
+    result?.selectionKey === selectionKey ? result : null;
+  const selectedPageHasChunks = Boolean(
+    selection && model?.pages[selection.page_index - 1]?.chunks.length,
+  );
+  let status: RelatedPagesStatus = "idle";
+
+  if (selection?.text && selectedPageHasChunks) {
+    status = activeResult?.status ?? "loading";
+  } else if (selection?.text) {
+    status = "ready";
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    if (
+      !model ||
+      !selection?.text ||
+      !selectionKey ||
+      !selectedPageHasChunks
+    ) {
+      return () => controller.abort();
+    }
+
+    const activeSelection = selection;
+    const activeSelectionKey = selectionKey;
+
+    async function loadRelatedPages() {
+      try {
+        const context = await readRelatedPages(
+          tutorialId,
+          activeSelection,
+          controller.signal,
+        );
+        setResult({
+          selectionKey: activeSelectionKey,
+          status: "ready",
+          context,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setResult({
+            selectionKey: activeSelectionKey,
+            status: "error",
+            context: null,
+          });
+        }
+      }
+    }
+
+    void loadRelatedPages();
+    return () => controller.abort();
+  }, [
+    model,
+    selectedPageHasChunks,
+    selection,
+    selectionKey,
+    tutorialId,
+  ]);
+
+  return {
+    textSelectionContext: activeResult?.context ?? null,
+    relatedPagesStatus: status,
+  };
+}
+
 async function readTutorialData(
   tutorialId: string,
   signal: AbortSignal,
@@ -828,4 +921,79 @@ async function readTutorialData(
     tutorial: data.tutorial,
     model: data.model,
   };
+}
+
+async function readRelatedPages(
+  tutorialId: string,
+  selection: DocumentSelection,
+  signal: AbortSignal,
+) {
+  const response = await fetch(
+    `/api/tutorials/${tutorialId}/related-pages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        page_index: selection.page_index,
+        selection_text: selection.text,
+      }),
+      signal,
+    },
+  );
+  const data = (await response.json()) as RelatedPagesResponse;
+
+  if (!response.ok || !("text_selection" in data)) {
+    throw new Error(
+      data.message ?? "Related pages are temporarily unavailable.",
+    );
+  }
+
+  return data.text_selection ?? null;
+}
+
+function getRelatedPagesMessage(
+  selection: DocumentSelection | null,
+  model: DocumentModel | null,
+  context: TextSelectionContext | null,
+  status: RelatedPagesStatus,
+) {
+  if (!selection) {
+    return "Select text to find related pages.";
+  }
+
+  if (!selection.text) {
+    return "No readable text was found in this selection.";
+  }
+
+  if (!model?.pages[selection.page_index - 1]?.chunks.length) {
+    return "This page has no modeled content.";
+  }
+
+  if (status === "loading" || status === "idle") {
+    return "Finding related pages…";
+  }
+
+  if (status === "error") {
+    return "Related pages are temporarily unavailable.";
+  }
+
+  if (context) {
+    return "No related pages were found in this document.";
+  }
+
+  return "This selection could not be matched to the page.";
+}
+
+function getSelectionKey(selection: DocumentSelection | null) {
+  if (!selection?.text) {
+    return null;
+  }
+
+  return JSON.stringify({
+    page_index: selection.page_index,
+    bounds: selection.bounds,
+    text: selection.text,
+  });
 }

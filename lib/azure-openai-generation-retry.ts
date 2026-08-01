@@ -49,6 +49,24 @@ export function readAzureOpenAIGenerationConfiguration() {
   };
 }
 
+export function readAzureOpenAIEmbeddingConfiguration() {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deployment = process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT;
+
+  if (!endpoint || !apiKey || !deployment) {
+    throw new MissingAzureOpenAIConfigurationError(
+      "Azure OpenAI endpoint, API key, and embedding deployment are required.",
+    );
+  }
+
+  return {
+    endpoint: endpoint.replace(/\/+$/, ""),
+    apiKey,
+    deployment,
+  };
+}
+
 export function createAzureOpenAIResponseError(
   status: number,
   error: AzureOpenAIErrorDetails | undefined,
