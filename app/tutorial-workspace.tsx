@@ -35,6 +35,7 @@ import {
   useState,
 } from "react";
 
+import { AppHeader } from "@/app/app-header";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
 import {
@@ -677,104 +678,77 @@ export function TutorialWorkspace({
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-group">
-          <Link className="brand" href="/library" aria-label="NextLearning home">
-            <span className="brand-mark" aria-hidden="true">
-              N
-            </span>
-            NextLearning
-          </Link>
-        </div>
-
-        <nav className="main-nav" aria-label="Primary navigation">
-          <Link
-            className="nav-link active"
-            href={`/tutorials/${tutorialId}`}
-            aria-current="page"
-          >
-            Dashboard
-          </Link>
-          <button
-            className="nav-link"
-            type="button"
-            onClick={() =>
-              showToast("Courses are ready for future learning paths.")
-            }
-          >
-            Courses
-          </button>
-          <Link className="nav-link" href="/library">
-            Library
-          </Link>
-        </nav>
-
-        <div className="header-actions">
+      <AppHeader
+        activeSection="dashboard"
+        dashboardHref={`/tutorials/${tutorialId}`}
+        onCoursesClick={() =>
+          showToast("Courses are ready for future learning paths.")
+        }
+      >
+        <button
+          className="icon-button"
+          type="button"
+          onClick={toggleTimer}
+          aria-label={timerRunning ? "Pause focus timer" : "Resume focus timer"}
+        >
+          {timerRunning ? <Clock3 size={24} /> : <Play size={23} />}
+        </button>
+        <div className="popover-anchor">
           <button
             className="icon-button"
             type="button"
-            onClick={toggleTimer}
-            aria-label={timerRunning ? "Pause focus timer" : "Resume focus timer"}
+            onClick={() => togglePopover("settings")}
+            aria-label="Open learning settings"
+            aria-expanded={popover === "settings"}
           >
-            {timerRunning ? <Clock3 size={24} /> : <Play size={23} />}
+            <Settings size={25} />
           </button>
-          <div className="popover-anchor">
-            <button
-              className="icon-button"
-              type="button"
-              onClick={() => togglePopover("settings")}
-              aria-label="Open learning settings"
-              aria-expanded={popover === "settings"}
-            >
-              <Settings size={25} />
-            </button>
-            {popover === "settings" && (
-              <div className="popover">
-                <p className="popover-title">Learning settings</p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    showToast("The tutor follows the active teaching unit.")
-                  }
-                >
-                  <span>Tutor scope</span>
-                  <strong>Active unit</strong>
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="popover-anchor">
-            <button
-              className="avatar"
-              type="button"
-              onClick={() => togglePopover("profile")}
-              aria-label="Open profile menu"
-              aria-expanded={popover === "profile"}
-            >
-              AM
-            </button>
-            {popover === "profile" && (
-              <div className="popover profile-popover">
-                <div className="profile-summary">
-                  <span className="avatar avatar-large">AM</span>
-                  <span>
-                    <strong>Alex Morgan</strong>
-                    <small>Quantum Physics 101</small>
-                  </span>
-                </div>
-                <button type="button" onClick={() => showToast("Profile selected.")}>
-                  <User size={17} />
-                  View profile
-                </button>
-                <button type="button" onClick={() => showToast("Sign out selected.")}>
-                  <LogOut size={17} />
-                  Sign out
-                </button>
-              </div>
-            )}
-          </div>
+          {popover === "settings" && (
+            <div className="popover">
+              <p className="popover-title">Learning settings</p>
+              <button
+                type="button"
+                onClick={() =>
+                  showToast("The tutor follows the active teaching unit.")
+                }
+              >
+                <span>Tutor scope</span>
+                <strong>Active unit</strong>
+              </button>
+            </div>
+          )}
         </div>
-      </header>
+        <div className="popover-anchor">
+          <button
+            className="avatar"
+            type="button"
+            onClick={() => togglePopover("profile")}
+            aria-label="Open profile menu"
+            aria-expanded={popover === "profile"}
+          >
+            AM
+          </button>
+          {popover === "profile" && (
+            <div className="popover profile-popover">
+              <div className="profile-summary">
+                <span className="avatar avatar-large">AM</span>
+                <span>
+                  <strong>Alex Morgan</strong>
+                  <small>Quantum Physics 101</small>
+                </span>
+              </div>
+              <button type="button" onClick={() => showToast("Profile selected.")}>
+                <User size={17} />
+                View profile
+              </button>
+              <button type="button" onClick={() => showToast("Sign out selected.")}>
+                <LogOut size={17} />
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </AppHeader>
 
       <div
         className={`dashboard-layout${insightsVisible ? "" : " insights-hidden"}`}
