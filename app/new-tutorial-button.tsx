@@ -17,13 +17,23 @@ type NewTutorialButtonProps = {
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
+const ANALYSIS_LABEL_INTERVAL_MS = 6000;
+const ANALYSIS_LABELS = [
+  "Reviewing page content",
+  "Organizing document sections",
+  "Identifying key concepts",
+  "Mapping concept references",
+  "Connecting related ideas",
+  "Preparing selection context",
+  "Finalizing the document map",
+] as const;
 const PREPARATION_STATUS = {
   uploading: {
     label: "Uploading PDF",
     description: "Sending your document for preparation.",
   },
   analyzing: {
-    label: "Analyzing concepts and page context",
+    label: ANALYSIS_LABELS[0],
     description: "Preparing the document for selection-based questions.",
   },
   saving: {
@@ -56,6 +66,7 @@ export function NewTutorialButton({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preparationStage, setPreparationStage] =
     useState<PreparationStage | null>(null);
+  const [analysisLabelIndex, setAnalysisLabelIndex] = useState(0);
   const [error, setError] = useState("");
   const preparing = preparationStage !== null;
   const pendingFileIsValid =
@@ -65,6 +76,10 @@ export function NewTutorialButton({
   const preparationStatus = preparationStage
     ? PREPARATION_STATUS[preparationStage]
     : null;
+  const preparationLabel =
+    preparationStage === "analyzing"
+      ? ANALYSIS_LABELS[analysisLabelIndex]
+      : preparationStatus?.label;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -78,6 +93,20 @@ export function NewTutorialButton({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [pendingFile, preparing]);
+
+  useEffect(() => {
+    if (preparationStage !== "analyzing") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setAnalysisLabelIndex(
+        (currentIndex) => (currentIndex + 1) % ANALYSIS_LABELS.length,
+      );
+    }, ANALYSIS_LABEL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [preparationStage]);
 
   function selectDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -108,6 +137,7 @@ export function NewTutorialButton({
       return;
     }
 
+    setAnalysisLabelIndex(0);
     setPreparationStage("uploading");
     setError("");
 
@@ -220,7 +250,7 @@ export function NewTutorialButton({
                   role="progressbar"
                   aria-label="Document preparation progress"
                 />
-                <h3>{preparationStatus.label}</h3>
+                <h3>{preparationLabel}</h3>
                 <p>{preparationStatus.description}</p>
                 <small>Preparation can take a few minutes.</small>
               </div>
