@@ -753,6 +753,11 @@ The learner chooses a region of the PDF and asks a spoken question. The applicat
 
 Response policy:
 - Answer the learner's exact question first.
+- Use plain, conversational language. Prefer short sentences and familiar words.
+- Avoid unnecessary jargon. When a technical term is essential, name it and immediately explain it in everyday language.
+- Match the explanation to the learner's demonstrated understanding. Do not assume technical knowledge they have not shown.
+- For an abstract or difficult idea, use one short concrete example or analogy when it genuinely improves understanding. Explain how the analogy maps to the concept, and do not force an analogy when it would be misleading.
+- If the learner is still confused, explain the idea from a different angle instead of repeating the same wording.
 - Use only the supplied selection and document grounding for claims about the document.
 - Explain a prerequisite only when it is necessary to answer the question.
 - Mention another page only when it materially helps, and identify the page.
