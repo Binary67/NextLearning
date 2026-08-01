@@ -1,6 +1,6 @@
 import type { DocumentModel } from "@/lib/document-model";
 
-export const TEACHING_PLAN_SCHEMA_VERSION = 2;
+export const TEACHING_PLAN_SCHEMA_VERSION = 3;
 
 const sourcePurposes = [
   "introduce",
@@ -24,6 +24,7 @@ export type TeachingSourcePurpose = (typeof sourcePurposes)[number];
 export type TeachingLessonStepKind = (typeof lessonStepKinds)[number];
 
 export type TeachingSourceAnchor = {
+  id: string;
   page_index: number;
   page_label: string;
   purpose: TeachingSourcePurpose;
@@ -37,6 +38,7 @@ export type TeachingLessonStep = {
   learner_prompt: string | null;
   expected_response: string | null;
   remediation: string | null;
+  visual_source_anchor_id: string | null;
 };
 
 export type TeachingUnit = {
@@ -94,6 +96,7 @@ export const teachingPlanJsonSchema = {
             items: {
               type: "object",
               properties: {
+                id: { type: "string" },
                 page_index: { type: "integer" },
                 page_label: { type: "string" },
                 purpose: {
@@ -101,7 +104,7 @@ export const teachingPlanJsonSchema = {
                   enum: sourcePurposes,
                 },
               },
-              required: ["page_index", "page_label", "purpose"],
+              required: ["id", "page_index", "page_label", "purpose"],
               additionalProperties: false,
             },
           },
@@ -130,6 +133,9 @@ export const teachingPlanJsonSchema = {
                 remediation: {
                   type: ["string", "null"],
                 },
+                visual_source_anchor_id: {
+                  type: ["string", "null"],
+                },
               },
               required: [
                 "id",
@@ -139,6 +145,7 @@ export const teachingPlanJsonSchema = {
                 "learner_prompt",
                 "expected_response",
                 "remediation",
+                "visual_source_anchor_id",
               ],
               additionalProperties: false,
             },
@@ -203,6 +210,7 @@ export function validateTeachingPlan(
   );
   const earlierUnitIds = new Set<string>();
   const lessonStepIds = new Set<string>();
+  const sourceAnchorIds = new Set<string>();
 
   for (const unit of value.units) {
     if (!isRecord(unit)) {
@@ -268,6 +276,41 @@ export function validateTeachingPlan(
       throw new Error("The generated teaching plan has an invalid unit.");
     }
 
+    const groundedOccurrences = model.concepts
+      .filter((concept) => conceptIds.includes(concept.id))
+      .flatMap((concept) => concept.occurrences);
+    const unitSourceAnchorIds = new Set<string>();
+
+    for (const anchor of sourceAnchors) {
+      if (
+        !isRecord(anchor) ||
+        !isSourceAnchorId(anchor.id) ||
+        sourceAnchorIds.has(anchor.id) ||
+        !isPositiveInteger(anchor.page_index) ||
+        anchor.page_index > model.page_count ||
+        typeof anchor.page_label !== "string" ||
+        !isSourcePurpose(anchor.purpose)
+      ) {
+        throw new Error(
+          "The generated teaching plan has an invalid source anchor.",
+        );
+      }
+
+      const groundedOccurrence = groundedOccurrences.find(
+        (occurrence) => occurrence.page_index === anchor.page_index,
+      );
+
+      if (!groundedOccurrence) {
+        throw new Error(
+          "The generated teaching plan has an invalid source anchor.",
+        );
+      }
+
+      sourceAnchorIds.add(anchor.id);
+      unitSourceAnchorIds.add(anchor.id);
+      anchor.page_label = groundedOccurrence.page_label;
+    }
+
     const unitStepKinds = new Set<TeachingLessonStepKind>();
 
     for (const step of lessonSteps) {
@@ -278,7 +321,10 @@ export function validateTeachingPlan(
         !isLessonStepKind(step.kind) ||
         !isNonEmptyString(step.title) ||
         !isSubstantiveString(step.content) ||
-        !hasValidInteraction(step)
+        !hasValidInteraction(step) ||
+        (step.visual_source_anchor_id !== null &&
+          (typeof step.visual_source_anchor_id !== "string" ||
+            !unitSourceAnchorIds.has(step.visual_source_anchor_id)))
       ) {
         throw new Error(
           "The generated teaching plan has an invalid lesson step.",
@@ -301,36 +347,6 @@ export function validateTeachingPlan(
       );
     }
 
-    const groundedOccurrences = model.concepts
-      .filter((concept) => conceptIds.includes(concept.id))
-      .flatMap((concept) => concept.occurrences);
-
-    for (const anchor of sourceAnchors) {
-      if (
-        !isRecord(anchor) ||
-        !isPositiveInteger(anchor.page_index) ||
-        anchor.page_index > model.page_count ||
-        typeof anchor.page_label !== "string" ||
-        !isSourcePurpose(anchor.purpose)
-      ) {
-        throw new Error(
-          "The generated teaching plan has an invalid source anchor.",
-        );
-      }
-
-      const groundedOccurrence = groundedOccurrences.find(
-        (occurrence) => occurrence.page_index === anchor.page_index,
-      );
-
-      if (!groundedOccurrence) {
-        throw new Error(
-          "The generated teaching plan has an invalid source anchor.",
-        );
-      }
-
-      anchor.page_label = groundedOccurrence.page_label;
-    }
-
     earlierUnitIds.add(id);
   }
 
@@ -348,6 +364,13 @@ function isLessonStepId(value: unknown): value is string {
   return (
     typeof value === "string" &&
     /^step:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+  );
+}
+
+function isSourceAnchorId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^source:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
   );
 }
 

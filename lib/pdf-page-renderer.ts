@@ -11,28 +11,58 @@ export async function renderPdfPageForTutor(
   documentId: string,
   documentUrl: string,
   pageIndex: number,
+  maxImageBytes: number,
 ) {
   const pdfDocument = await loadPdfDocument(documentId, documentUrl);
   const page = await pdfDocument.getPage(pageIndex);
   const initialViewport = page.getViewport({ scale: 1 });
-  const scale = Math.min(
-    1.4,
-    900 / Math.max(initialViewport.width, initialViewport.height),
-  );
-  const viewport = page.getViewport({ scale });
-  const canvas = window.document.createElement("canvas");
+  let longestEdge = 600;
+  let quality = 0.55;
 
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
+  while (true) {
+    const scale = Math.min(
+      1,
+      longestEdge /
+        Math.max(initialViewport.width, initialViewport.height),
+    );
+    const viewport = page.getViewport({ scale });
+    const canvas = window.document.createElement("canvas");
 
-  await page.render({
-    canvas,
-    viewport,
-    background: "rgb(255,255,255)",
-  }).promise;
-  drawVisualGuideGrid(canvas);
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
 
-  return canvas.toDataURL("image/jpeg", 0.72);
+    await page.render({
+      canvas,
+      viewport,
+      background: "rgb(255,255,255)",
+    }).promise;
+    drawVisualGuideGrid(canvas);
+
+    const imageUrl = canvas.toDataURL("image/jpeg", quality);
+    const imageBytes = new TextEncoder().encode(imageUrl).byteLength;
+
+    if (imageBytes <= maxImageBytes) {
+      return imageUrl;
+    }
+
+    if (longestEdge > 320) {
+      const sizeRatio = Math.sqrt(maxImageBytes / imageBytes) * 0.9;
+      longestEdge = Math.max(
+        320,
+        Math.floor(longestEdge * Math.min(0.9, sizeRatio)),
+      );
+      continue;
+    }
+
+    if (quality > 0.3) {
+      quality = Math.max(0.3, quality - 0.1);
+      continue;
+    }
+
+    throw new Error(
+      "The source page image is too large for the Realtime connection.",
+    );
+  }
 }
 
 function drawVisualGuideGrid(canvas: HTMLCanvasElement) {

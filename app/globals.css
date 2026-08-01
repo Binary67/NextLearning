@@ -1315,6 +1315,46 @@ a:focus-visible {
   -webkit-line-clamp: 2;
 }
 
+.lesson-step-ready {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--soft-blue);
+}
+
+.lesson-step-ready > div {
+  min-width: 0;
+}
+
+.lesson-step-ready small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--blue);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.lesson-step-ready p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.lesson-step-next-button {
+  min-height: 38px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
 .session-dock {
   display: grid;
   grid-template-columns: 60px minmax(280px, 1fr) 52px 52px 160px;
@@ -2701,6 +2741,14 @@ kbd {
   }
 
   .tutor-question p {
+    text-align: center;
+  }
+
+  .lesson-step-ready {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding: 12px 16px;
     text-align: center;
   }
 

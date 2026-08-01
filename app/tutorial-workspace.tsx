@@ -124,22 +124,35 @@ export function TutorialWorkspace({
     (modal === "reset-progress" && resettingProgress) ||
     (modal === "delete-tutorial" && deletingTutorial);
   const isUserTurn = realtimeTutor.isUserTurn;
-  const isInterruptionTurn =
-    realtimeTutor.learnerTurnPurpose === "interruption";
+  const isQuestionTurn =
+    realtimeTutor.learnerTurnPurpose === "interruption" ||
+    realtimeTutor.learnerTurnPurpose === "follow-up";
   let userTurnActionLabel = realtimeTutor.isAwaitingLearnerAnswer
     ? "Answer tutor question"
     : "Raise hand to ask a question";
 
   if (realtimeTutor.isSubmittingUserTurn) {
-    userTurnActionLabel = isInterruptionTurn
+    userTurnActionLabel = isQuestionTurn
       ? "Sending question"
       : "Sending answer";
   } else if (isUserTurn) {
-    userTurnActionLabel = isInterruptionTurn
+    userTurnActionLabel = isQuestionTurn
       ? "Done asking"
       : "Done answering";
   }
 
+  const completedLessonStepIds = new Set(
+    realtimeTutor.completedLessonStepIds,
+  );
+  const currentLessonStep =
+    activeUnit?.lesson_steps.find(
+      (step) => !completedLessonStepIds.has(step.id),
+    ) ?? null;
+  const currentLessonStepReady =
+    currentLessonStep?.id === realtimeTutor.readyLessonStepId;
+  const isLastLessonStep =
+    currentLessonStep !== null &&
+    activeUnit?.lesson_steps.at(-1)?.id === currentLessonStep.id;
   const tutorQuestion =
     realtimeTutor.status === "connected" &&
     realtimeTutor.isAwaitingLearnerAnswer &&
@@ -202,7 +215,7 @@ export function TutorialWorkspace({
         );
 
         if (initialUnit) {
-          setCurrentPage(initialUnit.source_anchors[0].page_index);
+          setCurrentPage(getInitialUnitPageIndex(initialUnit));
         }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
@@ -245,13 +258,25 @@ export function TutorialWorkspace({
     let toastMessage = "Listening. Tap the check when you finish speaking.";
 
     if (isUserTurn) {
-      toastMessage = isInterruptionTurn
+      toastMessage = isQuestionTurn
         ? "Question sent. Waiting for the tutor."
         : "Answer sent. Waiting for the tutor.";
     }
 
     showToast(toastMessage);
-  }, [isInterruptionTurn, isUserTurn, realtimeTutor, showToast]);
+  }, [isQuestionTurn, isUserTurn, realtimeTutor, showToast]);
+
+  const advanceLessonStep = useCallback(async () => {
+    const advanced = await realtimeTutor.advanceLessonStep();
+
+    if (advanced) {
+      showToast(
+        isLastLessonStep
+          ? "Finishing this learning unit."
+          : "Moving to the next step.",
+      );
+    }
+  }, [isLastLessonStep, realtimeTutor, showToast]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -360,7 +385,7 @@ export function TutorialWorkspace({
         : null;
 
       if (firstUnit) {
-        setCurrentPage(firstUnit.source_anchors[0].page_index);
+        setCurrentPage(getInitialUnitPageIndex(firstUnit));
       }
 
       setModal(null);
@@ -434,7 +459,7 @@ export function TutorialWorkspace({
       }
 
       if (isUserTurn) {
-        const listeningPrompt = isInterruptionTurn
+        const listeningPrompt = isQuestionTurn
           ? "Ask your question, then tap the check"
           : "Speak your answer, then tap the check";
 
@@ -450,7 +475,7 @@ export function TutorialWorkspace({
       }
 
       if (realtimeTutor.isSubmittingUserTurn) {
-        const submissionLabel = isInterruptionTurn
+        const submissionLabel = isQuestionTurn
           ? "Sending your question…"
           : "Sending your answer…";
 
@@ -474,6 +499,15 @@ export function TutorialWorkspace({
           <span className="turn-state-copy">
             <small>{tutorTurnLabel}</small>
             <strong>{tutorTurnLabel}…</strong>
+          </span>
+        );
+      }
+
+      if (currentLessonStepReady) {
+        return (
+          <span className="turn-state-copy">
+            <small>Step ready</small>
+            <strong>Ask a question or continue when ready</strong>
           </span>
         );
       }
@@ -882,6 +916,33 @@ export function TutorialWorkspace({
           </div>
 
           <div className="session-controls">
+            {currentLessonStepReady && currentLessonStep && (
+              <div className="lesson-step-ready" aria-live="polite">
+                <div>
+                  <small>Ready when you are</small>
+                  <p>
+                    Stay here for questions, or continue to{" "}
+                    {isLastLessonStep
+                      ? "finish this learning unit"
+                      : "the next step"}.
+                  </p>
+                </div>
+                <button
+                  className="primary-button lesson-step-next-button"
+                  type="button"
+                  onClick={() => void advanceLessonStep()}
+                  disabled={
+                    isUserTurn ||
+                    realtimeTutor.isSubmittingUserTurn ||
+                    realtimeTutor.isTutorResponding ||
+                    realtimeTutor.isTutorSpeaking
+                  }
+                >
+                  {isLastLessonStep ? "Finish unit" : "Next step"}
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {tutorQuestion && (
               <div
                 className="tutor-question"
@@ -1104,6 +1165,7 @@ export function TutorialWorkspace({
                   completedLessonStepIds={
                     realtimeTutor.completedLessonStepIds
                   }
+                  readyLessonStepId={realtimeTutor.readyLessonStepId}
                   tutorSessionActive={tutorSessionActive}
                 />
                 {realtimeTutor.error && (
@@ -1559,12 +1621,14 @@ function LearningPath({
   progress,
   activeUnitId,
   completedLessonStepIds,
+  readyLessonStepId,
   tutorSessionActive,
 }: {
   plan: TeachingPlan | null;
   progress: LearningProgress | null;
   activeUnitId: string | null;
   completedLessonStepIds: string[];
+  readyLessonStepId: string | null;
   tutorSessionActive: boolean;
 }) {
   const [expandedUnitIds, setExpandedUnitIds] = useState(
@@ -1702,7 +1766,10 @@ function LearningPath({
                         stepStatusLabel = "Covered";
                       } else if (step.id === currentStepId) {
                         stepStatus = "current";
-                        stepStatusLabel = "Current";
+                        stepStatusLabel =
+                          step.id === readyLessonStepId
+                            ? "Ready"
+                            : "Current";
                       }
 
                       return (
@@ -1872,6 +1939,17 @@ function formatConceptId(conceptId: string) {
 
 function formatLessonStepKind(kind: string) {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+function getInitialUnitPageIndex(unit: TeachingUnit) {
+  const firstVisualAnchorId = unit.lesson_steps.find(
+    (step) => step.visual_source_anchor_id !== null,
+  )?.visual_source_anchor_id;
+  const firstVisualAnchor = unit.source_anchors.find(
+    (anchor) => anchor.id === firstVisualAnchorId,
+  );
+
+  return firstVisualAnchor?.page_index ?? unit.source_anchors[0].page_index;
 }
 
 function getLatestTutorQuestion(transcript: string) {
