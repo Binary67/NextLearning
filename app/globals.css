@@ -2567,10 +2567,6 @@ kbd {
     gap: 1px;
   }
 
-  .header-actions > .icon-button:first-child {
-    display: none;
-  }
-
   .nav-link {
     padding: 0 13px;
     font-size: 0.8rem;

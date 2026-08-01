@@ -5,7 +5,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Download,
   FileText,
   Hand,
@@ -18,26 +17,26 @@ import {
   Route,
   RotateCcw,
   ScanText,
-  Settings,
   Sparkles,
   Trash2,
-  User,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 
 import { AppHeader } from "@/app/app-header";
+import {
+  LearningSettingsDialog,
+  useLearningSettings,
+} from "@/app/learning-settings";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
 import {
@@ -64,15 +63,6 @@ type Modal =
   | "reset-progress"
   | "delete-tutorial"
   | null;
-type Popover = "profile" | null;
-
-const DEFAULT_RAISE_HAND_SHORTCUT = " ";
-const RAISE_HAND_SHORTCUT_STORAGE_KEY =
-  "nextlearning.raise-hand-shortcut";
-const AUDIO_INPUT_STORAGE_KEY = "nextlearning.audio-input-device";
-const AUDIO_OUTPUT_STORAGE_KEY = "nextlearning.audio-output-device";
-const LOCAL_SETTINGS_EVENT = "nextlearning-settings-change";
-const RESERVED_SHORTCUT_KEYS = new Set(["a", "e", "t"]);
 
 export function TutorialWorkspace({
   tutorialId,
@@ -81,8 +71,6 @@ export function TutorialWorkspace({
 }) {
   const router = useRouter();
   const [modal, setModal] = useState<Modal>(null);
-  const [popover, setPopover] = useState<Popover>(null);
-  const [timerRunning, setTimerRunning] = useState(true);
   const [insightsVisible, setInsightsVisible] = useState(true);
   const [documentPreparationExpanded, setDocumentPreparationExpanded] =
     useState(true);
@@ -97,27 +85,12 @@ export function TutorialWorkspace({
   const [documentError, setDocumentError] = useState("");
   const [deletingTutorial, setDeletingTutorial] = useState(false);
   const [resettingProgress, setResettingProgress] = useState(false);
-  const raiseHandShortcut = useLocalSetting(
-    RAISE_HAND_SHORTCUT_STORAGE_KEY,
-    DEFAULT_RAISE_HAND_SHORTCUT,
-  );
-  const [recordingShortcut, setRecordingShortcut] = useState(false);
-  const audioInputDeviceId = useLocalSetting(AUDIO_INPUT_STORAGE_KEY, "");
-  const audioOutputDeviceId = useLocalSetting(
-    AUDIO_OUTPUT_STORAGE_KEY,
-    "",
-  );
-  const [audioInputDevices, setAudioInputDevices] = useState<
-    MediaDeviceInfo[]
-  >([]);
-  const [audioOutputDevices, setAudioOutputDevices] = useState<
-    MediaDeviceInfo[]
-  >([]);
-  const [audioDevicesLoading, setAudioDevicesLoading] = useState(false);
-  const [changingAudioDevice, setChangingAudioDevice] = useState<
-    "input" | "output" | null
-  >(null);
-  const [settingsError, setSettingsError] = useState("");
+  const {
+    raiseHandShortcut,
+    raiseHandShortcutLabel,
+    audioInputDeviceId,
+    audioOutputDeviceId,
+  } = useLearningSettings();
   const [currentPage, setCurrentPage] = useState(1);
   const [teachingPlan, setTeachingPlan] =
     useState<TeachingPlan | null>(null);
@@ -162,7 +135,6 @@ export function TutorialWorkspace({
   const isQuestionTurn =
     realtimeTutor.learnerTurnPurpose === "interruption" ||
     realtimeTutor.learnerTurnPurpose === "follow-up";
-  const raiseHandShortcutLabel = formatShortcut(raiseHandShortcut);
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.isUserTurn ||
@@ -272,141 +244,10 @@ export function TutorialWorkspace({
     return () => controller.abort();
   }, [tutorialId]);
 
-  const refreshAudioDevices = useCallback(
-    async (requestMicrophonePermission: boolean) => {
-      setAudioDevicesLoading(true);
-      setSettingsError("");
-
-      try {
-        if (requestMicrophonePermission) {
-          const permissionStream =
-            await navigator.mediaDevices.getUserMedia({ audio: true });
-
-          for (const track of permissionStream.getTracks()) {
-            track.stop();
-          }
-        }
-
-        const devices = await navigator.mediaDevices.enumerateDevices();
-
-        setAudioInputDevices(
-          devices.filter((device) => device.kind === "audioinput"),
-        );
-        setAudioOutputDevices(
-          devices.filter((device) => device.kind === "audiooutput"),
-        );
-      } catch (reason) {
-        setSettingsError(
-          reason instanceof Error
-            ? reason.message
-            : "Audio devices could not be loaded.",
-        );
-      } finally {
-        setAudioDevicesLoading(false);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    function handleDeviceChange() {
-      void refreshAudioDevices(false);
-    }
-
-    navigator.mediaDevices.addEventListener(
-      "devicechange",
-      handleDeviceChange,
-    );
-    return () =>
-      navigator.mediaDevices.removeEventListener(
-        "devicechange",
-        handleDeviceChange,
-      );
-  }, [refreshAudioDevices]);
-
   const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   }, []);
-
-  function toggleTimer() {
-    setTimerRunning((running) => !running);
-    showToast(timerRunning ? "Focus timer paused." : "Focus timer resumed.");
-  }
-
-  function toggleProfilePopover() {
-    setPopover((currentPopover) =>
-      currentPopover === "profile" ? null : "profile",
-    );
-  }
-
-  function openSettings() {
-    setPopover(null);
-    setModal("settings");
-    setRecordingShortcut(false);
-    void refreshAudioDevices(realtimeTutor.status !== "connected");
-  }
-
-  function recordRaiseHandShortcut(
-    event: ReactKeyboardEvent<HTMLButtonElement>,
-  ) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (event.key === "Escape") {
-      setRecordingShortcut(false);
-      setSettingsError("");
-      return;
-    }
-
-    const shortcut = normalizeShortcut(event);
-
-    if (!shortcut || RESERVED_SHORTCUT_KEYS.has(shortcut)) {
-      setSettingsError(
-        "Choose Space, a letter, or a number that is not A, T, or E.",
-      );
-      return;
-    }
-
-    setRecordingShortcut(false);
-    setSettingsError("");
-    saveLocalSetting(
-      RAISE_HAND_SHORTCUT_STORAGE_KEY,
-      shortcut,
-    );
-  }
-
-  async function changeAudioInputDevice(deviceId: string) {
-    setChangingAudioDevice("input");
-    setSettingsError("");
-
-    const changed = await realtimeTutor.selectAudioInputDevice(deviceId);
-
-    if (changed) {
-      saveLocalSetting(AUDIO_INPUT_STORAGE_KEY, deviceId);
-      showToast("Microphone updated.");
-    } else {
-      setSettingsError("The selected microphone could not be activated.");
-    }
-
-    setChangingAudioDevice(null);
-  }
-
-  async function changeAudioOutputDevice(deviceId: string) {
-    setChangingAudioDevice("output");
-    setSettingsError("");
-
-    const changed = await realtimeTutor.selectAudioOutputDevice(deviceId);
-
-    if (changed) {
-      saveLocalSetting(AUDIO_OUTPUT_STORAGE_KEY, deviceId);
-      showToast("Speaker updated.");
-    } else {
-      setSettingsError("The selected speaker could not be activated.");
-    }
-
-    setChangingAudioDevice(null);
-  }
 
   const toggleUserTurn = useCallback(async () => {
     const actionSucceeded = await realtimeTutor.toggleUserTurn();
@@ -473,7 +314,6 @@ export function TutorialWorkspace({
 
       if (key === "escape") {
         setModal(null);
-        setPopover(null);
       } else if (key === "a") {
         setModal("analysis");
       } else if (
@@ -596,13 +436,11 @@ export function TutorialWorkspace({
 
   function confirmEndSession() {
     realtimeTutor.end();
-    setTimerRunning(false);
     setModal(null);
     showToast("Session ended.");
   }
 
   function startTutor() {
-    setTimerRunning(true);
     setTutorTranscriptExpanded(true);
     void realtimeTutor.start();
   }
@@ -851,56 +689,10 @@ export function TutorialWorkspace({
         onCoursesClick={() =>
           showToast("Courses are ready for future learning paths.")
         }
-      >
-        <button
-          className="icon-button"
-          type="button"
-          onClick={toggleTimer}
-          aria-label={timerRunning ? "Pause focus timer" : "Resume focus timer"}
-        >
-          {timerRunning ? <Clock3 size={24} /> : <Play size={23} />}
-        </button>
-        <button
-          className="icon-button"
-          type="button"
-          onClick={openSettings}
-          aria-label="Open learning settings"
-          aria-expanded={modal === "settings"}
-          aria-haspopup="dialog"
-        >
-          <Settings size={25} />
-        </button>
-        <div className="popover-anchor">
-          <button
-            className="avatar"
-            type="button"
-            onClick={toggleProfilePopover}
-            aria-label="Open profile menu"
-            aria-expanded={popover === "profile"}
-          >
-            AM
-          </button>
-          {popover === "profile" && (
-            <div className="popover profile-popover">
-              <div className="profile-summary">
-                <span className="avatar avatar-large">AM</span>
-                <span>
-                  <strong>Alex Morgan</strong>
-                  <small>Quantum Physics 101</small>
-                </span>
-              </div>
-              <button type="button" onClick={() => showToast("Profile selected.")}>
-                <User size={17} />
-                View profile
-              </button>
-              <button type="button" onClick={() => showToast("Sign out selected.")}>
-                <LogOut size={17} />
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
-      </AppHeader>
+        settingsOpen={modal === "settings"}
+        onOpenSettings={() => setModal("settings")}
+        onShowMessage={showToast}
+      />
 
       <div
         className={`dashboard-layout${insightsVisible ? "" : " insights-hidden"}`}
@@ -1326,10 +1118,10 @@ export function TutorialWorkspace({
         </div>
       </div>
 
-      {modal && (
+      {modal && modal !== "settings" && (
         <div className="modal-backdrop" role="presentation">
           <section
-            className={`modal${modal === "analysis" ? " teaching-plan-modal" : ""}${modal === "transcript" ? " transcript-modal" : ""}${modal === "settings" ? " settings-modal" : ""}`}
+            className={`modal${modal === "analysis" ? " teaching-plan-modal" : ""}${modal === "transcript" ? " transcript-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
@@ -1386,136 +1178,6 @@ export function TutorialWorkspace({
                   onClick={() => setModal(null)}
                 >
                   Continue Learning
-                </button>
-              </>
-            )}
-
-            {modal === "settings" && (
-              <>
-                <div className="modal-icon">
-                  <Settings size={23} />
-                </div>
-                <p className="modal-eyebrow">Learning preferences</p>
-                <h2 id="modal-title">Settings</h2>
-                <div className="settings-list">
-                  <section className="setting-field">
-                    <div>
-                      <label htmlFor="raise-hand-shortcut">
-                        Raise-hand shortcut
-                      </label>
-                      <p>
-                        Use the same key to interrupt and finish speaking.
-                      </p>
-                    </div>
-                    <button
-                      id="raise-hand-shortcut"
-                      className={
-                        recordingShortcut ? "recording-shortcut" : ""
-                      }
-                      type="button"
-                      onClick={() => {
-                        setRecordingShortcut((recording) => !recording);
-                        setSettingsError("");
-                      }}
-                      onKeyDown={
-                        recordingShortcut
-                          ? recordRaiseHandShortcut
-                          : undefined
-                      }
-                    >
-                      {recordingShortcut
-                        ? "Press a key…"
-                        : raiseHandShortcutLabel}
-                    </button>
-                  </section>
-
-                  <section className="setting-field">
-                    <div>
-                      <label htmlFor="audio-input-device">
-                        Microphone
-                      </label>
-                      <p>The device that listens when your hand is raised.</p>
-                    </div>
-                    <select
-                      id="audio-input-device"
-                      value={audioInputDeviceId}
-                      onChange={(event) =>
-                        void changeAudioInputDevice(event.target.value)
-                      }
-                      disabled={
-                        audioSettingsDisabled ||
-                        audioDevicesLoading ||
-                        changingAudioDevice !== null
-                      }
-                    >
-                      <option value="">System default</option>
-                      {audioInputDevices.map((device, index) => (
-                        <option
-                          key={device.deviceId}
-                          value={device.deviceId}
-                        >
-                          {getAudioDeviceLabel(
-                            device,
-                            "Microphone",
-                            index,
-                          )}
-                        </option>
-                      ))}
-                    </select>
-                  </section>
-
-                  <section className="setting-field">
-                    <div>
-                      <label htmlFor="audio-output-device">Speaker</label>
-                      <p>The device used for the tutor&apos;s voice.</p>
-                    </div>
-                    <select
-                      id="audio-output-device"
-                      value={audioOutputDeviceId}
-                      onChange={(event) =>
-                        void changeAudioOutputDevice(event.target.value)
-                      }
-                      disabled={
-                        audioSettingsDisabled ||
-                        audioDevicesLoading ||
-                        changingAudioDevice !== null
-                      }
-                    >
-                      <option value="">System default</option>
-                      {audioOutputDevices.map((device, index) => (
-                        <option
-                          key={device.deviceId}
-                          value={device.deviceId}
-                        >
-                          {getAudioDeviceLabel(
-                            device,
-                            "Speaker",
-                            index,
-                          )}
-                        </option>
-                      ))}
-                    </select>
-                  </section>
-                </div>
-                {audioDevicesLoading && (
-                  <p className="settings-status">Loading audio devices…</p>
-                )}
-                {audioSettingsDisabled && (
-                  <p className="settings-status">
-                    Audio devices cannot change while connecting or speaking.
-                  </p>
-                )}
-                {settingsError && (
-                  <p className="modal-error" role="alert">
-                    {settingsError}
-                  </p>
-                )}
-                <button
-                  className="primary-button modal-button"
-                  type="button"
-                  onClick={() => setModal(null)}
-                >
-                  Done
                 </button>
               </>
             )}
@@ -1691,68 +1353,28 @@ export function TutorialWorkspace({
         </div>
       )}
 
+      {modal === "settings" && (
+        <LearningSettingsDialog
+          audioChangesDisabled={audioSettingsDisabled}
+          requestMicrophonePermission={
+            realtimeTutor.status !== "connected"
+          }
+          onSelectAudioInputDevice={
+            realtimeTutor.selectAudioInputDevice
+          }
+          onSelectAudioOutputDevice={
+            realtimeTutor.selectAudioOutputDevice
+          }
+          onClose={() => setModal(null)}
+          onShowMessage={showToast}
+        />
+      )}
+
       <div className={`toast${toast ? " visible" : ""}`} aria-live="polite">
         {toast}
       </div>
     </main>
   );
-}
-
-function useLocalSetting(key: string, fallback: string) {
-  const getSnapshot = useCallback(
-    () => window.localStorage.getItem(key) ?? fallback,
-    [fallback, key],
-  );
-  const getServerSnapshot = useCallback(() => fallback, [fallback]);
-
-  return useSyncExternalStore(
-    subscribeToLocalSettings,
-    getSnapshot,
-    getServerSnapshot,
-  );
-}
-
-function subscribeToLocalSettings(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(LOCAL_SETTINGS_EVENT, onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(LOCAL_SETTINGS_EVENT, onStoreChange);
-  };
-}
-
-function saveLocalSetting(key: string, value: string) {
-  window.localStorage.setItem(key, value);
-  window.dispatchEvent(new Event(LOCAL_SETTINGS_EVENT));
-}
-
-function normalizeShortcut(
-  event: ReactKeyboardEvent<HTMLButtonElement>,
-) {
-  if (
-    event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey
-  ) {
-    return null;
-  }
-
-  const key = event.key.toLowerCase();
-  return key === " " || /^[a-z0-9]$/.test(key) ? key : null;
-}
-
-function formatShortcut(shortcut: string) {
-  return shortcut === " " ? "Space" : shortcut.toUpperCase();
-}
-
-function getAudioDeviceLabel(
-  device: MediaDeviceInfo,
-  fallback: "Microphone" | "Speaker",
-  index: number,
-) {
-  return device.label || `${fallback} ${index + 1}`;
 }
 
 function TutorTranscriptCard({

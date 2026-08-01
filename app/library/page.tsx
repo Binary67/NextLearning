@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AppHeader } from "@/app/app-header";
+import { LearningSettingsDialog } from "@/app/learning-settings";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import type { TutorialResponse } from "@/lib/tutorial";
 
@@ -26,6 +27,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tutorialToDelete, setTutorialToDelete] =
     useState<TutorialResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -115,16 +117,10 @@ export default function LibraryPage() {
         onCoursesClick={() =>
           showToast("Courses are ready for future learning paths.")
         }
-      >
-        <button
-          className="avatar"
-          type="button"
-          onClick={() => showToast("Profile selected.")}
-          aria-label="Open profile"
-        >
-          AM
-        </button>
-      </AppHeader>
+        settingsOpen={settingsOpen}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onShowMessage={showToast}
+      />
 
       <main className="library-main">
         <section className="library-content" aria-labelledby="library-title">
@@ -230,6 +226,13 @@ export default function LibraryPage() {
           )}
         </section>
       </main>
+
+      {settingsOpen && (
+        <LearningSettingsDialog
+          onClose={() => setSettingsOpen(false)}
+          onShowMessage={showToast}
+        />
+      )}
 
       {tutorialToDelete && (
         <div className="modal-backdrop">
