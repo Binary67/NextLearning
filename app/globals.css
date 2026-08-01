@@ -1441,6 +1441,16 @@ a:focus-visible {
   box-shadow: 0 28px 80px rgba(17, 26, 42, 0.28);
 }
 
+.new-tutorial-modal {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.new-tutorial-modal > .modal-icon {
+  margin: 0 auto 20px;
+}
+
 .teaching-plan-modal {
   display: flex;
   width: min(900px, 100%);
@@ -1548,43 +1558,32 @@ a:focus-visible {
 }
 
 .document-preparation-progress {
-  margin: 22px 0 26px;
+  margin: 22px 0 0;
+  text-align: center;
 }
 
 .document-preparation-track {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-
-.document-preparation-segment {
+  position: relative;
+  overflow: hidden;
   height: 6px;
+  margin-bottom: 17px;
   border-radius: 999px;
   background: #e5e9ef;
 }
 
-.document-preparation-segment.complete {
-  background: var(--blue);
-}
-
-.document-preparation-segment.current {
+.document-preparation-track::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  border-radius: inherit;
   background: linear-gradient(
     90deg,
     rgba(0, 122, 255, 0.3),
     var(--blue),
     rgba(0, 122, 255, 0.3)
   );
-  background-size: 200% 100%;
-  animation: document-preparation-pulse 1.4s ease-in-out infinite;
-}
-
-.document-preparation-step {
-  margin: 17px 0 5px;
-  color: var(--blue);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  animation: document-preparation-progress 1.4s ease-in-out infinite;
+  content: "";
 }
 
 .document-preparation-progress h3 {
@@ -1593,7 +1592,7 @@ a:focus-visible {
   letter-spacing: -0.01em;
 }
 
-.document-preparation-progress > p:last-of-type {
+.document-preparation-progress > p {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 0.84rem;
@@ -1610,6 +1609,7 @@ a:focus-visible {
 .pending-file {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 13px;
   padding: 14px 16px;
   margin-top: 22px;
@@ -1618,18 +1618,19 @@ a:focus-visible {
   color: var(--blue);
 }
 
+.pending-file > svg {
+  flex: none;
+}
+
 .pending-file span {
-  display: block;
+  display: flex;
+  align-items: baseline;
   min-width: 0;
   overflow: hidden;
 }
 
-.pending-file strong,
-.pending-file small {
-  display: block;
-}
-
 .pending-file strong {
+  min-width: 0;
   overflow: hidden;
   color: var(--ink);
   font-size: 0.9rem;
@@ -1638,23 +1639,19 @@ a:focus-visible {
 }
 
 .pending-file small {
-  margin-top: 4px;
+  flex: none;
   color: var(--muted);
   font-size: 0.75rem;
+  white-space: nowrap;
 }
 
-.replacement-note {
-  padding: 12px 14px;
-  margin: -10px 0 22px;
-  border-radius: 11px;
-  background: var(--soft-blue);
-  color: #24527e;
-  font-size: 0.8rem;
-  line-height: 1.5;
+.pending-file small::before {
+  margin: 0 8px;
+  content: "·";
 }
 
 .modal-error {
-  margin: -8px 0 22px;
+  margin: 18px 0 0;
   color: #a22424;
   font-size: 0.84rem;
   font-weight: 650;
@@ -2428,9 +2425,13 @@ kbd {
   }
 }
 
-@keyframes document-preparation-pulse {
-  50% {
-    background-position: 100% 0;
+@keyframes document-preparation-progress {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(240%);
   }
 }
 
@@ -2730,6 +2731,10 @@ kbd {
     padding: 32px 24px 24px;
   }
 
+  .new-tutorial-modal {
+    max-height: calc(100dvh - 24px);
+  }
+
   .teaching-plan-modal {
     max-height: calc(100dvh - 24px);
   }
@@ -2774,5 +2779,10 @@ kbd {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .document-preparation-track::after {
+    width: 100%;
+    animation: none;
   }
 }

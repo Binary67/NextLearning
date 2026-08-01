@@ -17,22 +17,22 @@ type NewTutorialButtonProps = {
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
-const PREPARATION_STAGES = [
-  {
-    id: "analyzing",
-    label: "Analyzing and planning",
-    description: "Mapping concepts and organizing focused learning units.",
+const PREPARATION_STATUS = {
+  uploading: {
+    label: "Uploading PDF",
+    description: "Sending your document for preparation.",
   },
-  {
-    id: "saving",
-    label: "Finishing setup",
+  analyzing: {
+    label: "Analyzing concepts and building your tutorial",
+    description: "Organizing the document into focused learning units.",
+  },
+  saving: {
+    label: "Finalizing and saving",
     description: "Saving the tutorial and getting it ready to use.",
   },
-] as const;
+} as const;
 
-type PreparationStage =
-  | "uploading"
-  | (typeof PREPARATION_STAGES)[number]["id"];
+type PreparationStage = keyof typeof PREPARATION_STATUS;
 
 type PreparationEvent =
   | {
@@ -54,28 +54,21 @@ export function NewTutorialButton({
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [preparationStage, setPreparationStage] =
     useState<PreparationStage | null>(null);
   const [error, setError] = useState("");
+  const preparing = preparationStage !== null;
   const pendingFileIsValid =
     pendingFile !== null &&
     isPdf(pendingFile) &&
     pendingFile.size <= MAX_PDF_SIZE;
-  const stageIndex = PREPARATION_STAGES.findIndex(
-    (stage) => stage.id === preparationStage,
-  );
-  const preparationStatus =
-    preparationStage === "uploading"
-      ? {
-          label: "Uploading PDF",
-          description: "Sending the document for preparation.",
-        }
-      : PREPARATION_STAGES[stageIndex];
+  const preparationStatus = preparationStage
+    ? PREPARATION_STATUS[preparationStage]
+    : null;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && pendingFile && !uploading) {
+      if (event.key === "Escape" && pendingFile && !preparing) {
         setPendingFile(null);
         setPreparationStage(null);
         setError("");
@@ -84,7 +77,7 @@ export function NewTutorialButton({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pendingFile, uploading]);
+  }, [pendingFile, preparing]);
 
   function selectDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -115,7 +108,6 @@ export function NewTutorialButton({
       return;
     }
 
-    setUploading(true);
     setPreparationStage("uploading");
     setError("");
 
@@ -145,15 +137,10 @@ export function NewTutorialButton({
       );
     } finally {
       setPreparationStage(null);
-      setUploading(false);
     }
   }
 
   function closeModal() {
-    if (uploading) {
-      return;
-    }
-
     setPendingFile(null);
     setPreparationStage(null);
     setError("");
@@ -194,28 +181,27 @@ export function NewTutorialButton({
       {pendingFile && (
         <div className="modal-backdrop">
           <section
-            className="modal"
+            className="modal new-tutorial-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-tutorial-title"
           >
-            <button
-              className="modal-close"
-              type="button"
-              onClick={closeModal}
-              disabled={uploading}
-              aria-label="Close dialog"
-            >
-              <X size={22} />
-            </button>
+            {!preparing && (
+              <button
+                className="modal-close"
+                type="button"
+                onClick={closeModal}
+                aria-label="Close dialog"
+              >
+                <X size={22} />
+              </button>
+            )}
             <div className="modal-icon">
-              <Upload size={23} />
+              {preparing ? <Sparkles size={23} /> : <Upload size={23} />}
             </div>
             <p className="modal-eyebrow">New tutorial</p>
             <h2 id="new-tutorial-title">
-              {uploading
-                ? "Preparing your tutorial…"
-                : "Prepare this PDF?"}
+              {preparing ? "Creating your tutorial" : "Prepare this PDF?"}
             </h2>
             <div className="pending-file">
               <FileText size={23} aria-hidden="true" />
@@ -224,7 +210,7 @@ export function NewTutorialButton({
                 <small>{formatFileSize(pendingFile.size)}</small>
               </span>
             </div>
-            {uploading && preparationStatus ? (
+            {preparationStatus ? (
               <div
                 className="document-preparation-progress"
                 aria-live="polite"
@@ -233,31 +219,10 @@ export function NewTutorialButton({
                   className="document-preparation-track"
                   role="progressbar"
                   aria-label="Tutorial preparation progress"
-                  aria-valuemin={0}
-                  aria-valuemax={PREPARATION_STAGES.length}
-                  aria-valuenow={Math.max(stageIndex + 1, 0)}
-                >
-                  {PREPARATION_STAGES.map((stage, index) => (
-                    <span
-                      className={`document-preparation-segment${
-                        index < stageIndex ? " complete" : ""
-                      }${
-                        index === Math.max(stageIndex, 0)
-                          ? " current"
-                          : ""
-                      }`}
-                      key={stage.id}
-                    />
-                  ))}
-                </div>
-                <p className="document-preparation-step">
-                  {preparationStage === "uploading"
-                    ? "Starting preparation"
-                    : `Stage ${stageIndex + 1} of ${PREPARATION_STAGES.length}`}
-                </p>
+                />
                 <h3>{preparationStatus.label}</h3>
                 <p>{preparationStatus.description}</p>
-                <small>This may take a few minutes.</small>
+                <small>Preparation can take a few minutes.</small>
               </div>
             ) : (
               <p className="modal-copy">
@@ -265,33 +230,31 @@ export function NewTutorialButton({
                 concepts, guided lessons, and source highlights.
               </p>
             )}
-            <p className="replacement-note">
-              Your existing tutorials will not be changed.
-            </p>
             {error && (
               <p className="modal-error" role="alert">
                 {error}
               </p>
             )}
-            <div className="modal-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={closeModal}
-                disabled={uploading}
-              >
-                Cancel
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={prepareTutorial}
-                disabled={uploading || !pendingFileIsValid}
-              >
-                <Sparkles size={19} />
-                {uploading ? "Preparing…" : "Prepare Tutorial"}
-              </button>
-            </div>
+            {!preparing && (
+              <div className="modal-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={closeModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={prepareTutorial}
+                  disabled={!pendingFileIsValid}
+                >
+                  <Sparkles size={19} />
+                  Prepare Tutorial
+                </button>
+              </div>
+            )}
           </section>
         </div>
       )}

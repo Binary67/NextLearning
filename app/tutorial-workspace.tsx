@@ -1278,8 +1278,7 @@ export function TutorialWorkspace({
                 <p className="modal-eyebrow">Session control</p>
                 <h2 id="modal-title">End this learning session?</h2>
                 <p className="modal-copy">
-                  This disconnects the live tutor. Mastered units and their
-                  evidence remain saved with this tutorial.
+                  Your learning progress is already saved.
                 </p>
                 <div className="modal-actions">
                   <button
