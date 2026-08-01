@@ -1,4 +1,7 @@
-import type { TeachingPlan, TeachingUnit } from "@/lib/teaching-plan";
+import type {
+  TeachingPlan,
+  TeachingUnitOutline,
+} from "@/lib/teaching-plan";
 
 export const LEARNING_PROGRESS_SCHEMA_VERSION = 1;
 
@@ -62,7 +65,7 @@ export function validateLearningProgress(
 export function findActiveTeachingUnit(
   plan: TeachingPlan,
   progress: LearningProgress,
-): TeachingUnit | null {
+): TeachingUnitOutline | null {
   const masteredUnitIds = new Set(Object.keys(progress.unit_progress));
 
   return (
@@ -76,7 +79,7 @@ export function findActiveTeachingUnit(
 
 export function markUnitMastered(
   progress: LearningProgress,
-  unit: TeachingUnit,
+  unit: TeachingUnitOutline,
   masteryEvidence: string,
   updatedAt = new Date().toISOString(),
 ): LearningProgress {

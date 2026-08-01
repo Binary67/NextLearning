@@ -15,13 +15,18 @@ import {
 } from "@/lib/document-model";
 import {
   teachingPlanJsonSchema,
+  teachingUnitDetailsJsonSchema,
   type TeachingPlan,
+  type TeachingUnitDetails,
+  type TeachingUnitOutline,
   validateTeachingPlan,
+  validateTeachingUnitDetails,
 } from "@/lib/teaching-plan";
 
 type GeneratedTutorial = {
   model: DocumentModel;
   plan: TeachingPlan;
+  firstUnitDetails: TeachingUnitDetails;
 };
 
 const generatedTutorialJsonSchema = {
@@ -29,74 +34,40 @@ const generatedTutorialJsonSchema = {
   properties: {
     document_model: documentModelJsonSchema,
     teaching_plan: teachingPlanJsonSchema,
+    first_unit_details: teachingUnitDetailsJsonSchema,
   },
-  required: ["document_model", "teaching_plan"],
+  required: [
+    "document_model",
+    "teaching_plan",
+    "first_unit_details",
+  ],
   additionalProperties: false,
 } as const;
 
 export async function generateTutorial(
-  file: File,
+  fileData: Buffer,
+  fileName: string,
   tutorialId: string,
 ): Promise<GeneratedTutorial> {
-  const { endpoint, apiKey, deployment } =
-    readAzureOpenAIGenerationConfiguration();
-  const fileData = Buffer.from(await file.arrayBuffer()).toString("base64");
+  const encodedFile = fileData.toString("base64");
 
   return retryAzureOpenAIGeneration(async () => {
-    const response = await fetch(`${endpoint}/responses`, {
-      method: "POST",
-      headers: {
-        "api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: deployment,
-        store: false,
-        stream: true,
-        reasoning: {
-          effort: "high",
+    const outputText = await requestStructuredGeneration(
+      [
+        {
+          type: "input_file",
+          filename: fileName,
+          file_data: `data:application/pdf;base64,${encodedFile}`,
+          detail: "high",
         },
-        input: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_file",
-                filename: file.name,
-                file_data: `data:application/pdf;base64,${fileData}`,
-                detail: "high",
-              },
-              {
-                type: "input_text",
-                text: buildTutorialPrompt(tutorialId),
-              },
-            ],
-          },
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "tutorial",
-            schema: generatedTutorialJsonSchema,
-            strict: true,
-          },
+        {
+          type: "input_text",
+          text: buildTutorialPrompt(tutorialId),
         },
-      }),
-    });
-
-    const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
-      response,
+      ],
+      generatedTutorialJsonSchema,
+      "tutorial",
       "Azure OpenAI could not prepare the tutorial.",
-    );
-
-    if (result.status !== "completed") {
-      throw new Error("Azure OpenAI did not finish preparing the tutorial.");
-    }
-
-    const outputText = readAzureOpenAIOutputText(
-      result,
-      "Azure OpenAI declined to prepare the tutorial.",
-      "Azure OpenAI returned no tutorial.",
     );
 
     try {
@@ -111,8 +82,14 @@ export async function generateTutorial(
         tutorialId,
       );
       const plan = validateTeachingPlan(tutorial.teaching_plan, model);
+      const firstUnit = plan.units[0];
+      const firstUnitDetails = validateTeachingUnitDetails(
+        tutorial.first_unit_details,
+        plan,
+        firstUnit,
+      );
 
-      return { model, plan };
+      return { model, plan, firstUnitDetails };
     } catch (error) {
       throw new InvalidAzureOpenAIContentError(
         "Azure OpenAI returned an invalid tutorial.",
@@ -122,8 +99,94 @@ export async function generateTutorial(
   });
 }
 
+export async function generateTeachingUnitDetails(
+  model: DocumentModel,
+  plan: TeachingPlan,
+  unit: TeachingUnitOutline,
+) {
+  return retryAzureOpenAIGeneration(async () => {
+    const outputText = await requestStructuredGeneration(
+      [
+        {
+          type: "input_text",
+          text: buildTeachingUnitPrompt(model, plan, unit),
+        },
+      ],
+      teachingUnitDetailsJsonSchema,
+      "teaching_unit",
+      `Azure OpenAI could not prepare ${unit.id}.`,
+    );
+
+    try {
+      return validateTeachingUnitDetails(
+        JSON.parse(outputText) as unknown,
+        plan,
+        unit,
+      );
+    } catch (error) {
+      throw new InvalidAzureOpenAIContentError(
+        `Azure OpenAI returned invalid details for ${unit.id}.`,
+        error,
+      );
+    }
+  });
+}
+
+async function requestStructuredGeneration(
+  content: object[],
+  schema: object,
+  schemaName: string,
+  fallbackMessage: string,
+) {
+  const { endpoint, apiKey, deployment } =
+    readAzureOpenAIGenerationConfiguration();
+  const response = await fetch(`${endpoint}/responses`, {
+    method: "POST",
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: deployment,
+      store: false,
+      stream: true,
+      reasoning: {
+        effort: "high",
+      },
+      input: [
+        {
+          role: "user",
+          content,
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: schemaName,
+          schema,
+          strict: true,
+        },
+      },
+    }),
+  });
+  const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
+    response,
+    fallbackMessage,
+  );
+
+  if (result.status !== "completed") {
+    throw new Error(`${fallbackMessage} The response did not complete.`);
+  }
+
+  return readAzureOpenAIOutputText(
+    result,
+    "Azure OpenAI declined to prepare the tutorial.",
+    "Azure OpenAI returned no generated content.",
+  );
+}
+
 function buildTutorialPrompt(tutorialId: string) {
-  return `Review the complete PDF once, then produce both the document_model and teaching_plan in the same response.
+  return `Review the complete PDF once, then produce document_model, a compact teaching_plan, and detailed content for only the first teaching unit.
 
 First create document_model as a compact concept map for an interactive tutor. Follow these rules:
 - Set document_id to "${tutorialId}" exactly.
@@ -139,36 +202,79 @@ First create document_model as a compact concept map for an interactive tutor. F
 - Make connection direction match the relationship name.
 - Give every connection between one and 20 relevant_pages containing the pages that support it.
 - Keep every occurrence and connection confidence between 0 and 1 inclusive.
-- Keep document_model limited to document structure and concepts. Put all lesson content in teaching_plan.
 
-Then create teaching_plan from the concepts and occurrences in document_model. Follow these rules:
-- Set document_id to "${tutorialId}" exactly.
-- Set title to the exact document_model title.
-- Return between one and 120 units.
-- Treat the units array order as the recommended teaching order. Optimize for learning rather than PDF page order.
-- Make each unit one small, assessable knowledge point with one observable objective. Split broad topics into multiple units.
-- Give each unit between one and 12 unique concept_ids, using only IDs from document_model. A unit may use multiple concepts, and a concept may appear in multiple units when the objectives differ.
-- Give each unit no more than 12 unique prerequisite_unit_ids. They may reference only units that appear earlier in the units array. Add a prerequisite only when it is genuinely needed for the unit objective.
-- Ground every unit in the PDF. Each source anchor must use a page where at least one of the unit's concept IDs occurs in document_model.
-- Give each unit between one and 20 source anchors.
+Then create teaching_plan as a compact outline. Follow these rules:
+- Set document_id to "${tutorialId}" exactly and title to the exact document_model title.
+- Return between one and 120 units in recommended teaching order.
+- Make each unit one small, assessable knowledge point with one observable objective.
+- Give each unit between one and 12 unique concept_ids from document_model.
+- Give each unit no more than 12 unique prerequisite_unit_ids that reference only earlier units.
+- Give each unit between one and 20 source anchors grounded on pages where its concepts occur.
 - Give every source anchor a globally unique lowercase kebab-case ID beginning with "source:".
 - Use page_index and page_label exactly as represented by the relevant document_model occurrence.
-- A source page may be revisited by multiple units when it serves different teaching purposes.
+- For grounding_summary, capture the exact document-specific explanation, mechanism, example, formula, figure, or table evidence needed to write the later lesson. Use one to three concise sentences.
 - Give every lesson step a globally unique lowercase kebab-case ID beginning with "step:".
-- Set visual_source_anchor_id on a lesson step to the ID of the one source anchor the tutor should see while teaching that step. Use only anchors from the same unit. Set it to null when a page image would not materially help the explanation.
-- Reuse the same source anchor ID across steps when they need the same page. Do not create unused source anchors or duplicate page metadata in lesson steps.
-- Build every unit as a six-to-ten-step mini-tutorial. The first step must be motivate and the last must be recap. Include at least one explain, demonstrate, practice, and assess step between them. Add contrast or connect steps when they improve understanding.
-- Keep every step tightly focused on the unit objective, but make content substantive. Use two to four complete sentences to state what the tutor must teach, including the relevant reasoning, mechanism, terminology, notation, or interpretation.
-- The motivate step must establish the problem and why the knowledge point matters in this document.
-- The explain step must give a precise account rather than only an analogy or simplified definition.
-- The demonstrate step must trace a concrete example, formula, architecture flow, figure, or table supported by the document.
-- Use contrast to distinguish a likely confusion or non-example. Use connect to relate the unit to a prerequisite or explain why a later concept follows.
-- Practice is a guided application. Assess is an independent mastery check. For both kinds, provide a learner_prompt, the expected_response used as a private rubric, and remediation that gives the tutor a specific alternative explanation. Set those three fields to null for every other step kind.
-- The recap step must synthesize two or three durable takeaways without adding new material.
-- Give each unit between one and eight mastery_criteria. Make them observable evidence that the learner can explain or apply the knowledge point. Do not accept recognition or repetition alone when the document supports a stronger check.
-- Give each unit no more than eight concept-specific common_difficulties. Use an empty array when none are supported.
-- Source anchors must collectively support the lesson steps. Simple illustrative examples and contrasts may be constructed from the document's concepts, but do not introduce unrelated external lessons.
-- Do not generate learner personalization, session state, progress tracking, timing, or realtime behavior.`;
+- Build every unit as a six-to-ten-step outline. The first step must be motivate and the last recap. Include explain, demonstrate, practice, and assess.
+- Each lesson step contains only id, kind, title, and visual_source_anchor_id.
+- Set visual_source_anchor_id to an anchor from the same unit when a page image materially helps; otherwise set it to null.
+- Do not put detailed content, learner prompts, expected responses, remediation, mastery criteria, or common difficulties in teaching_plan.
+
+Finally create first_unit_details for teaching_plan.units[0] only:
+- Set document_id to "${tutorialId}" and unit_id to the first unit ID.
+- Return one detail record for every outlined lesson step, in exactly the same order and with exactly the same step IDs.
+- Write two to four substantive sentences of content per step using the unit's concepts and grounding summaries.
+- Motivate must establish the problem and relevance. Explain must be precise. Demonstrate must trace document-supported evidence. Recap must synthesize two or three durable takeaways.
+- Practice is guided application and assess is an independent mastery check. For both, provide learner_prompt, expected_response, and specific remediation. Set those three fields to null for all other step kinds.
+- Give the unit between one and eight observable mastery_criteria and no more than eight concept-specific common_difficulties.
+- Do not introduce unrelated external lessons, personalization, session state, progress tracking, timing, or realtime behavior.`;
+}
+
+function buildTeachingUnitPrompt(
+  model: DocumentModel,
+  plan: TeachingPlan,
+  unit: TeachingUnitOutline,
+) {
+  const conceptIds = new Set(unit.concept_ids);
+  const concepts = model.concepts.filter((concept) =>
+    conceptIds.has(concept.id),
+  );
+  const connections = model.connections.filter(
+    (connection) =>
+      conceptIds.has(connection.from) || conceptIds.has(connection.to),
+  );
+  const prerequisites = unit.prerequisite_unit_ids.map((unitId) => {
+    const prerequisite = plan.units.find((item) => item.id === unitId);
+
+    return prerequisite
+      ? {
+          id: prerequisite.id,
+          title: prerequisite.title,
+          objective: prerequisite.objective,
+        }
+      : { id: unitId };
+  });
+
+  return `Create detailed lesson content for exactly one outlined teaching unit.
+
+Document and unit context:
+${JSON.stringify({
+  document_id: plan.document_id,
+  document_title: plan.title,
+  unit,
+  prerequisites,
+  concepts,
+  connections,
+})}
+
+Rules:
+- Set schema_version, document_id, and unit_id exactly as requested by the schema and context.
+- Return one detail record for every outlined lesson step, in exactly the same order and with exactly the same step IDs.
+- Use only the supplied concepts, connections, and source grounding summaries as document evidence.
+- Write two to four substantive sentences of content per step, including the relevant reasoning, mechanism, terminology, notation, or interpretation.
+- Motivate must establish the problem and relevance. Explain must be precise. Demonstrate must trace a concrete supplied example, formula, architecture flow, figure, or table. Recap must synthesize two or three durable takeaways.
+- Practice is guided application and assess is an independent mastery check. For both, provide learner_prompt, expected_response, and specific remediation. Set those three fields to null for all other step kinds.
+- Give the unit between one and eight observable mastery_criteria and no more than eight concept-specific common_difficulties.
+- Do not invent unsupported document claims or introduce unrelated external lessons.`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

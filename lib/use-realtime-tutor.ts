@@ -5,10 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DocumentModel } from "@/lib/document-model";
 import type { LearningProgress } from "@/lib/learning-progress";
 import { renderPdfPageForTutor } from "@/lib/pdf-page-renderer";
-import type {
-  TeachingLessonStep,
-  TeachingPlan,
-  TeachingUnit,
+import {
+  assembleTeachingUnit,
+  type TeachingLessonStep,
+  type TeachingPlan,
+  type TeachingUnit,
+  type TeachingUnitDetailsById,
 } from "@/lib/teaching-plan";
 import {
   isVisualGuideBand,
@@ -28,6 +30,7 @@ type RealtimeTutorOptions = {
   documentUrl: string | null;
   documentModel: DocumentModel | null;
   teachingPlan: TeachingPlan | null;
+  unitDetails: TeachingUnitDetailsById;
   activeUnit: TeachingUnit | null;
   audioInputDeviceId: string;
   audioOutputDeviceId: string;
@@ -1004,7 +1007,12 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   async function completeUnit(functionCall: RealtimeFunctionCall) {
     const args = parseArguments(functionCall.arguments);
     const masteryEvidence = args.mastery_evidence;
-    const { activeUnit, documentId, teachingPlan } = optionsRef.current;
+    const {
+      activeUnit,
+      documentId,
+      teachingPlan,
+      unitDetails,
+    } = optionsRef.current;
 
     if (
       !activeUnit ||
@@ -1049,14 +1057,21 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
     optionsRef.current.onProgressChange(data.progress);
 
-    const nextUnit = data.active_unit_id
+    const nextUnitOutline = data.active_unit_id
       ? teachingPlan.units.find((unit) => unit.id === data.active_unit_id)
       : null;
+    const nextUnitDetails = nextUnitOutline
+      ? unitDetails[nextUnitOutline.id]
+      : null;
+    const nextUnit =
+      nextUnitOutline && nextUnitDetails
+        ? assembleTeachingUnit(nextUnitOutline, nextUnitDetails)
+        : null;
 
     await sendFunctionOutput(functionCall.call_id, {
       success: true,
       completed_unit_id: activeUnit.id,
-      next_unit_id: nextUnit?.id ?? null,
+      next_unit_id: data.active_unit_id ?? null,
     });
 
     if (nextUnit) {
@@ -1064,13 +1079,16 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       return;
     }
 
+    const completionInstructions = data.active_unit_id
+      ? "The completed unit is saved, but the next teaching unit is still being prepared. Tell the learner briefly to end this session and return shortly."
+      : "All teaching units are mastered. Congratulate the learner briefly, summarize the completed document in one sentence, and invite final questions.";
+
     await sendEventAndWait(
       {
         type: "session.update",
         session: {
           type: "realtime",
-          instructions:
-            "All teaching units are mastered. Congratulate the learner briefly, summarize the completed document in one sentence, and invite final questions.",
+          instructions: completionInstructions,
           tools: [],
           tool_choice: "none",
         },

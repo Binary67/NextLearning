@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import {
   deleteStoredTutorial,
   isTutorialId,
@@ -6,6 +8,8 @@ import {
   readPreparedTutorial,
   toTutorialResponse,
 } from "@/lib/tutorial";
+import { queueRemainingTeachingUnits } from "@/lib/tutorial-background-generation";
+import { hasPendingTeachingUnits } from "@/lib/tutorial-generation-status";
 
 export const runtime = "nodejs";
 
@@ -29,10 +33,16 @@ export async function GET(
     return tutorialNotFoundResponse();
   }
 
+  if (hasPendingTeachingUnits(prepared.generationStatus)) {
+    after(() => queueRemainingTeachingUnits(tutorialId));
+  }
+
   return Response.json({
     tutorial: toTutorialResponse(prepared),
     model: prepared.model,
     plan: prepared.plan,
+    unitDetails: prepared.unitDetails,
+    generationStatus: prepared.generationStatus,
     progress: prepared.progress,
   });
 }

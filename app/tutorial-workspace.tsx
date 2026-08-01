@@ -47,11 +47,19 @@ import {
   findActiveTeachingUnit,
   type LearningProgress,
 } from "@/lib/learning-progress";
-import type {
-  TeachingPlan,
-  TeachingUnit,
+import {
+  assembleTeachingUnit,
+  type TeachingPlan,
+  type TeachingUnitDetails,
+  type TeachingUnitDetailsById,
+  type TeachingUnitOutline,
 } from "@/lib/teaching-plan";
 import type { TutorialResponse } from "@/lib/tutorial";
+import {
+  hasPendingTeachingUnits,
+  type TeachingUnitGenerationState,
+  type TutorialGenerationStatus,
+} from "@/lib/tutorial-generation-status";
 import { useRealtimeTutor } from "@/lib/use-realtime-tutor";
 
 type Modal =
@@ -63,6 +71,18 @@ type Modal =
   | "reset-progress"
   | "delete-tutorial"
   | null;
+
+type TutorialDataResponse = {
+  tutorial?: TutorialResponse;
+  plan?: TeachingPlan;
+  model?: DocumentModel;
+  unitDetails?: TeachingUnitDetailsById;
+  generationStatus?: TutorialGenerationStatus;
+  progress?: LearningProgress;
+  message?: string;
+};
+
+const TUTORIAL_GENERATION_POLL_INTERVAL = 3000;
 
 export function TutorialWorkspace({
   tutorialId,
@@ -94,13 +114,24 @@ export function TutorialWorkspace({
   const [currentPage, setCurrentPage] = useState(1);
   const [teachingPlan, setTeachingPlan] =
     useState<TeachingPlan | null>(null);
+  const [unitDetails, setUnitDetails] =
+    useState<TeachingUnitDetailsById>({});
+  const [generationStatus, setGenerationStatus] =
+    useState<TutorialGenerationStatus | null>(null);
   const [documentModel, setDocumentModel] =
     useState<DocumentModel | null>(null);
   const [learningProgress, setLearningProgress] =
     useState<LearningProgress | null>(null);
-  const activeUnit =
+  const activeUnitOutline =
     teachingPlan && learningProgress
       ? findActiveTeachingUnit(teachingPlan, learningProgress)
+      : null;
+  const activeUnitDetails = activeUnitOutline
+    ? unitDetails[activeUnitOutline.id]
+    : null;
+  const activeUnit =
+    activeUnitOutline && activeUnitDetails
+      ? assembleTeachingUnit(activeUnitOutline, activeUnitDetails)
       : null;
   const pageContext = useMemo(
     () =>
@@ -116,6 +147,7 @@ export function TutorialWorkspace({
     documentUrl: activeTutorial?.url ?? null,
     documentModel,
     teachingPlan,
+    unitDetails,
     activeUnit,
     audioInputDeviceId,
     audioOutputDeviceId,
@@ -176,10 +208,18 @@ export function TutorialWorkspace({
   const masteredUnitCount = learningProgress
     ? Object.keys(learningProgress.unit_progress).length
     : 0;
+  const readyUnitCount = generationStatus
+    ? Object.values(generationStatus.unit_status).filter(
+        (state) => state === "ready",
+      ).length
+    : 0;
+  const tutorialPreparationPending = generationStatus
+    ? hasPendingTeachingUnits(generationStatus)
+    : false;
   const tutorialComplete =
     teachingPlan !== null &&
     learningProgress !== null &&
-    activeUnit === null;
+    activeUnitOutline === null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -189,36 +229,19 @@ export function TutorialWorkspace({
       setDocumentError("");
       setActiveTutorial(null);
       setTeachingPlan(null);
+      setUnitDetails({});
+      setGenerationStatus(null);
       setDocumentModel(null);
       setLearningProgress(null);
 
       try {
-        const response = await fetch(`/api/tutorials/${tutorialId}`, {
-          signal: controller.signal,
-        });
-        const data = (await response.json()) as {
-          tutorial?: TutorialResponse;
-          plan?: TeachingPlan;
-          model?: DocumentModel;
-          progress?: LearningProgress;
-          message?: string;
-        };
-
-        if (
-          !response.ok ||
-          !data.tutorial ||
-          !data.plan ||
-          !data.model ||
-          !data.progress
-        ) {
-          throw new Error(
-            data.message ?? "The tutorial could not be loaded.",
-          );
-        }
+        const data = await readTutorialData(tutorialId, controller.signal);
 
         setActiveTutorial(data.tutorial);
         setDocumentPreparationExpanded(false);
         setTeachingPlan(data.plan);
+        setUnitDetails(data.unitDetails);
+        setGenerationStatus(data.generationStatus);
         setDocumentModel(data.model);
         setLearningProgress(data.progress);
         const initialUnit = findActiveTeachingUnit(
@@ -243,6 +266,40 @@ export function TutorialWorkspace({
     loadTutorialData();
     return () => controller.abort();
   }, [tutorialId]);
+
+  useEffect(() => {
+    if (!tutorialPreparationPending) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let refreshing = false;
+    const interval = window.setInterval(async () => {
+      if (refreshing) {
+        return;
+      }
+
+      refreshing = true;
+
+      try {
+        const data = await readTutorialData(tutorialId, controller.signal);
+
+        setUnitDetails(data.unitDetails);
+        setGenerationStatus(data.generationStatus);
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          console.error("Teaching unit refresh failed:", error);
+        }
+      } finally {
+        refreshing = false;
+      }
+    }, TUTORIAL_GENERATION_POLL_INTERVAL);
+
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [tutorialId, tutorialPreparationPending]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -545,6 +602,10 @@ export function TutorialWorkspace({
       );
     }
 
+    if (activeUnitOutline && !activeUnit) {
+      return <strong>Preparing this learning unit…</strong>;
+    }
+
     return <strong>Ready to start</strong>;
   }
 
@@ -558,7 +619,7 @@ export function TutorialWorkspace({
           disabled={!activeUnit}
         >
           <Play size={20} />
-          New Session
+          {activeUnit ? "New Session" : "Preparing Unit"}
         </button>
       );
     }
@@ -579,6 +640,14 @@ export function TutorialWorkspace({
       );
     }
 
+    let actionLabel = "Preparing Unit";
+
+    if (tutorialComplete) {
+      actionLabel = "Complete";
+    } else if (activeUnit) {
+      actionLabel = "Start Tutor";
+    }
+
     return (
       <button
         className="primary-button end-button"
@@ -587,7 +656,7 @@ export function TutorialWorkspace({
         disabled={!activeUnit}
       >
         <Play size={20} />
-        {tutorialComplete ? "Complete" : "Start Tutor"}
+        {actionLabel}
       </button>
     );
   }
@@ -596,7 +665,7 @@ export function TutorialWorkspace({
     ? "Hide insights"
     : "Show insights";
   const documentPreparationSummary = activeTutorial
-    ? `Ready · ${activeTutorial.map.concept_count} concepts · ${activeTutorial.plan.unit_count} units`
+    ? `${readyUnitCount} of ${activeTutorial.plan.unit_count} units ready · ${activeTutorial.map.concept_count} concepts`
     : "Waiting for a document";
   let pageContextSummary = "Waiting for a document";
 
@@ -968,9 +1037,10 @@ export function TutorialWorkspace({
                 {activeTutorial ? (
                   <>
                     <div className="preparation-status" role="status">
-                      <h3>Ready to learn</h3>
+                      <h3>First unit ready</h3>
                       <p>
-                        The teaching plan and visual guidance are prepared.
+                        Remaining unit details are being prepared in the
+                        background.
                       </p>
                     </div>
                     <dl className="preparation-metrics">
@@ -983,8 +1053,10 @@ export function TutorialWorkspace({
                         <dd>{activeTutorial.map.connection_count}</dd>
                       </div>
                       <div>
-                        <dt>Teaching units</dt>
-                        <dd>{activeTutorial.plan.unit_count}</dd>
+                        <dt>Units ready</dt>
+                        <dd>
+                          {readyUnitCount} / {activeTutorial.plan.unit_count}
+                        </dd>
                       </div>
                     </dl>
                   </>
@@ -1078,6 +1150,8 @@ export function TutorialWorkspace({
                 <LearningPath
                   key={teachingPlan?.document_id ?? "learning-path"}
                   plan={teachingPlan}
+                  unitDetails={unitDetails}
+                  generationStatus={generationStatus}
                   progress={learningProgress}
                   activeUnitId={activeUnit?.id ?? null}
                   completedLessonStepIds={
@@ -1168,6 +1242,8 @@ export function TutorialWorkspace({
                 <div className="teaching-plan-content">
                   <TeachingPlanContent
                     plan={teachingPlan}
+                    unitDetails={unitDetails}
+                    generationStatus={generationStatus}
                     loading={documentLoading}
                     error={documentError}
                   />
@@ -1553,6 +1629,8 @@ function InsightCardHeader({
 
 function LearningPath({
   plan,
+  unitDetails,
+  generationStatus,
   progress,
   activeUnitId,
   completedLessonStepIds,
@@ -1560,6 +1638,8 @@ function LearningPath({
   tutorSessionActive,
 }: {
   plan: TeachingPlan | null;
+  unitDetails: TeachingUnitDetailsById;
+  generationStatus: TutorialGenerationStatus | null;
   progress: LearningProgress | null;
   activeUnitId: string | null;
   completedLessonStepIds: string[];
@@ -1636,15 +1716,29 @@ function LearningPath({
           const isMastered = masteredUnitIds.has(unit.id);
           const isActive = unit.id === activeUnitId;
           const isInProgress = isActive && tutorSessionActive;
+          const unitReady = Boolean(unitDetails[unit.id]);
+          const generationState =
+            generationStatus?.unit_status[unit.id];
           let unitStatus = "upcoming";
-          let unitStatusLabel = "Upcoming";
+          let unitStatusLabel = "Preparing";
+
+          if (generationState === "failed") {
+            unitStatusLabel = "Preparation failed";
+          } else if (unitReady) {
+            unitStatusLabel = "Upcoming";
+          }
 
           if (isMastered) {
             unitStatus = "mastered";
             unitStatusLabel = "Mastered";
           } else if (isActive) {
             unitStatus = "active";
-            unitStatusLabel = isInProgress ? "In progress" : "Ready";
+
+            if (isInProgress) {
+              unitStatusLabel = "In progress";
+            } else if (unitReady) {
+              unitStatusLabel = "Ready";
+            }
           }
 
           const isExpanded = expandedUnitIds.has(unit.id);
@@ -1750,10 +1844,14 @@ function LearningPath({
 
 function TeachingPlanContent({
   plan,
+  unitDetails,
+  generationStatus,
   loading,
   error,
 }: {
   plan: TeachingPlan | null;
+  unitDetails: TeachingUnitDetailsById;
+  generationStatus: TutorialGenerationStatus | null;
   loading: boolean;
   error: string;
 }) {
@@ -1787,6 +1885,8 @@ function TeachingPlanContent({
         <TeachingUnitCard
           key={unit.id}
           unit={unit}
+          details={unitDetails[unit.id] ?? null}
+          generationState={generationStatus?.unit_status[unit.id] ?? null}
           index={index}
           unitTitlesById={unitTitlesById}
         />
@@ -1797,10 +1897,14 @@ function TeachingPlanContent({
 
 function TeachingUnitCard({
   unit,
+  details,
+  generationState,
   index,
   unitTitlesById,
 }: {
-  unit: TeachingUnit;
+  unit: TeachingUnitOutline;
+  details: TeachingUnitDetails | null;
+  generationState: TeachingUnitGenerationState | null;
   index: number;
   unitTitlesById: ReadonlyMap<string, string>;
 }) {
@@ -1812,6 +1916,9 @@ function TeachingUnitCard({
         .map((id) => unitTitlesById.get(id) ?? id)
         .join(", ")
     : "None";
+  const lessonStepDetails = new Map(
+    details?.lesson_steps.map((step) => [step.id, step]) ?? [],
+  );
 
   return (
     <li className="teaching-unit">
@@ -1838,34 +1945,76 @@ function TeachingUnitCard({
       <div className="teaching-unit-details">
         <section>
           <h4>Lesson outline</h4>
+          {!details && (
+            <p>
+              {generationState === "failed"
+                ? "Detailed lesson preparation failed."
+                : "Detailed lesson content is being prepared."}
+            </p>
+          )}
           <ol className="teaching-unit-steps">
-            {unit.lesson_steps.map((step) => (
-              <li key={step.id}>
-                <strong>
-                  {formatLessonStepKind(step.kind)} · {step.title}
-                </strong>
-                <p>{step.content}</p>
-              </li>
-            ))}
+            {unit.lesson_steps.map((step) => {
+              const stepDetails = lessonStepDetails.get(step.id);
+
+              return (
+                <li key={step.id}>
+                  <strong>
+                    {formatLessonStepKind(step.kind)} · {step.title}
+                  </strong>
+                  {stepDetails && <p>{stepDetails.content}</p>}
+                </li>
+              );
+            })}
           </ol>
         </section>
-        <section>
-          <h4>Mastery criteria</h4>
-          <ul>
-            {unit.mastery_criteria.map((criterion) => (
-              <li key={criterion}>{criterion}</li>
-            ))}
-          </ul>
-        </section>
+        {details && (
+          <section>
+            <h4>Mastery criteria</h4>
+            <ul>
+              {details.mastery_criteria.map((criterion) => (
+                <li key={criterion}>{criterion}</li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
-      {unit.common_difficulties.length > 0 && (
+      {details && details.common_difficulties.length > 0 && (
         <p className="teaching-unit-difficulties">
           <strong>Common difficulties:</strong>{" "}
-          {unit.common_difficulties.join(" ")}
+          {details.common_difficulties.join(" ")}
         </p>
       )}
     </li>
   );
+}
+
+async function readTutorialData(
+  tutorialId: string,
+  signal: AbortSignal,
+) {
+  const response = await fetch(`/api/tutorials/${tutorialId}`, { signal });
+  const data = (await response.json()) as TutorialDataResponse;
+
+  if (
+    !response.ok ||
+    !data.tutorial ||
+    !data.plan ||
+    !data.model ||
+    !data.unitDetails ||
+    !data.generationStatus ||
+    !data.progress
+  ) {
+    throw new Error(data.message ?? "The tutorial could not be loaded.");
+  }
+
+  return {
+    tutorial: data.tutorial,
+    plan: data.plan,
+    model: data.model,
+    unitDetails: data.unitDetails,
+    generationStatus: data.generationStatus,
+    progress: data.progress,
+  };
 }
 
 function formatConceptId(conceptId: string) {
@@ -1876,7 +2025,7 @@ function formatLessonStepKind(kind: string) {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
-function getInitialUnitPageIndex(unit: TeachingUnit) {
+function getInitialUnitPageIndex(unit: TeachingUnitOutline) {
   const firstVisualAnchorId = unit.lesson_steps.find(
     (step) => step.visual_source_anchor_id !== null,
   )?.visual_source_anchor_id;
