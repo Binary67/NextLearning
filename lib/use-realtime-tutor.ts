@@ -11,8 +11,8 @@ import type {
   TeachingUnit,
 } from "@/lib/teaching-plan";
 import {
-  isVisualGuideCell,
-  VISUAL_GUIDE_CELLS,
+  isVisualGuideBand,
+  VISUAL_GUIDE_BANDS,
   type VisualGuideRegion,
 } from "@/lib/visual-guide";
 
@@ -849,8 +849,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     const currentStep = getCurrentLessonStep();
     const lessonStepId = args.lesson_step_id;
     const pageIndex = args.page_index;
-    const startCell = args.start_cell;
-    const endCell = args.end_cell;
+    const startBand = args.start_band;
+    const endBand = args.end_band;
     const label = args.label;
 
     if (!activeUnit || !currentStep) {
@@ -865,8 +865,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       typeof pageIndex !== "number" ||
       !Number.isInteger(pageIndex) ||
       pageIndex !== sourceAnchor.page_index ||
-      !isVisualGuideCell(startCell) ||
-      !isVisualGuideCell(endCell) ||
+      !isVisualGuideBand(startBand) ||
+      !isVisualGuideBand(endBand) ||
       typeof label !== "string" ||
       label.trim().length === 0
     ) {
@@ -876,8 +876,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     const visualGuide: RealtimeVisualGuide = {
       lesson_step_id: currentStep.id,
       page_index: pageIndex,
-      start_cell: startCell,
-      end_cell: endCell,
+      start_band: startBand,
+      end_band: endBand,
       label: label.trim(),
     };
 
@@ -888,8 +888,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     await sendFunctionOutput(functionCall.call_id, {
       success: true,
       page_index: pageIndex,
-      start_cell: startCell,
-      end_cell: endCell,
+      start_band: startBand,
+      end_band: endBand,
     });
     await requestTeachingStep(currentStep);
   }
@@ -1659,7 +1659,7 @@ ${JSON.stringify({
   lesson_steps: unit.lesson_steps,
   mastery_criteria: unit.mastery_criteria,
   common_difficulties: unit.common_difficulties,
-  visual_guide_grid: "Each source page image is divided into A1 through D4.",
+  visual_guide_bands: "Each source page image is divided into four horizontal bands labeled A through D from top to bottom.",
   concepts,
   connections,
 })}
@@ -1668,8 +1668,8 @@ Teaching flow:
 - Teach only the lesson step explicitly initiated by the application. Never begin another step in the same response.
 - ${isSessionStart ? "Briefly welcome the learner and introduce the unit objective as part of the first step." : "Briefly acknowledge the completed unit and introduce this unit objective as part of the first step."}
 - Cover the full planned content with meaningful explanation, reasoning, examples, comparisons, or synthesis. Never substitute an announcement such as "I will show you this" for teaching.
-- When the current lesson step has visual_source_anchor_id, the application supplies only that linked source page as a just-in-time image with a labeled 4-by-4 grid.
-- Call set_visual_guide only when the application explicitly asks for it, using the current lesson_step_id and the smallest helpful rectangular grid range. A step with visual_source_anchor_id null needs no visual guide.
+- When the current lesson step has visual_source_anchor_id, the application supplies only that linked source page as a just-in-time image with four horizontal bands labeled A through D.
+- Call set_visual_guide only when the application explicitly asks for it, using the current lesson_step_id and the smallest helpful range of horizontal bands. A step with visual_source_anchor_id null needs no visual guide.
 - Visual guidance is for orientation, not a claim that every detail inside the selected area is relevant. Keep it stable while discussing the same area.
 - Do not ask for a learner response during motivate, explain, demonstrate, contrast, connect, or recap unless the learner interrupts with a question.
 - If the learner interrupts, answer the question directly. Do not treat the interrupted lesson step as complete; the application will explicitly ask you to resume it.
@@ -1793,17 +1793,17 @@ function buildSetVisualGuideTool(unit: TeachingUnit) {
           description:
             "The linked source page supplied for the current lesson step.",
         },
-        start_cell: {
+        start_band: {
           type: "string",
-          enum: VISUAL_GUIDE_CELLS,
+          enum: VISUAL_GUIDE_BANDS,
           description:
-            "One corner of the smallest rectangular grid range to show.",
+            "The first horizontal band in the smallest helpful range.",
         },
-        end_cell: {
+        end_band: {
           type: "string",
-          enum: VISUAL_GUIDE_CELLS,
+          enum: VISUAL_GUIDE_BANDS,
           description:
-            "The opposite corner of the smallest rectangular grid range to show.",
+            "The last horizontal band in the smallest helpful range.",
         },
         label: {
           type: "string",
@@ -1814,8 +1814,8 @@ function buildSetVisualGuideTool(unit: TeachingUnit) {
       required: [
         "lesson_step_id",
         "page_index",
-        "start_cell",
-        "end_cell",
+        "start_band",
+        "end_band",
         "label",
       ],
       additionalProperties: false,
@@ -1896,7 +1896,7 @@ function buildSourcePageEvent(
       content: [
         {
           type: "input_text",
-          text: `Source page ${pageIndex} supports the current lesson step in "${unit.title}". The image uses a 4-by-4 grid labeled A1 through D4. Use it only for visual grounding.`,
+          text: `Source page ${pageIndex} supports the current lesson step in "${unit.title}". The image uses four horizontal bands labeled A through D from top to bottom. Use it only for visual grounding.`,
         },
         {
           type: "input_image",
