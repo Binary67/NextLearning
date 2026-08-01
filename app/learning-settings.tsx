@@ -15,7 +15,7 @@ const RAISE_HAND_SHORTCUT_STORAGE_KEY =
 const AUDIO_INPUT_STORAGE_KEY = "nextlearning.audio-input-device";
 const AUDIO_OUTPUT_STORAGE_KEY = "nextlearning.audio-output-device";
 const LOCAL_SETTINGS_EVENT = "nextlearning-settings-change";
-const RESERVED_SHORTCUT_KEYS = new Set(["a", "e", "t"]);
+const RESERVED_SHORTCUT_KEYS = new Set(["e", "t"]);
 
 type SelectAudioDevice = (deviceId: string) => Promise<boolean>;
 
@@ -132,7 +132,7 @@ export function LearningSettingsDialog({
 
     if (!shortcut || RESERVED_SHORTCUT_KEYS.has(shortcut)) {
       setError(
-        "Choose Space, a letter, or a number that is not A, T, or E.",
+        "Choose Space, a letter, or a number that is not E or T.",
       );
       return;
     }

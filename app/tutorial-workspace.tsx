@@ -367,13 +367,10 @@ export function TutorialWorkspace({
   }
 
   return (
-    <main className="app-shell dashboard-shell">
+    <main className="app-shell">
       <AppHeader
         activeSection="dashboard"
         dashboardHref={`/tutorials/${tutorialId}`}
-        onCoursesClick={() =>
-          showToast("Courses are not part of read-and-ask mode.")
-        }
         settingsOpen={modal === "settings"}
         onOpenSettings={() => setModal("settings")}
         onShowMessage={showToast}
@@ -398,7 +395,7 @@ export function TutorialWorkspace({
                   <Download size={18} />
                 </button>
                 <button
-                  className="icon-button small"
+                  className="icon-button small danger-icon-button"
                   type="button"
                   onClick={() => setModal("delete-tutorial")}
                   disabled={!activeTutorial}

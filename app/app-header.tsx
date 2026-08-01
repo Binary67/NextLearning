@@ -9,14 +9,12 @@ type AppSection = "library" | "dashboard";
 export function AppHeader({
   activeSection,
   dashboardHref,
-  onCoursesClick,
   settingsOpen,
   onOpenSettings,
   onShowMessage,
 }: {
   activeSection: AppSection;
   dashboardHref: string | null;
-  onCoursesClick: () => void;
   settingsOpen: boolean;
   onOpenSettings: () => void;
   onShowMessage: (message: string) => void;
@@ -80,13 +78,6 @@ export function AppHeader({
             Dashboard
           </button>
         )}
-        <button
-          className="nav-link"
-          type="button"
-          onClick={onCoursesClick}
-        >
-          Courses
-        </button>
       </nav>
 
       <div className="header-actions">
