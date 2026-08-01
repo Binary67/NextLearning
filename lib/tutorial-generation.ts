@@ -14,6 +14,8 @@ import {
   validateDocumentModel,
 } from "@/lib/document-model";
 import {
+  getTeachingUnitConceptIds,
+  getTeachingUnitSourceChunks,
   teachingPlanJsonSchema,
   teachingUnitDetailsJsonSchema,
   type TeachingPlan,
@@ -203,26 +205,29 @@ First create document_model as a compact concept map for an interactive tutor. F
 - Give every connection between one and 20 relevant_pages containing the pages that support it.
 - Keep every occurrence and connection confidence between 0 and 1 inclusive.
 
-Then create teaching_plan as a compact outline. Follow these rules:
+Then create teaching_plan as a compact, complete outline. Follow these rules:
 - Set document_id to "${tutorialId}" exactly and title to the exact document_model title.
+- Create exactly one page_coverage record for every PDF page, in 1-based PDF order.
+- Set disposition to "teach" when the page contains substantive claims, explanations, mechanisms, formulas, figures, tables, examples, or conclusions. Set it to "skip" only for non-instructional material such as bibliography-only pages, attribution, or boilerplate, and explain the decision in reason.
+- Give every "teach" page between one and 20 source chunks. Give every "skip" page an empty chunks array. Return no more than 400 chunks across the document.
+- Make each chunk one substantial, teachable piece of information. Give it a globally unique lowercase kebab-case ID beginning with "chunk:", a concise title, a one-to-three-sentence source-grounded summary, and between one and 12 concept_ids.
+- Use only concept IDs that have an occurrence on the chunk's page. Use the page label from those occurrences.
 - Return between one and 120 units in recommended teaching order.
+- Make the first unit a concise orientation to the document using chunks from the first substantive page. Establish the document's purpose, central proposal or thesis, headline evidence, and learning roadmap when present.
+- After the orientation unit, optimize unit order for learning dependencies rather than PDF page order. Pages may be revisited when the instructional purpose changes.
 - Make each unit one small, assessable knowledge point with one observable objective.
-- Give each unit between one and 12 unique concept_ids from document_model.
 - Give each unit no more than 12 unique prerequisite_unit_ids that reference only earlier units.
-- Give each unit between one and 20 source anchors grounded on pages where its concepts occur.
-- Give every source anchor a globally unique lowercase kebab-case ID beginning with "source:".
-- Use page_index and page_label exactly as represented by the relevant document_model occurrence.
-- For grounding_summary, capture the exact document-specific explanation, mechanism, example, formula, figure, or table evidence needed to write the later lesson. Use one to three concise sentences.
 - Give every lesson step a globally unique lowercase kebab-case ID beginning with "step:".
 - Build every unit as a six-to-ten-step outline. The first step must be motivate and the last recap. Include explain, demonstrate, practice, and assess.
-- Each lesson step contains only id, kind, title, and visual_source_anchor_id.
-- Set visual_source_anchor_id to an anchor from the same unit when a page image materially helps; otherwise set it to null.
+- Give every lesson step between one and eight unique source_chunk_ids. Every source chunk in page_coverage must be assigned to at least one lesson step.
+- Set visual_source_chunk_id to one of the step's source_chunk_ids when that chunk's page image materially helps. Otherwise set it to null.
+- Keep the concepts used by all chunks in one unit to no more than 12.
 - Do not put detailed content, learner prompts, expected responses, remediation, mastery criteria, or common difficulties in teaching_plan.
 
 Finally create first_unit_details for teaching_plan.units[0] only:
 - Set document_id to "${tutorialId}" and unit_id to the first unit ID.
 - Return one detail record for every outlined lesson step, in exactly the same order and with exactly the same step IDs.
-- Write two to four substantive sentences of content per step using the unit's concepts and grounding summaries.
+- Write two to four substantive sentences of content per step using the unit's assigned source chunks and concepts.
 - Motivate must establish the problem and relevance. Explain must be precise. Demonstrate must trace document-supported evidence. Recap must synthesize two or three durable takeaways.
 - Practice is guided application and assess is an independent mastery check. For both, provide learner_prompt, expected_response, and specific remediation. Set those three fields to null for all other step kinds.
 - Give the unit between one and eight observable mastery_criteria and no more than eight concept-specific common_difficulties.
@@ -234,7 +239,8 @@ function buildTeachingUnitPrompt(
   plan: TeachingPlan,
   unit: TeachingUnitOutline,
 ) {
-  const conceptIds = new Set(unit.concept_ids);
+  const sourceChunks = getTeachingUnitSourceChunks(plan, unit);
+  const conceptIds = new Set(getTeachingUnitConceptIds(plan, unit));
   const concepts = model.concepts.filter((concept) =>
     conceptIds.has(concept.id),
   );
@@ -261,6 +267,7 @@ ${JSON.stringify({
   document_id: plan.document_id,
   document_title: plan.title,
   unit,
+  source_chunks: sourceChunks,
   prerequisites,
   concepts,
   connections,
@@ -269,7 +276,8 @@ ${JSON.stringify({
 Rules:
 - Set schema_version, document_id, and unit_id exactly as requested by the schema and context.
 - Return one detail record for every outlined lesson step, in exactly the same order and with exactly the same step IDs.
-- Use only the supplied concepts, connections, and source grounding summaries as document evidence.
+- Use only the supplied source chunks, concepts, and connections as document evidence.
+- Cover every source chunk assigned to each lesson step. Revisit a chunk only when the step has a distinct teaching purpose.
 - Write two to four substantive sentences of content per step, including the relevant reasoning, mechanism, terminology, notation, or interpretation.
 - Motivate must establish the problem and relevance. Explain must be precise. Demonstrate must trace a concrete supplied example, formula, architecture flow, figure, or table. Recap must synthesize two or three durable takeaways.
 - Practice is guided application and assess is an independent mastery check. For both, provide learner_prompt, expected_response, and specific remediation. Set those three fields to null for all other step kinds.

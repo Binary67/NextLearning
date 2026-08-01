@@ -1,14 +1,9 @@
 import type { DocumentModel } from "@/lib/document-model";
 
-export const TEACHING_PLAN_SCHEMA_VERSION = 4;
+export const TEACHING_PLAN_SCHEMA_VERSION = 5;
 export const TEACHING_UNIT_DETAILS_SCHEMA_VERSION = 1;
 
-const sourcePurposes = [
-  "introduce",
-  "explain",
-  "illustrate",
-  "apply",
-] as const;
+const pageDispositions = ["teach", "skip"] as const;
 
 const lessonStepKinds = [
   "motivate",
@@ -21,31 +16,42 @@ const lessonStepKinds = [
   "recap",
 ] as const;
 
-export type TeachingSourcePurpose = (typeof sourcePurposes)[number];
+export type TeachingPageDisposition = (typeof pageDispositions)[number];
 export type TeachingLessonStepKind = (typeof lessonStepKinds)[number];
 
-export type TeachingSourceAnchor = {
+export type TeachingSourceChunk = {
   id: string;
+  title: string;
+  summary: string;
+  concept_ids: string[];
+};
+
+export type TeachingPageCoverage = {
   page_index: number;
   page_label: string;
-  purpose: TeachingSourcePurpose;
-  grounding_summary: string;
+  disposition: TeachingPageDisposition;
+  reason: string;
+  chunks: TeachingSourceChunk[];
+};
+
+export type TeachingSourceChunkWithPage = TeachingSourceChunk & {
+  page_index: number;
+  page_label: string;
 };
 
 export type TeachingLessonStepOutline = {
   id: string;
   kind: TeachingLessonStepKind;
   title: string;
-  visual_source_anchor_id: string | null;
+  source_chunk_ids: string[];
+  visual_source_chunk_id: string | null;
 };
 
 export type TeachingUnitOutline = {
   id: string;
   title: string;
   objective: string;
-  concept_ids: string[];
   prerequisite_unit_ids: string[];
-  source_anchors: TeachingSourceAnchor[];
   lesson_steps: TeachingLessonStepOutline[];
 };
 
@@ -81,6 +87,7 @@ export type TeachingPlan = {
   schema_version: number;
   document_id: string;
   title: string;
+  page_coverage: TeachingPageCoverage[];
   units: TeachingUnitOutline[];
 };
 
@@ -88,25 +95,18 @@ export type TeachingPlanSummary = {
   unit_count: number;
 };
 
-const sourceAnchorJsonSchema = {
+const sourceChunkJsonSchema = {
   type: "object",
   properties: {
     id: { type: "string" },
-    page_index: { type: "integer" },
-    page_label: { type: "string" },
-    purpose: {
-      type: "string",
-      enum: sourcePurposes,
+    title: { type: "string" },
+    summary: { type: "string" },
+    concept_ids: {
+      type: "array",
+      items: { type: "string" },
     },
-    grounding_summary: { type: "string" },
   },
-  required: [
-    "id",
-    "page_index",
-    "page_label",
-    "purpose",
-    "grounding_summary",
-  ],
+  required: ["id", "title", "summary", "concept_ids"],
   additionalProperties: false,
 } as const;
 
@@ -119,11 +119,21 @@ const lessonStepOutlineJsonSchema = {
       enum: lessonStepKinds,
     },
     title: { type: "string" },
-    visual_source_anchor_id: {
+    source_chunk_ids: {
+      type: "array",
+      items: { type: "string" },
+    },
+    visual_source_chunk_id: {
       type: ["string", "null"],
     },
   },
-  required: ["id", "kind", "title", "visual_source_anchor_id"],
+  required: [
+    "id",
+    "kind",
+    "title",
+    "source_chunk_ids",
+    "visual_source_chunk_id",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -136,6 +146,33 @@ export const teachingPlanJsonSchema = {
     },
     document_id: { type: "string" },
     title: { type: "string" },
+    page_coverage: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          page_index: { type: "integer" },
+          page_label: { type: "string" },
+          disposition: {
+            type: "string",
+            enum: pageDispositions,
+          },
+          reason: { type: "string" },
+          chunks: {
+            type: "array",
+            items: sourceChunkJsonSchema,
+          },
+        },
+        required: [
+          "page_index",
+          "page_label",
+          "disposition",
+          "reason",
+          "chunks",
+        ],
+        additionalProperties: false,
+      },
+    },
     units: {
       type: "array",
       items: {
@@ -144,17 +181,9 @@ export const teachingPlanJsonSchema = {
           id: { type: "string" },
           title: { type: "string" },
           objective: { type: "string" },
-          concept_ids: {
-            type: "array",
-            items: { type: "string" },
-          },
           prerequisite_unit_ids: {
             type: "array",
             items: { type: "string" },
-          },
-          source_anchors: {
-            type: "array",
-            items: sourceAnchorJsonSchema,
           },
           lesson_steps: {
             type: "array",
@@ -165,16 +194,20 @@ export const teachingPlanJsonSchema = {
           "id",
           "title",
           "objective",
-          "concept_ids",
           "prerequisite_unit_ids",
-          "source_anchors",
           "lesson_steps",
         ],
         additionalProperties: false,
       },
     },
   },
-  required: ["schema_version", "document_id", "title", "units"],
+  required: [
+    "schema_version",
+    "document_id",
+    "title",
+    "page_coverage",
+    "units",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -242,6 +275,57 @@ export function summarizeTeachingPlan(
   };
 }
 
+export function findTeachingSourceChunk(
+  plan: TeachingPlan,
+  chunkId: string,
+): TeachingSourceChunkWithPage | null {
+  for (const page of plan.page_coverage) {
+    const chunk = page.chunks.find((item) => item.id === chunkId);
+
+    if (chunk) {
+      return {
+        ...chunk,
+        page_index: page.page_index,
+        page_label: page.page_label,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function getTeachingUnitSourceChunks(
+  plan: TeachingPlan,
+  unit: TeachingUnitOutline,
+): TeachingSourceChunkWithPage[] {
+  const chunkIds = new Set(
+    unit.lesson_steps.flatMap((step) => step.source_chunk_ids),
+  );
+
+  return plan.page_coverage.flatMap((page) =>
+    page.chunks
+      .filter((chunk) => chunkIds.has(chunk.id))
+      .map((chunk) => ({
+        ...chunk,
+        page_index: page.page_index,
+        page_label: page.page_label,
+      })),
+  );
+}
+
+export function getTeachingUnitConceptIds(
+  plan: TeachingPlan,
+  unit: TeachingUnitOutline,
+) {
+  return [
+    ...new Set(
+      getTeachingUnitSourceChunks(plan, unit).flatMap(
+        (chunk) => chunk.concept_ids,
+      ),
+    ),
+  ];
+}
+
 export function validateTeachingPlan(
   value: unknown,
   model: DocumentModel,
@@ -254,6 +338,8 @@ export function validateTeachingPlan(
     value.schema_version !== TEACHING_PLAN_SCHEMA_VERSION ||
     value.document_id !== model.document_id ||
     value.title !== model.title ||
+    !Array.isArray(value.page_coverage) ||
+    value.page_coverage.length !== model.page_count ||
     !Array.isArray(value.units) ||
     value.units.length === 0 ||
     value.units.length > 120
@@ -261,12 +347,74 @@ export function validateTeachingPlan(
     throw new Error("The generated teaching plan has invalid metadata.");
   }
 
-  const documentConceptIds = new Set(
-    model.concepts.map((concept) => concept.id),
+  const documentConceptsById = new Map(
+    model.concepts.map((concept) => [concept.id, concept]),
   );
+  const sourceChunkIds = new Set<string>();
+  const sourceChunkConceptIds = new Map<string, string[]>();
+  const sourceChunkPageIndexes = new Map<string, number>();
+  for (const [index, page] of value.page_coverage.entries()) {
+    if (
+      !isRecord(page) ||
+      page.page_index !== index + 1 ||
+      !isNonEmptyString(page.page_label) ||
+      !isPageDisposition(page.disposition) ||
+      !isNonEmptyString(page.reason) ||
+      !Array.isArray(page.chunks) ||
+      page.chunks.length > 20 ||
+      (page.disposition === "teach" && page.chunks.length === 0) ||
+      (page.disposition === "skip" && page.chunks.length !== 0)
+    ) {
+      throw new Error(
+        "The generated teaching plan has invalid page coverage.",
+      );
+    }
+
+    for (const chunk of page.chunks) {
+      if (
+        !isRecord(chunk) ||
+        !isSourceChunkId(chunk.id) ||
+        sourceChunkIds.has(chunk.id) ||
+        !isNonEmptyString(chunk.title) ||
+        !isSourceSummary(chunk.summary) ||
+        !isStringArray(chunk.concept_ids, 1, 12) ||
+        !hasUniqueValues(chunk.concept_ids)
+      ) {
+        throw new Error(
+          "The generated teaching plan has an invalid source chunk.",
+        );
+      }
+
+      const isGrounded = chunk.concept_ids.every((conceptId) => {
+        const concept = documentConceptsById.get(conceptId);
+        const occurrence = concept?.occurrences.find(
+          (item) => item.page_index === page.page_index,
+        );
+
+        return occurrence?.page_label === page.page_label;
+      });
+
+      if (!isGrounded) {
+        throw new Error(
+          "The generated teaching plan has an invalid source chunk.",
+        );
+      }
+
+      sourceChunkIds.add(chunk.id);
+      sourceChunkConceptIds.set(chunk.id, chunk.concept_ids);
+      sourceChunkPageIndexes.set(chunk.id, page.page_index);
+    }
+  }
+
+  if (sourceChunkIds.size === 0 || sourceChunkIds.size > 400) {
+    throw new Error(
+      "The generated teaching plan has invalid page coverage.",
+    );
+  }
+
   const earlierUnitIds = new Set<string>();
   const lessonStepIds = new Set<string>();
-  const sourceAnchorIds = new Set<string>();
+  const assignedSourceChunkIds = new Set<string>();
 
   for (const unit of value.units) {
     if (!isRecord(unit)) {
@@ -277,9 +425,7 @@ export function validateTeachingPlan(
       id,
       title,
       objective,
-      concept_ids: conceptIds,
       prerequisite_unit_ids: prerequisiteUnitIds,
-      source_anchors: sourceAnchors,
       lesson_steps: lessonSteps,
     } = unit;
 
@@ -288,9 +434,6 @@ export function validateTeachingPlan(
       earlierUnitIds.has(id) ||
       !isNonEmptyString(title) ||
       !isNonEmptyString(objective) ||
-      !isStringArray(conceptIds, 1, 12) ||
-      !hasUniqueValues(conceptIds) ||
-      !conceptIds.every((conceptId) => documentConceptIds.has(conceptId)) ||
       !isStringArray(prerequisiteUnitIds, 0, 12) ||
       !hasUniqueValues(prerequisiteUnitIds) ||
       !prerequisiteUnitIds.every((prerequisiteId) =>
@@ -301,9 +444,6 @@ export function validateTeachingPlan(
     }
 
     if (
-      !Array.isArray(sourceAnchors) ||
-      sourceAnchors.length === 0 ||
-      sourceAnchors.length > 20 ||
       !Array.isArray(lessonSteps) ||
       lessonSteps.length < 6 ||
       lessonSteps.length > 10
@@ -311,43 +451,8 @@ export function validateTeachingPlan(
       throw new Error("The generated teaching plan has an invalid unit.");
     }
 
-    const groundedOccurrences = model.concepts
-      .filter((concept) => conceptIds.includes(concept.id))
-      .flatMap((concept) => concept.occurrences);
-    const unitSourceAnchorIds = new Set<string>();
-
-    for (const anchor of sourceAnchors) {
-      if (
-        !isRecord(anchor) ||
-        !isSourceAnchorId(anchor.id) ||
-        sourceAnchorIds.has(anchor.id) ||
-        !isPositiveInteger(anchor.page_index) ||
-        anchor.page_index > model.page_count ||
-        typeof anchor.page_label !== "string" ||
-        !isSourcePurpose(anchor.purpose) ||
-        !isGroundingSummary(anchor.grounding_summary)
-      ) {
-        throw new Error(
-          "The generated teaching plan has an invalid source anchor.",
-        );
-      }
-
-      const groundedOccurrence = groundedOccurrences.find(
-        (occurrence) => occurrence.page_index === anchor.page_index,
-      );
-
-      if (!groundedOccurrence) {
-        throw new Error(
-          "The generated teaching plan has an invalid source anchor.",
-        );
-      }
-
-      sourceAnchorIds.add(anchor.id);
-      unitSourceAnchorIds.add(anchor.id);
-      anchor.page_label = groundedOccurrence.page_label;
-    }
-
     const unitStepKinds = new Set<TeachingLessonStepKind>();
+    const unitConceptIds = new Set<string>();
 
     for (const step of lessonSteps) {
       if (
@@ -356,9 +461,14 @@ export function validateTeachingPlan(
         lessonStepIds.has(step.id) ||
         !isLessonStepKind(step.kind) ||
         !isNonEmptyString(step.title) ||
-        (step.visual_source_anchor_id !== null &&
-          (typeof step.visual_source_anchor_id !== "string" ||
-            !unitSourceAnchorIds.has(step.visual_source_anchor_id)))
+        !isStringArray(step.source_chunk_ids, 1, 8) ||
+        !hasUniqueValues(step.source_chunk_ids) ||
+        !step.source_chunk_ids.every((chunkId) =>
+          sourceChunkIds.has(chunkId),
+        ) ||
+        (step.visual_source_chunk_id !== null &&
+          (typeof step.visual_source_chunk_id !== "string" ||
+            !step.source_chunk_ids.includes(step.visual_source_chunk_id)))
       ) {
         throw new Error(
           "The generated teaching plan has an invalid lesson step outline.",
@@ -367,9 +477,19 @@ export function validateTeachingPlan(
 
       lessonStepIds.add(step.id);
       unitStepKinds.add(step.kind);
+
+      for (const chunkId of step.source_chunk_ids) {
+        assignedSourceChunkIds.add(chunkId);
+
+        for (const conceptId of sourceChunkConceptIds.get(chunkId) ?? []) {
+          unitConceptIds.add(conceptId);
+        }
+      }
     }
 
     if (
+      unitConceptIds.size === 0 ||
+      unitConceptIds.size > 12 ||
       lessonSteps[0].kind !== "motivate" ||
       lessonSteps.at(-1)?.kind !== "recap" ||
       !["explain", "demonstrate", "practice", "assess"].every((kind) =>
@@ -382,6 +502,35 @@ export function validateTeachingPlan(
     }
 
     earlierUnitIds.add(id);
+  }
+
+  if (
+    [...sourceChunkIds].some(
+      (chunkId) => !assignedSourceChunkIds.has(chunkId),
+    )
+  ) {
+    throw new Error(
+      "The generated teaching plan leaves source chunks uncovered.",
+    );
+  }
+
+  const firstTaughtPageIndex = value.page_coverage.find(
+    (page) => isRecord(page) && page.disposition === "teach",
+  )?.page_index;
+  const firstUnit = value.units[0] as TeachingUnitOutline;
+  const startsWithFirstTaughtPage =
+    typeof firstTaughtPageIndex === "number" &&
+    firstUnit.lesson_steps.some((step) =>
+      step.source_chunk_ids.some(
+        (chunkId) =>
+          sourceChunkPageIndexes.get(chunkId) === firstTaughtPageIndex,
+      ),
+    );
+
+  if (!startsWithFirstTaughtPage) {
+    throw new Error(
+      "The generated teaching plan does not begin with document orientation.",
+    );
   }
 
   return value as TeachingPlan;
@@ -468,10 +617,10 @@ function isLessonStepId(value: unknown): value is string {
   );
 }
 
-function isSourceAnchorId(value: unknown): value is string {
+function isSourceChunkId(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^source:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+    /^chunk:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
   );
 }
 
@@ -503,10 +652,12 @@ function hasValidInteraction(
   return hasNoInteraction;
 }
 
-function isSourcePurpose(value: unknown): value is TeachingSourcePurpose {
+function isPageDisposition(
+  value: unknown,
+): value is TeachingPageDisposition {
   return (
     typeof value === "string" &&
-    sourcePurposes.includes(value as TeachingSourcePurpose)
+    pageDispositions.includes(value as TeachingPageDisposition)
   );
 }
 
@@ -531,7 +682,7 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isGroundingSummary(value: unknown): value is string {
+function isSourceSummary(value: unknown): value is string {
   return isNonEmptyString(value) && value.trim().length >= 40;
 }
 
@@ -541,10 +692,4 @@ function isSubstantiveString(value: unknown): value is string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return (
-    typeof value === "number" && Number.isInteger(value) && value > 0
-  );
 }
