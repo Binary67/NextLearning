@@ -1,8 +1,8 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
 import {
-  VISUAL_GUIDE_CELLS,
-  VISUAL_GUIDE_GRID_SIZE,
+  VISUAL_GUIDE_BAND_COUNT,
+  VISUAL_GUIDE_BANDS,
 } from "@/lib/visual-guide";
 
 const pdfDocumentPromises = new Map<string, Promise<PDFDocumentProxy>>();
@@ -36,7 +36,7 @@ export async function renderPdfPageForTutor(
       viewport,
       background: "rgb(255,255,255)",
     }).promise;
-    drawVisualGuideGrid(canvas);
+    drawVisualGuideBands(canvas);
 
     const imageUrl = canvas.toDataURL("image/jpeg", quality);
     const imageBytes = new TextEncoder().encode(imageUrl).byteLength;
@@ -65,30 +65,24 @@ export async function renderPdfPageForTutor(
   }
 }
 
-function drawVisualGuideGrid(canvas: HTMLCanvasElement) {
+function drawVisualGuideBands(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
 
   if (!context) {
     throw new Error("The source page image could not be prepared.");
   }
 
-  const cellWidth = canvas.width / VISUAL_GUIDE_GRID_SIZE;
-  const cellHeight = canvas.height / VISUAL_GUIDE_GRID_SIZE;
+  const bandHeight = canvas.height / VISUAL_GUIDE_BAND_COUNT;
   const labelSize = Math.max(14, Math.round(canvas.width / 55));
 
   context.save();
   context.strokeStyle = "rgba(0, 93, 190, 0.72)";
   context.lineWidth = 2;
 
-  for (let offset = 1; offset < VISUAL_GUIDE_GRID_SIZE; offset += 1) {
+  for (let offset = 1; offset < VISUAL_GUIDE_BAND_COUNT; offset += 1) {
     context.beginPath();
-    context.moveTo(offset * cellWidth, 0);
-    context.lineTo(offset * cellWidth, canvas.height);
-    context.stroke();
-
-    context.beginPath();
-    context.moveTo(0, offset * cellHeight);
-    context.lineTo(canvas.width, offset * cellHeight);
+    context.moveTo(0, offset * bandHeight);
+    context.lineTo(canvas.width, offset * bandHeight);
     context.stroke();
   }
 
@@ -96,11 +90,9 @@ function drawVisualGuideGrid(canvas: HTMLCanvasElement) {
   context.textAlign = "center";
   context.textBaseline = "middle";
 
-  for (const [index, cell] of VISUAL_GUIDE_CELLS.entries()) {
-    const row = Math.floor(index / VISUAL_GUIDE_GRID_SIZE);
-    const column = index % VISUAL_GUIDE_GRID_SIZE;
-    const centerX = column * cellWidth + labelSize;
-    const centerY = row * cellHeight + labelSize;
+  for (const [index, band] of VISUAL_GUIDE_BANDS.entries()) {
+    const centerX = labelSize;
+    const centerY = index * bandHeight + labelSize;
     const badgeSize = labelSize * 1.65;
 
     context.fillStyle = "rgba(255, 255, 255, 0.9)";
@@ -111,7 +103,7 @@ function drawVisualGuideGrid(canvas: HTMLCanvasElement) {
       badgeSize,
     );
     context.fillStyle = "rgb(0, 83, 170)";
-    context.fillText(cell, centerX, centerY);
+    context.fillText(band, centerX, centerY);
   }
 
   context.restore();

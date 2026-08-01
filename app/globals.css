@@ -558,18 +558,16 @@ a:focus-visible {
 .pdf-visual-guide {
   position: absolute;
   z-index: 2;
-  border: 3px solid rgba(0, 113, 235, 0.9);
-  border-radius: 8px;
-  background: rgba(87, 170, 255, 0.1);
+  left: 0;
+  width: 100%;
+  background: rgba(87, 170, 255, 0.08);
   box-shadow:
-    0 0 0 9999px rgba(12, 30, 52, 0.26),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.72),
-    0 4px 18px rgba(0, 92, 190, 0.3);
+    0 0 14px 9999px rgba(12, 30, 52, 0.22),
+    inset 0 14px 18px -20px rgba(0, 92, 190, 0.55),
+    inset 0 -14px 18px -20px rgba(0, 92, 190, 0.55);
   pointer-events: none;
   transition:
-    left 180ms ease,
     top 180ms ease,
-    width 180ms ease,
     height 180ms ease;
 }
 

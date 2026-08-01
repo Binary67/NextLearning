@@ -200,9 +200,7 @@ export function PdfDocumentViewer({
               ref={visualGuideRef}
               className="pdf-visual-guide"
               style={{
-                left: `${visualGuideBounds.x * 100}%`,
                 top: `${visualGuideBounds.y * 100}%`,
-                width: `${visualGuideBounds.width * 100}%`,
                 height: `${visualGuideBounds.height * 100}%`,
               }}
               aria-hidden="true"
