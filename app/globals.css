@@ -707,15 +707,6 @@ a:focus-visible {
   min-height: 0;
 }
 
-.context-section-label {
-  margin: 24px 0 14px;
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .primary-button,
 .secondary-button {
   display: inline-flex;

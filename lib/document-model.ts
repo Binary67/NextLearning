@@ -82,23 +82,14 @@ export type DocumentMapSummary = {
   connection_count: number;
 };
 
-export type PageLearningContext = {
-  current_page: {
-    page_index: number;
-    page_label: string;
-  };
-  current_concepts: Array<{
-    concept_id: string;
-    name: string;
-    role: OccurrenceRole;
-    explicitness: Explicitness;
-  }>;
-  related_pages: Array<{
-    page_index: number;
-    page_label: string;
-    concept_name: string;
-    reason: string;
-  }>;
+export type SelectionRelatedPage = DocumentChunk & {
+  page_index: number;
+  page_label: string;
+};
+
+export type TextSelectionContext = {
+  selected_chunk: DocumentChunk;
+  related_pages: SelectionRelatedPage[];
 };
 
 export type SelectionGrounding = {
@@ -124,6 +115,65 @@ export type SelectionGrounding = {
     page_index: number;
     page_label: string;
   }>;
+  text_selection: TextSelectionContext | null;
+};
+
+type ChunkTokens = {
+  title: Set<string>;
+  concepts: Set<string>;
+  summary: Set<string>;
+};
+
+type RelatedPageCandidate = SelectionRelatedPage & {
+  connection_confidence: number;
+  occurrence_priority: number;
+  shared_concept_count: number;
+  text_similarity: number;
+};
+
+type RelatedConnection = {
+  concept_id: string;
+  confidence: number;
+  relevant_pages: number[];
+};
+
+const STOP_WORDS = new Set([
+  "all",
+  "also",
+  "and",
+  "are",
+  "both",
+  "can",
+  "each",
+  "for",
+  "from",
+  "has",
+  "have",
+  "into",
+  "its",
+  "over",
+  "that",
+  "the",
+  "this",
+  "was",
+  "were",
+  "where",
+  "with",
+]);
+const MINIMUM_SELECTION_TOKEN_COUNT = 2;
+const MINIMUM_MATCHED_TOKEN_COUNT = 2;
+const MINIMUM_SELECTION_MATCH_SCORE = 0.25;
+const MINIMUM_SELECTION_MATCH_MARGIN = 0.05;
+const MINIMUM_RELATED_OCCURRENCE_PRIORITY = 2;
+const RELATED_PAGE_LIMIT = 3;
+const OCCURRENCE_PRIORITIES: Record<OccurrenceRole, number> = {
+  referenced: 0,
+  assessed: 1,
+  introduced: 2,
+  applied: 3,
+  illustrated: 3,
+  defined: 4,
+  explained: 4,
 };
 
 const documentChunkJsonSchema = {
@@ -256,73 +306,68 @@ export function summarizeDocumentModel(
   };
 }
 
-export function buildPageLearningContext(
+export function buildTextSelectionContext(
   model: DocumentModel,
   pageIndex: number,
-): PageLearningContext {
+  selectionText: string,
+): TextSelectionContext | null {
   const page = model.pages[pageIndex - 1];
-  const currentOccurrences = getPageConceptOccurrences(model, pageIndex);
-  const currentConceptIds = new Set(
-    currentOccurrences.map(({ concept }) => concept.id),
+
+  if (!page) {
+    return null;
+  }
+
+  const selectionTokens = tokenize(selectionText);
+
+  if (selectionTokens.size < MINIMUM_SELECTION_TOKEN_COUNT) {
+    return null;
+  }
+
+  const conceptNamesById = new Map(
+    model.concepts.map((concept) => [concept.id, concept.name]),
   );
-  const relatedPages = new Map<
-    number,
-    PageLearningContext["related_pages"][number]
-  >();
+  const rankedCurrentChunks = page.chunks
+    .map((chunk) => {
+      const match = scoreChunkMatch(
+        selectionTokens,
+        getChunkTokens(chunk, conceptNamesById),
+      );
 
-  for (const connection of model.connections) {
-    if (
-      !currentConceptIds.has(connection.from) &&
-      !currentConceptIds.has(connection.to)
-    ) {
-      continue;
-    }
-
-    const relatedConceptId = currentConceptIds.has(connection.from)
-      ? connection.to
-      : connection.from;
-    const relatedConcept = model.concepts.find(
-      (concept) => concept.id === relatedConceptId,
+      return { chunk, ...match };
+    })
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.chunk.id.localeCompare(right.chunk.id),
     );
+  const bestMatch = rankedCurrentChunks[0];
+  const nextBestScore = rankedCurrentChunks[1]?.score ?? 0;
 
-    if (!relatedConcept) {
-      continue;
-    }
-
-    for (const relatedPageIndex of connection.relevant_pages) {
-      if (relatedPageIndex === pageIndex || relatedPages.has(relatedPageIndex)) {
-        continue;
-      }
-
-      relatedPages.set(relatedPageIndex, {
-        page_index: relatedPageIndex,
-        page_label:
-          model.pages[relatedPageIndex - 1]?.page_label ??
-          String(relatedPageIndex),
-        concept_name: relatedConcept.name,
-        reason: connection.reason,
-      });
-    }
+  if (
+    !bestMatch ||
+    bestMatch.matchedTokenCount < MINIMUM_MATCHED_TOKEN_COUNT ||
+    bestMatch.score < MINIMUM_SELECTION_MATCH_SCORE ||
+    bestMatch.score - nextBestScore < MINIMUM_SELECTION_MATCH_MARGIN
+  ) {
+    return null;
   }
 
   return {
-    current_page: {
-      page_index: pageIndex,
-      page_label: page?.page_label ?? String(pageIndex),
-    },
-    current_concepts: currentOccurrences.map(({ concept, occurrence }) => ({
-      concept_id: concept.id,
-      name: concept.name,
-      role: occurrence.role,
-      explicitness: occurrence.explicitness,
-    })),
-    related_pages: [...relatedPages.values()].slice(0, 5),
+    selected_chunk: bestMatch.chunk,
+    related_pages: findRelatedPages(
+      model,
+      pageIndex,
+      bestMatch.chunk,
+      selectionTokens,
+      conceptNamesById,
+    ),
   };
 }
 
 export function buildSelectionGrounding(
   model: DocumentModel,
   pageIndex: number,
+  selectionText: string,
 ): SelectionGrounding {
   const page = model.pages[pageIndex - 1];
   const currentOccurrences = getPageConceptOccurrences(model, pageIndex);
@@ -385,7 +430,239 @@ export function buildSelectionGrounding(
       reason: connection.reason,
     })),
     related_chunks: relatedChunks,
+    text_selection: buildTextSelectionContext(
+      model,
+      pageIndex,
+      selectionText,
+    ),
   };
+}
+
+function findRelatedPages(
+  model: DocumentModel,
+  currentPageIndex: number,
+  selectedChunk: DocumentChunk,
+  selectionTokens: ReadonlySet<string>,
+  conceptNamesById: ReadonlyMap<string, string>,
+): SelectionRelatedPage[] {
+  const selectedConceptIds = new Set(selectedChunk.concept_ids);
+  const conceptsById = new Map(
+    model.concepts.map((concept) => [concept.id, concept]),
+  );
+  const relatedConnections: RelatedConnection[] = model.connections.flatMap(
+    (connection) => {
+      if (selectedConceptIds.has(connection.from)) {
+        return [
+          {
+            concept_id: connection.to,
+            confidence: connection.confidence,
+            relevant_pages: connection.relevant_pages,
+          },
+        ];
+      }
+
+      if (selectedConceptIds.has(connection.to)) {
+        return [
+          {
+            concept_id: connection.from,
+            confidence: connection.confidence,
+            relevant_pages: connection.relevant_pages,
+          },
+        ];
+      }
+
+      return [];
+    },
+  );
+  const candidates: RelatedPageCandidate[] = [];
+
+  for (const page of model.pages) {
+    if (page.page_index === currentPageIndex) {
+      continue;
+    }
+
+    for (const chunk of page.chunks) {
+      const sharedConceptIds = chunk.concept_ids.filter((conceptId) =>
+        selectedConceptIds.has(conceptId),
+      );
+      const connections = relatedConnections.filter(
+        (connection) =>
+          connection.relevant_pages.includes(page.page_index) &&
+          chunk.concept_ids.includes(connection.concept_id),
+      );
+
+      if (sharedConceptIds.length === 0 && connections.length === 0) {
+        continue;
+      }
+
+      const occurrenceConceptIds =
+        sharedConceptIds.length > 0
+          ? sharedConceptIds
+          : connections.map((connection) => connection.concept_id);
+      const occurrencePriority = getOccurrencePriority(
+        occurrenceConceptIds,
+        page.page_index,
+        conceptsById,
+      );
+
+      if (occurrencePriority < MINIMUM_RELATED_OCCURRENCE_PRIORITY) {
+        continue;
+      }
+
+      const chunkTokens = getChunkTokens(chunk, conceptNamesById);
+      const textSimilarity =
+        countTokenMatches(selectionTokens, combineChunkTokens(chunkTokens)) /
+        selectionTokens.size;
+
+      candidates.push({
+        ...chunk,
+        page_index: page.page_index,
+        page_label: page.page_label,
+        connection_confidence: Math.max(
+          0,
+          ...connections.map((connection) => connection.confidence),
+        ),
+        occurrence_priority: occurrencePriority,
+        shared_concept_count: sharedConceptIds.length,
+        text_similarity: textSimilarity,
+      });
+    }
+  }
+
+  candidates.sort(compareRelatedPageCandidates);
+  const relatedPages: SelectionRelatedPage[] = [];
+  const seenPageIndexes = new Set<number>();
+
+  for (const candidate of candidates) {
+    if (seenPageIndexes.has(candidate.page_index)) {
+      continue;
+    }
+
+    seenPageIndexes.add(candidate.page_index);
+    relatedPages.push({
+      id: candidate.id,
+      title: candidate.title,
+      summary: candidate.summary,
+      concept_ids: candidate.concept_ids,
+      page_index: candidate.page_index,
+      page_label: candidate.page_label,
+    });
+
+    if (relatedPages.length === RELATED_PAGE_LIMIT) {
+      break;
+    }
+  }
+
+  return relatedPages;
+}
+
+function getOccurrencePriority(
+  conceptIds: string[],
+  pageIndex: number,
+  conceptsById: ReadonlyMap<string, DocumentConcept>,
+) {
+  let priority = 0;
+
+  for (const conceptId of conceptIds) {
+    const occurrence = conceptsById
+      .get(conceptId)
+      ?.occurrences.find((item) => item.page_index === pageIndex);
+
+    if (occurrence) {
+      priority = Math.max(
+        priority,
+        OCCURRENCE_PRIORITIES[occurrence.role],
+      );
+    }
+  }
+
+  return priority;
+}
+
+function compareRelatedPageCandidates(
+  left: RelatedPageCandidate,
+  right: RelatedPageCandidate,
+) {
+  return (
+    right.shared_concept_count - left.shared_concept_count ||
+    right.text_similarity - left.text_similarity ||
+    right.connection_confidence - left.connection_confidence ||
+    right.occurrence_priority - left.occurrence_priority ||
+    left.page_index - right.page_index ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function getChunkTokens(
+  chunk: DocumentChunk,
+  conceptNamesById: ReadonlyMap<string, string>,
+): ChunkTokens {
+  return {
+    title: tokenize(chunk.title),
+    concepts: tokenize(
+      chunk.concept_ids
+        .map((conceptId) => conceptNamesById.get(conceptId) ?? "")
+        .join(" "),
+    ),
+    summary: tokenize(chunk.summary),
+  };
+}
+
+function scoreChunkMatch(
+  selectionTokens: ReadonlySet<string>,
+  chunkTokens: ChunkTokens,
+) {
+  let matchedTokenCount = 0;
+  let weightedMatches = 0;
+
+  for (const token of selectionTokens) {
+    if (chunkTokens.title.has(token)) {
+      matchedTokenCount += 1;
+      weightedMatches += 2;
+    } else if (chunkTokens.concepts.has(token)) {
+      matchedTokenCount += 1;
+      weightedMatches += 1.5;
+    } else if (chunkTokens.summary.has(token)) {
+      matchedTokenCount += 1;
+      weightedMatches += 1;
+    }
+  }
+
+  return {
+    matchedTokenCount,
+    score: weightedMatches / selectionTokens.size,
+  };
+}
+
+function combineChunkTokens(chunkTokens: ChunkTokens) {
+  return new Set([
+    ...chunkTokens.title,
+    ...chunkTokens.concepts,
+    ...chunkTokens.summary,
+  ]);
+}
+
+function countTokenMatches(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+) {
+  let matches = 0;
+
+  for (const token of left) {
+    if (right.has(token)) {
+      matches += 1;
+    }
+  }
+
+  return matches;
+}
+
+function tokenize(value: string) {
+  const words = value.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+  return new Set(
+    words.filter((word) => word.length > 2 && !STOP_WORDS.has(word)),
+  );
 }
 
 export function validateDocumentModel(

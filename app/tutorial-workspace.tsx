@@ -35,7 +35,7 @@ import {
   PdfDocumentViewer,
 } from "@/app/pdf-document-viewer";
 import {
-  buildPageLearningContext,
+  buildTextSelectionContext,
   type DocumentModel,
 } from "@/lib/document-model";
 import type { DocumentSelection } from "@/lib/document-selection";
@@ -80,13 +80,21 @@ export function TutorialWorkspace({
     audioInputDeviceId,
     audioOutputDeviceId,
   } = useLearningSettings();
-  const pageContext = useMemo(
+  const textSelectionContext = useMemo(
     () =>
-      documentModel
-        ? buildPageLearningContext(documentModel, currentPage)
+      documentModel && selection?.text
+        ? buildTextSelectionContext(
+            documentModel,
+            selection.page_index,
+            selection.text,
+          )
         : null,
-    [currentPage, documentModel],
+    [documentModel, selection],
   );
+  const selectionPageLabel = selection
+    ? (documentModel?.pages[selection.page_index - 1]?.page_label ??
+      String(selection.page_index))
+    : "";
   const realtimeTutor = useRealtimeTutor({
     documentId: activeTutorial?.id ?? null,
     documentModel,
@@ -494,7 +502,7 @@ export function TutorialWorkspace({
             </h2>
             {selection ? (
               <>
-                <strong>Page {pageContext?.current_page.page_label}</strong>
+                <strong>Page {selectionPageLabel}</strong>
                 <p>
                   {selection.text ||
                     "This region has no native PDF text. The tutor will use the image."}
@@ -520,37 +528,22 @@ export function TutorialWorkspace({
               <span className="insight-card-icon">
                 <Sparkles size={18} aria-hidden="true" />
               </span>
-              Page context
+              Related pages
             </h2>
-            <p className="context-section-label">Concepts on this page</p>
             <ul>
-              {pageContext?.current_concepts.length ? (
-                pageContext.current_concepts.map((concept) => (
-                  <li key={concept.concept_id}>
-                    <strong>{concept.name}</strong>
-                    <span>{concept.role.replaceAll("_", " ")}</span>
+              {textSelectionContext?.related_pages.length ? (
+                textSelectionContext.related_pages.map((relatedPage) => (
+                  <li key={relatedPage.page_index}>
+                    <strong>Page {relatedPage.page_label}</strong>
+                    <span>{relatedPage.title}</span>
                   </li>
                 ))
               ) : (
-                <li className="waiting">No mapped concepts on this page.</li>
-              )}
-            </ul>
-            <p className="context-section-label">Related pages</p>
-            <ul>
-              {pageContext?.related_pages.length ? (
-                pageContext.related_pages.map((relatedPage) => (
-                  <li
-                    key={`${relatedPage.page_index}:${relatedPage.concept_name}`}
-                  >
-                    <strong>
-                      Page {relatedPage.page_label} ·{" "}
-                      {relatedPage.concept_name}
-                    </strong>
-                    <span>{relatedPage.reason}</span>
-                  </li>
-                ))
-              ) : (
-                <li className="waiting">No related page is needed here.</li>
+                <li className="waiting">
+                  {selection?.text
+                    ? "No reliable related pages found."
+                    : "Select text to find related pages."}
+                </li>
               )}
             </ul>
           </section>

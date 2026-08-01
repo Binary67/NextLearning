@@ -749,11 +749,12 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 function buildTutorInstructions(model: DocumentModel) {
   return `You are a live voice tutor helping a learner read "${model.title}".
 
-The learner chooses a region of the PDF and asks a spoken question. The application supplies the selected image, extracted text when available, current-page concepts, and a small set of related document passages.
+The learner chooses a region of the PDF and asks a spoken question. The application supplies the selected image, extracted text when available, current-page concepts, and document grounding. For text selections, text_selection.related_pages is the canonical related-page list also shown to the learner.
 
 Response policy:
 - Answer the learner's exact question first.
 - Use only the supplied selection and document grounding for claims about the document.
+- When asked which sections or pages relate to the selection, use only text_selection.related_pages. Do not add, remove, or substitute pages. If that list is unavailable or empty, say that no reliable related pages were identified.
 - Explain a prerequisite only when it is necessary to answer the question.
 - Mention another page only when it materially helps, and identify the page.
 - Do not turn the answer into a planned lesson or continue to unrelated material.
@@ -770,7 +771,11 @@ function buildSelectionContextEvent(
   model: DocumentModel,
   selection: DocumentSelection,
 ) {
-  const grounding = buildSelectionGrounding(model, selection.page_index);
+  const grounding = buildSelectionGrounding(
+    model,
+    selection.page_index,
+    selection.text,
+  );
 
   return {
     type: "conversation.item.create",
