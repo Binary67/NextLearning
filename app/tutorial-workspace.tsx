@@ -37,6 +37,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { AppHeader } from "@/app/app-header";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
 import {
@@ -158,8 +159,9 @@ export function TutorialWorkspace({
     (modal === "reset-progress" && resettingProgress) ||
     (modal === "delete-tutorial" && deletingTutorial);
   const isUserTurn = realtimeTutor.isUserTurn;
-  const isInterruptionTurn =
-    realtimeTutor.learnerTurnPurpose === "interruption";
+  const isQuestionTurn =
+    realtimeTutor.learnerTurnPurpose === "interruption" ||
+    realtimeTutor.learnerTurnPurpose === "follow-up";
   const raiseHandShortcutLabel = formatShortcut(raiseHandShortcut);
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
@@ -170,15 +172,27 @@ export function TutorialWorkspace({
     : "Raise hand to ask a question";
 
   if (realtimeTutor.isSubmittingUserTurn) {
-    userTurnActionLabel = isInterruptionTurn
+    userTurnActionLabel = isQuestionTurn
       ? "Sending question"
       : "Sending answer";
   } else if (isUserTurn) {
-    userTurnActionLabel = isInterruptionTurn
+    userTurnActionLabel = isQuestionTurn
       ? "Done asking"
       : "Done answering";
   }
 
+  const completedLessonStepIds = new Set(
+    realtimeTutor.completedLessonStepIds,
+  );
+  const currentLessonStep =
+    activeUnit?.lesson_steps.find(
+      (step) => !completedLessonStepIds.has(step.id),
+    ) ?? null;
+  const currentLessonStepReady =
+    currentLessonStep?.id === realtimeTutor.readyLessonStepId;
+  const isLastLessonStep =
+    currentLessonStep !== null &&
+    activeUnit?.lesson_steps.at(-1)?.id === currentLessonStep.id;
   const tutorQuestion =
     realtimeTutor.status === "connected" &&
     realtimeTutor.isAwaitingLearnerAnswer &&
@@ -241,7 +255,7 @@ export function TutorialWorkspace({
         );
 
         if (initialUnit) {
-          setCurrentPage(initialUnit.source_anchors[0].page_index);
+          setCurrentPage(getInitialUnitPageIndex(initialUnit));
         }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
@@ -404,19 +418,31 @@ export function TutorialWorkspace({
     let toastMessage = `Listening. Press ${raiseHandShortcutLabel} or tap the check when you finish.`;
 
     if (isUserTurn) {
-      toastMessage = isInterruptionTurn
+      toastMessage = isQuestionTurn
         ? "Question sent. Waiting for the tutor."
         : "Answer sent. Waiting for the tutor.";
     }
 
     showToast(toastMessage);
   }, [
-    isInterruptionTurn,
+    isQuestionTurn,
     isUserTurn,
     raiseHandShortcutLabel,
     realtimeTutor,
     showToast,
   ]);
+
+  const advanceLessonStep = useCallback(async () => {
+    const advanced = await realtimeTutor.advanceLessonStep();
+
+    if (advanced) {
+      showToast(
+        isLastLessonStep
+          ? "Finishing this learning unit."
+          : "Moving to the next step.",
+      );
+    }
+  }, [isLastLessonStep, realtimeTutor, showToast]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -527,7 +553,7 @@ export function TutorialWorkspace({
         : null;
 
       if (firstUnit) {
-        setCurrentPage(firstUnit.source_anchors[0].page_index);
+        setCurrentPage(getInitialUnitPageIndex(firstUnit));
       }
 
       setModal(null);
@@ -601,7 +627,7 @@ export function TutorialWorkspace({
       }
 
       if (isUserTurn) {
-        const listeningPrompt = isInterruptionTurn
+        const listeningPrompt = isQuestionTurn
           ? "Ask your question, then tap the check"
           : "Speak your answer, then tap the check";
 
@@ -617,7 +643,7 @@ export function TutorialWorkspace({
       }
 
       if (realtimeTutor.isSubmittingUserTurn) {
-        const submissionLabel = isInterruptionTurn
+        const submissionLabel = isQuestionTurn
           ? "Sending your question…"
           : "Sending your answer…";
 
@@ -641,6 +667,15 @@ export function TutorialWorkspace({
           <span className="turn-state-copy">
             <small>{tutorTurnLabel}</small>
             <strong>{tutorTurnLabel}…</strong>
+          </span>
+        );
+      }
+
+      if (currentLessonStepReady) {
+        return (
+          <span className="turn-state-copy">
+            <small>Step ready</small>
+            <strong>Ask a question or continue when ready</strong>
           </span>
         );
       }
@@ -810,89 +845,62 @@ export function TutorialWorkspace({
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-group">
-          <Link className="brand" href="/library" aria-label="NextLearning home">
-            <span className="brand-mark" aria-hidden="true">
-              N
-            </span>
-            NextLearning
-          </Link>
-        </div>
-
-        <nav className="main-nav" aria-label="Primary navigation">
-          <Link
-            className="nav-link active"
-            href={`/tutorials/${tutorialId}`}
-            aria-current="page"
-          >
-            Dashboard
-          </Link>
+      <AppHeader
+        activeSection="dashboard"
+        dashboardHref={`/tutorials/${tutorialId}`}
+        onCoursesClick={() =>
+          showToast("Courses are ready for future learning paths.")
+        }
+      >
+        <button
+          className="icon-button"
+          type="button"
+          onClick={toggleTimer}
+          aria-label={timerRunning ? "Pause focus timer" : "Resume focus timer"}
+        >
+          {timerRunning ? <Clock3 size={24} /> : <Play size={23} />}
+        </button>
+        <button
+          className="icon-button"
+          type="button"
+          onClick={openSettings}
+          aria-label="Open learning settings"
+          aria-expanded={modal === "settings"}
+          aria-haspopup="dialog"
+        >
+          <Settings size={25} />
+        </button>
+        <div className="popover-anchor">
           <button
-            className="nav-link"
+            className="avatar"
             type="button"
-            onClick={() =>
-              showToast("Courses are ready for future learning paths.")
-            }
+            onClick={toggleProfilePopover}
+            aria-label="Open profile menu"
+            aria-expanded={popover === "profile"}
           >
-            Courses
+            AM
           </button>
-          <Link className="nav-link" href="/library">
-            Library
-          </Link>
-        </nav>
-
-        <div className="header-actions">
-          <button
-            className="icon-button"
-            type="button"
-            onClick={toggleTimer}
-            aria-label={timerRunning ? "Pause focus timer" : "Resume focus timer"}
-          >
-            {timerRunning ? <Clock3 size={24} /> : <Play size={23} />}
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={openSettings}
-            aria-label="Open learning settings"
-            aria-expanded={modal === "settings"}
-            aria-haspopup="dialog"
-          >
-            <Settings size={25} />
-          </button>
-          <div className="popover-anchor">
-            <button
-              className="avatar"
-              type="button"
-              onClick={toggleProfilePopover}
-              aria-label="Open profile menu"
-              aria-expanded={popover === "profile"}
-            >
-              AM
-            </button>
-            {popover === "profile" && (
-              <div className="popover profile-popover">
-                <div className="profile-summary">
-                  <span className="avatar avatar-large">AM</span>
-                  <span>
-                    <strong>Alex Morgan</strong>
-                    <small>Quantum Physics 101</small>
-                  </span>
-                </div>
-                <button type="button" onClick={() => showToast("Profile selected.")}>
-                  <User size={17} />
-                  View profile
-                </button>
-                <button type="button" onClick={() => showToast("Sign out selected.")}>
-                  <LogOut size={17} />
-                  Sign out
-                </button>
+          {popover === "profile" && (
+            <div className="popover profile-popover">
+              <div className="profile-summary">
+                <span className="avatar avatar-large">AM</span>
+                <span>
+                  <strong>Alex Morgan</strong>
+                  <small>Quantum Physics 101</small>
+                </span>
               </div>
-            )}
-          </div>
+              <button type="button" onClick={() => showToast("Profile selected.")}>
+                <User size={17} />
+                View profile
+              </button>
+              <button type="button" onClick={() => showToast("Sign out selected.")}>
+                <LogOut size={17} />
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
-      </header>
+      </AppHeader>
 
       <div
         className={`dashboard-layout${insightsVisible ? "" : " insights-hidden"}`}
@@ -1034,6 +1042,33 @@ export function TutorialWorkspace({
           </div>
 
           <div className="session-controls">
+            {currentLessonStepReady && currentLessonStep && (
+              <div className="lesson-step-ready" aria-live="polite">
+                <div>
+                  <small>Ready when you are</small>
+                  <p>
+                    Stay here for questions, or continue to{" "}
+                    {isLastLessonStep
+                      ? "finish this learning unit"
+                      : "the next step"}.
+                  </p>
+                </div>
+                <button
+                  className="primary-button lesson-step-next-button"
+                  type="button"
+                  onClick={() => void advanceLessonStep()}
+                  disabled={
+                    isUserTurn ||
+                    realtimeTutor.isSubmittingUserTurn ||
+                    realtimeTutor.isTutorResponding ||
+                    realtimeTutor.isTutorSpeaking
+                  }
+                >
+                  {isLastLessonStep ? "Finish unit" : "Next step"}
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {tutorQuestion && (
               <div
                 className="tutor-question"
@@ -2217,6 +2252,17 @@ function formatConceptId(conceptId: string) {
 
 function formatLessonStepKind(kind: string) {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+function getInitialUnitPageIndex(unit: TeachingUnit) {
+  const firstVisualAnchorId = unit.lesson_steps.find(
+    (step) => step.visual_source_anchor_id !== null,
+  )?.visual_source_anchor_id;
+  const firstVisualAnchor = unit.source_anchors.find(
+    (anchor) => anchor.id === firstVisualAnchorId,
+  );
+
+  return firstVisualAnchor?.page_index ?? unit.source_anchors[0].page_index;
 }
 
 function getLatestTutorQuestion(transcript: string) {

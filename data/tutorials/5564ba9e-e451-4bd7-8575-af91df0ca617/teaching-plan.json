@@ -1,0 +1,1582 @@
+{
+  "schema_version": 3,
+  "document_id": "5564ba9e-e451-4bd7-8575-af91df0ca617",
+  "title": "Attention Is All You Need",
+  "units": [
+    {
+      "id": "unit:problem-and-proposal",
+      "title": "Why the Transformer was proposed",
+      "objective": "Explain the paper's core problem with recurrent and convolutional sequence transduction and state the Transformer's proposed replacement.",
+      "concept_ids": [
+        "concept:sequence-transduction-models",
+        "concept:recurrent-neural-networks",
+        "concept:convolutional-sequence-models",
+        "concept:attention-mechanism",
+        "concept:transformer-architecture",
+        "concept:parallelization"
+      ],
+      "prerequisite_unit_ids": [],
+      "source_anchors": [
+        {
+          "id": "source:u1-page-1-abstract",
+          "page_index": 1,
+          "page_label": "1",
+          "purpose": "introduce"
+        },
+        {
+          "id": "source:u1-page-2-introduction",
+          "page_index": 2,
+          "page_label": "2",
+          "purpose": "explain"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u1-motivate",
+          "kind": "motivate",
+          "title": "The bottleneck in sequence transduction",
+          "content": "The paper begins from sequence transduction tasks, especially machine translation, where models must transform one symbol sequence into another. Its central motivation is that strong recurrent and convolutional systems were effective but imposed computation patterns that made training harder to parallelize or long-distance relations harder to learn.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u1-page-1-abstract"
+        },
+        {
+          "id": "step:u1-explain",
+          "kind": "explain",
+          "title": "The Transformer's claim",
+          "content": "The Transformer is proposed as an encoder-decoder model that dispenses with both recurrence and convolution. Instead, it relies on attention mechanisms to draw global dependencies between input and output positions while allowing much more parallel computation.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u1-page-2-introduction"
+        },
+        {
+          "id": "step:u1-demonstrate",
+          "kind": "demonstrate",
+          "title": "Trace the argument from abstract to introduction",
+          "content": "On page 1, the abstract says dominant models used recurrent or convolutional networks plus attention, while the Transformer uses attention alone. On page 2, the introduction explains why this matters: recurrent hidden states are generated sequentially as functions of previous states, limiting parallelization within a training example.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u1-page-2-introduction"
+        },
+        {
+          "id": "step:u1-practice",
+          "kind": "practice",
+          "title": "Identify the architectural replacement",
+          "content": "Apply the paper's framing to a short explanation of the model choice. Focus on both what is removed and what is used instead.",
+          "learner_prompt": "In one or two sentences, explain what the Transformer removes from previous sequence transduction architectures and what mechanism replaces those components.",
+          "expected_response": "It removes recurrence and convolution from the core sequence model and replaces them with attention mechanisms, especially self-attention and multi-head attention. The point is to model dependencies while improving parallelization.",
+          "remediation": "If the learner only says 'it uses attention,' ask them to name the two removed computation types and then connect their removal to the paper's parallelization motivation.",
+          "visual_source_anchor_id": "source:u1-page-1-abstract"
+        },
+        {
+          "id": "step:u1-assess",
+          "kind": "assess",
+          "title": "Independent check on the main contribution",
+          "content": "Check whether the learner can state the contribution as a problem-solution pair rather than as a slogan. The answer should mention sequence modeling, the limits of recurrent or convolutional computation, and attention-only architecture.",
+          "learner_prompt": "Why is 'Attention Is All You Need' an architectural claim, not just a claim that attention is useful?",
+          "expected_response": "Because previous high-performing systems often used attention together with recurrent or convolutional networks, while this paper claims an entire sequence transduction model can be built using attention mechanisms without recurrence or convolution. The claim includes benefits in quality, parallelization, and training time.",
+          "remediation": "Return to page 1's abstract and have the learner compare 'connect through an attention mechanism' with 'based solely on attention mechanisms.' Emphasize the word 'solely' as the architectural shift.",
+          "visual_source_anchor_id": "source:u1-page-1-abstract"
+        },
+        {
+          "id": "step:u1-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "The paper targets sequence transduction and frames recurrence as a bottleneck for within-example parallelization. The Transformer keeps the sequence-to-sequence goal but replaces recurrent and convolutional layers with attention-based computation.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "States what sequence transduction means in the paper's context.",
+        "Explains why recurrent computation limits parallelization within an example.",
+        "Names recurrence and convolution as the components the Transformer removes.",
+        "Connects attention-only design to the reported goals of quality and faster training."
+      ],
+      "common_difficulties": [
+        "Treating attention as merely an add-on rather than the central replacement for recurrence and convolution.",
+        "Equating faster training only with hardware rather than with reduced sequential computation."
+      ]
+    },
+    {
+      "id": "unit:encoder-decoder-flow",
+      "title": "Encoder-decoder structure and autoregressive decoding",
+      "objective": "Trace how the Transformer maps an input sequence to output predictions through encoder and decoder stacks.",
+      "concept_ids": [
+        "concept:encoder-decoder-structure",
+        "concept:encoder-stack",
+        "concept:decoder-stack",
+        "concept:autoregressive-decoding",
+        "concept:transformer-architecture"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:problem-and-proposal"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u2-page-2-encoder-decoder-definition",
+          "page_index": 2,
+          "page_label": "2",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u2-page-3-architecture-figure",
+          "page_index": 3,
+          "page_label": "3",
+          "purpose": "illustrate"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u2-motivate",
+          "kind": "motivate",
+          "title": "Why structure still matters without recurrence",
+          "content": "Even though the Transformer removes recurrence and convolution, it does not remove the encoder-decoder organization used in sequence transduction. Understanding this flow is necessary before the attention sub-layers make sense, because different attention modules serve the encoder, decoder, and their connection.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u2-page-3-architecture-figure"
+        },
+        {
+          "id": "step:u2-explain",
+          "kind": "explain",
+          "title": "Encoder and decoder roles",
+          "content": "The encoder maps input symbol representations x1 through xn into continuous representations z1 through zn. The decoder then generates output symbols y1 through ym one element at a time, consuming previously generated symbols as additional input when predicting the next symbol.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u2-page-2-encoder-decoder-definition"
+        },
+        {
+          "id": "step:u2-demonstrate",
+          "kind": "demonstrate",
+          "title": "Read Figure 1 as a computation path",
+          "content": "In Figure 1, input tokens become input embeddings, receive positional encodings, and pass upward through the encoder stack. On the decoder side, shifted-right output embeddings pass through masked attention, then encoder-decoder attention, then feed-forward layers before a linear layer and softmax produce output probabilities.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u2-page-3-architecture-figure"
+        },
+        {
+          "id": "step:u2-connect",
+          "kind": "connect",
+          "title": "Connect stacks to the attention-only claim",
+          "content": "The encoder and decoder are familiar sequence-to-sequence components, but their internal layers are changed. Instead of recurrent steps over positions, each stack is built from attention and position-wise feed-forward sub-layers with residual normalization.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u2-page-3-architecture-figure"
+        },
+        {
+          "id": "step:u2-practice",
+          "kind": "practice",
+          "title": "Describe the prediction dependency",
+          "content": "Use the decoder's autoregressive definition to reason about what information is allowed during prediction. The key is that the model may use encoder outputs and earlier target tokens, but not later target tokens.",
+          "learner_prompt": "When predicting output position i, what information may the Transformer decoder depend on according to the paper?",
+          "expected_response": "It may depend on the encoder's representation of the input sequence and on known output symbols at positions less than i. Masking and shifted-right output embeddings prevent dependence on subsequent output positions.",
+          "remediation": "Point to the decoder paragraph on page 3 and separate source-side information from target-side information. Then ask which target positions would leak the answer if not masked.",
+          "visual_source_anchor_id": "source:u2-page-3-architecture-figure"
+        },
+        {
+          "id": "step:u2-assess",
+          "kind": "assess",
+          "title": "Independent architecture trace",
+          "content": "Assess whether the learner can narrate the whole architecture without confusing encoder and decoder responsibilities. The answer should include both stacks and the final probability computation.",
+          "learner_prompt": "Trace the high-level Transformer flow from input tokens to output probabilities.",
+          "expected_response": "Input tokens are embedded, combined with positional encodings, and processed by the encoder stack into continuous representations. Shifted target embeddings are processed by the decoder stack, which uses masked self-attention and attention over encoder outputs, and the decoder output is converted by a linear layer and softmax into next-token probabilities.",
+          "remediation": "Have the learner follow the arrows in Figure 1 from bottom to top on the left, then bottom to top on the right, naming each major block aloud.",
+          "visual_source_anchor_id": "source:u2-page-3-architecture-figure"
+        },
+        {
+          "id": "step:u2-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "The Transformer preserves the encoder-decoder pattern but changes what each layer computes. The encoder builds input representations, while the decoder generates outputs autoregressively and ends in a softmax over next-token probabilities.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Traces the data path through encoder and decoder stacks in Figure 1.",
+        "Explains autoregressive decoding in terms of previous output symbols.",
+        "Distinguishes encoder representations from decoder output probabilities.",
+        "Identifies why shifted-right outputs and masking are needed for prediction."
+      ],
+      "common_difficulties": [
+        "Assuming the Transformer decodes all output tokens independently because training is parallelized.",
+        "Confusing encoder self-attention with decoder attention over encoder outputs."
+      ]
+    },
+    {
+      "id": "unit:scaled-dot-product-attention",
+      "title": "Scaled dot-product attention",
+      "objective": "Compute and interpret scaled dot-product attention using queries, keys, values, softmax weights, and the sqrt(dk) scale factor.",
+      "concept_ids": [
+        "concept:attention-mechanism",
+        "concept:queries-keys-values",
+        "concept:attention-weights",
+        "concept:scaled-dot-product-attention",
+        "concept:dot-product-scaling",
+        "concept:key-value-dimensions"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:encoder-decoder-flow"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u3-page-3-attention-definition",
+          "page_index": 3,
+          "page_label": "3",
+          "purpose": "introduce"
+        },
+        {
+          "id": "source:u3-page-4-attention-formula",
+          "page_index": 4,
+          "page_label": "4",
+          "purpose": "explain"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u3-motivate",
+          "kind": "motivate",
+          "title": "Why attention needs a precise computation",
+          "content": "The paper's broad claim depends on attention doing the work that recurrence and convolution previously did. To understand that claim, the learner must know exactly how a query chooses and combines information from keys and values.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u3-page-4-attention-formula"
+        },
+        {
+          "id": "step:u3-explain",
+          "kind": "explain",
+          "title": "The Q, K, V mechanism",
+          "content": "An attention function maps a query and a set of key-value pairs to an output vector. It computes compatibility between the query and each key, turns those compatibilities into weights with softmax, and returns a weighted sum of the corresponding values.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u3-page-3-attention-definition"
+        },
+        {
+          "id": "step:u3-demonstrate",
+          "kind": "demonstrate",
+          "title": "Trace the formula",
+          "content": "Page 4 gives Attention(Q,K,V) = softmax(QK^T / sqrt(dk))V. First QK^T creates all query-key dot products, then division by sqrt(dk) scales them, softmax converts them to attention weights, and multiplying by V forms weighted sums of value vectors.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u3-page-4-attention-formula"
+        },
+        {
+          "id": "step:u3-contrast",
+          "kind": "contrast",
+          "title": "Scaled versus unscaled dot product",
+          "content": "Dot-product attention without scaling is identical except it omits division by sqrt(dk). The authors argue that when dk is large, dot products can grow in magnitude and push softmax into regions with extremely small gradients, so scaling stabilizes learning.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u3-page-4-attention-formula"
+        },
+        {
+          "id": "step:u3-practice",
+          "kind": "practice",
+          "title": "Order the operations",
+          "content": "Have the learner reconstruct the computation order from the formula. This checks whether they understand the formula as a mechanism rather than as symbols to memorize.",
+          "learner_prompt": "Put these operations in order for scaled dot-product attention: multiply by V, compute QK^T, apply softmax, divide by sqrt(dk).",
+          "expected_response": "Compute QK^T, divide by sqrt(dk), apply softmax to get weights, then multiply by V to get the output.",
+          "remediation": "If the order is wrong, draw the left panel of Figure 2 as a vertical pipeline: MatMul with Q and K, Scale, Softmax, then MatMul with V.",
+          "visual_source_anchor_id": "source:u3-page-4-attention-formula"
+        },
+        {
+          "id": "step:u3-assess",
+          "kind": "assess",
+          "title": "Independent mechanism explanation",
+          "content": "Assess whether the learner can explain both the output and the reason for scaling. A complete answer must connect the scale factor to dk and softmax gradients.",
+          "learner_prompt": "Explain why the Transformer divides QK^T by sqrt(dk) before softmax.",
+          "expected_response": "Because for large dk, dot products can have large magnitude, making softmax very peaked and producing extremely small gradients. Dividing by sqrt(dk) counteracts this effect and makes dot-product attention work better at larger dimensions.",
+          "remediation": "Use the footnote's variance intuition: if q and k have dk independent components, the dot product's variance grows with dk. Then ask what a very large logit does to softmax.",
+          "visual_source_anchor_id": "source:u3-page-4-attention-formula"
+        },
+        {
+          "id": "step:u3-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Scaled dot-product attention compares queries with keys, normalizes the scores into weights, and mixes values. The sqrt(dk) scaling is not cosmetic; it addresses large dot-product magnitudes that can harm softmax learning.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Correctly orders QK^T, scaling, softmax, and multiplication by V.",
+        "Explains the roles of queries, keys, values, and attention weights.",
+        "States why sqrt(dk) scaling is used for larger key dimensions.",
+        "Interprets the formula as a weighted-sum mechanism."
+      ],
+      "common_difficulties": [
+        "Thinking values are used to decide compatibility rather than to form the weighted output.",
+        "Forgetting that softmax is applied before multiplying by V.",
+        "Treating sqrt(dk) as an arbitrary normalization rather than a response to dot-product magnitude."
+      ]
+    },
+    {
+      "id": "unit:multi-head-attention",
+      "title": "Multi-head attention as parallel projected attention",
+      "objective": "Explain how multi-head attention projects Q, K, and V into multiple heads and why this helps attend to different representation subspaces.",
+      "concept_ids": [
+        "concept:multi-head-attention",
+        "concept:scaled-dot-product-attention",
+        "concept:queries-keys-values",
+        "concept:attention-heads",
+        "concept:number-of-heads",
+        "concept:key-value-dimensions",
+        "concept:model-dimension"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:scaled-dot-product-attention"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u4-page-4-multi-head-figure",
+          "page_index": 4,
+          "page_label": "4",
+          "purpose": "illustrate"
+        },
+        {
+          "id": "source:u4-page-5-multi-head-details",
+          "page_index": 5,
+          "page_label": "5",
+          "purpose": "explain"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u4-motivate",
+          "kind": "motivate",
+          "title": "Why one attention operation may be limiting",
+          "content": "A single attention operation mixes information into one weighted average, which can blur different relationships. The paper introduces multi-head attention so the model can attend to different positions and representation subspaces in parallel.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u4-page-4-multi-head-figure"
+        },
+        {
+          "id": "step:u4-explain",
+          "kind": "explain",
+          "title": "Projection, parallel heads, and concatenation",
+          "content": "Multi-head attention linearly projects queries, keys, and values h times into lower-dimensional spaces. Each projected triple runs scaled dot-product attention in parallel, then the head outputs are concatenated and projected again to produce the final output.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u4-page-5-multi-head-details"
+        },
+        {
+          "id": "step:u4-demonstrate",
+          "kind": "demonstrate",
+          "title": "Use the paper's base setting",
+          "content": "The paper uses h = 8 heads in the base model, with dk = dv = dmodel / h = 64 when dmodel is 512. Because each head is lower-dimensional, the total computational cost is similar to a single full-dimensional attention head while giving multiple attention patterns.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u4-page-5-multi-head-details"
+        },
+        {
+          "id": "step:u4-connect",
+          "kind": "connect",
+          "title": "Connect heads to scaled dot-product attention",
+          "content": "Each head is not a different kind of attention; it is scaled dot-product attention applied after a learned projection. The novelty is the parallel set of learned projections and the final concatenation-plus-projection step.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u4-page-4-multi-head-figure"
+        },
+        {
+          "id": "step:u4-practice",
+          "kind": "practice",
+          "title": "Compute head dimensions",
+          "content": "Use the relationship between dmodel and h from the base model. The goal is to check that the learner understands why the paper can use several heads without multiplying cost dramatically.",
+          "learner_prompt": "In the base model, dmodel is 512 and h is 8. What dk and dv does the paper use for each head, and why does this keep cost comparable to one full-dimensional head?",
+          "expected_response": "It uses dk = dv = 512 / 8 = 64 for each head. Each head is smaller, so running 8 lower-dimensional attention operations has a similar total cost to one full-dimensional attention operation.",
+          "remediation": "If the learner cannot compute it, divide the model dimension evenly across heads and then explain that parallel heads trade width per head for multiple learned views.",
+          "visual_source_anchor_id": "source:u4-page-5-multi-head-details"
+        },
+        {
+          "id": "step:u4-assess",
+          "kind": "assess",
+          "title": "Independent explanation of the benefit",
+          "content": "Assess whether the learner can state the benefit without claiming that heads merely duplicate each other. A strong answer includes different subspaces, different positions, and concatenation.",
+          "learner_prompt": "Why does the paper say multi-head attention is beneficial compared with a single attention head?",
+          "expected_response": "It allows the model to jointly attend to information from different representation subspaces at different positions. A single head's averaging can inhibit this, whereas multiple projected heads can learn different attention patterns before being concatenated and projected.",
+          "remediation": "Return to the sentence on page 5 about different representation subspaces. Ask the learner to imagine one head tracking syntax while another tracks a distant dependency, then connect this to the appendix visualizations later.",
+          "visual_source_anchor_id": "source:u4-page-5-multi-head-details"
+        },
+        {
+          "id": "step:u4-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Multi-head attention is many projected scaled dot-product attentions run in parallel. The base model uses eight 64-dimensional heads so the model gains multiple attention patterns without a large increase in total cost.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Describes the project-attend-concatenate-project sequence of multi-head attention.",
+        "Computes per-head dimensions from dmodel and h for the base model.",
+        "Explains why multiple heads can represent different subspaces or positions.",
+        "Distinguishes multi-head attention from a single full-dimensional attention head."
+      ],
+      "common_difficulties": [
+        "Thinking each head uses the full dmodel dimension in the base cost comparison.",
+        "Describing heads as identical copies rather than learned projections.",
+        "Forgetting the final output projection after concatenation."
+      ]
+    },
+    {
+      "id": "unit:attention-placements-and-masking",
+      "title": "Where attention is used in the Transformer",
+      "objective": "Distinguish encoder self-attention, masked decoder self-attention, and encoder-decoder attention by their sources of queries, keys, and values.",
+      "concept_ids": [
+        "concept:self-attention",
+        "concept:encoder-stack",
+        "concept:decoder-stack",
+        "concept:encoder-decoder-attention",
+        "concept:masked-decoder-self-attention",
+        "concept:autoregressive-decoding",
+        "concept:queries-keys-values"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:encoder-decoder-flow",
+        "unit:multi-head-attention"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u5-page-3-decoder-masking",
+          "page_index": 3,
+          "page_label": "3",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u5-page-5-attention-applications",
+          "page_index": 5,
+          "page_label": "5",
+          "purpose": "apply"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u5-motivate",
+          "kind": "motivate",
+          "title": "Same mechanism, different roles",
+          "content": "After learning attention's formula, the next challenge is knowing where it is placed inside the architecture. The paper uses multi-head attention in three ways, and confusing their Q, K, and V sources leads to misunderstanding the encoder-decoder design.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u5-page-5-attention-applications"
+        },
+        {
+          "id": "step:u5-explain",
+          "kind": "explain",
+          "title": "Three attention applications",
+          "content": "In encoder self-attention, queries, keys, and values all come from the previous encoder layer, so each input position can attend to all input positions. In decoder self-attention, they come from the decoder side but are masked so a position attends only up to itself; in encoder-decoder attention, decoder queries attend to encoder keys and values.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u5-page-5-attention-applications"
+        },
+        {
+          "id": "step:u5-demonstrate",
+          "kind": "demonstrate",
+          "title": "Trace decoder information flow",
+          "content": "For a decoder layer, the lower masked self-attention first lets each target position use earlier target context. The next attention sub-layer uses queries from that decoder representation and keys and values from encoder outputs, allowing every decoder position to attend over the input sequence.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u5-page-3-decoder-masking"
+        },
+        {
+          "id": "step:u5-contrast",
+          "kind": "contrast",
+          "title": "Self-attention versus encoder-decoder attention",
+          "content": "Self-attention means Q, K, and V come from the same sequence representation. Encoder-decoder attention is not self-attention, because the decoder supplies the queries while the encoder supplies the memory keys and values.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u5-page-5-attention-applications"
+        },
+        {
+          "id": "step:u5-practice",
+          "kind": "practice",
+          "title": "Classify Q, K, and V sources",
+          "content": "Ask the learner to classify an attention sub-layer from its sources. This builds a precise habit for reading Transformer diagrams and descriptions.",
+          "learner_prompt": "If the queries come from the previous decoder layer and the keys and values come from the encoder output, which attention application is this and what does it allow?",
+          "expected_response": "It is encoder-decoder attention. It allows each decoder position to attend over all positions in the input sequence represented by the encoder.",
+          "remediation": "Have the learner match the word 'decoder' to Q and the word 'encoder' to K and V. Then contrast it with self-attention, where all three sources are the same side.",
+          "visual_source_anchor_id": "source:u5-page-5-attention-applications"
+        },
+        {
+          "id": "step:u5-assess",
+          "kind": "assess",
+          "title": "Independent masking check",
+          "content": "Assess whether the learner can justify masking mechanically, not just name it. The answer should mention illegal future connections and the autoregressive property.",
+          "learner_prompt": "Why does the decoder mask some positions in self-attention, and how is this implemented according to the paper?",
+          "expected_response": "It masks future output positions so prediction at position i can depend only on known outputs at positions less than or equal to i, preserving autoregressive generation. The paper implements this by setting softmax inputs for illegal connections to negative infinity.",
+          "remediation": "Return to page 5 and ask which future tokens would be visible without masking. Then explain that negative infinity before softmax gives those connections zero probability.",
+          "visual_source_anchor_id": "source:u5-page-5-attention-applications"
+        },
+        {
+          "id": "step:u5-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "The Transformer uses attention in three distinct placements with different Q, K, and V sources. Decoder masking is essential because it preserves the one-token-at-a-time dependency structure during autoregressive prediction.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Identifies the Q, K, and V sources for all three attention applications.",
+        "Explains why decoder self-attention is masked.",
+        "Distinguishes self-attention from encoder-decoder attention.",
+        "Describes how masking affects softmax inputs for illegal connections."
+      ],
+      "common_difficulties": [
+        "Calling encoder-decoder attention self-attention because it uses the same formula.",
+        "Thinking decoder positions can attend to all target positions during prediction.",
+        "Forgetting that encoder self-attention is unmasked in the paper's description."
+      ]
+    },
+    {
+      "id": "unit:feed-forward-residual-normalization",
+      "title": "Feed-forward sub-layers, residual connections, and layer normalization",
+      "objective": "Explain how non-attention sub-layers process each position and how residual connections plus layer normalization wrap each sub-layer.",
+      "concept_ids": [
+        "concept:position-wise-feed-forward-network",
+        "concept:residual-connections",
+        "concept:layer-normalization",
+        "concept:model-dimension",
+        "concept:encoder-stack",
+        "concept:decoder-stack"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:attention-placements-and-masking"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u6-page-3-sublayers",
+          "page_index": 3,
+          "page_label": "3",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u6-page-5-ffn-formula",
+          "page_index": 5,
+          "page_label": "5",
+          "purpose": "apply"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u6-motivate",
+          "kind": "motivate",
+          "title": "Attention is not the only computation in each layer",
+          "content": "The paper's slogan can make learners overlook the other sub-layers that transform representations after attention. The Transformer layer also uses position-wise feed-forward networks wrapped with residual connections and layer normalization, which are essential parts of the architecture.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u6-page-3-sublayers"
+        },
+        {
+          "id": "step:u6-explain",
+          "kind": "explain",
+          "title": "Position-wise feed-forward computation",
+          "content": "Each encoder and decoder layer contains a fully connected feed-forward network applied separately and identically to each position. The paper defines it as two linear transformations with a ReLU in between: FFN(x) = max(0, xW1 + b1)W2 + b2.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u6-page-5-ffn-formula"
+        },
+        {
+          "id": "step:u6-demonstrate",
+          "kind": "demonstrate",
+          "title": "Read one sub-layer wrapper",
+          "content": "For every sub-layer, the output is LayerNorm(x + Sublayer(x)). This means the model first computes the sub-layer transformation, adds the original input x through a residual connection, and then applies layer normalization.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u6-page-3-sublayers"
+        },
+        {
+          "id": "step:u6-connect",
+          "kind": "connect",
+          "title": "Why dmodel must stay consistent",
+          "content": "Residual addition requires the input and sub-layer output to have the same dimensionality. The paper therefore sets all sub-layers and embeddings to produce vectors of dimension dmodel, with 512 used in the base model.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u6-page-3-sublayers"
+        },
+        {
+          "id": "step:u6-practice",
+          "kind": "practice",
+          "title": "Explain a wrapped sub-layer",
+          "content": "Have the learner translate the compact LayerNorm expression into operations. This checks whether they understand residual and normalization placement.",
+          "learner_prompt": "In the expression LayerNorm(x + Sublayer(x)), what are the three operations happening, and why must their dimensions match?",
+          "expected_response": "The model computes Sublayer(x), adds the original input x to that result as a residual connection, and applies layer normalization. The dimensions must match so x and Sublayer(x) can be added elementwise.",
+          "remediation": "If the learner misses dimension matching, use vector addition: two vectors must have the same length before they can be added. Then point back to dmodel = 512 for all sub-layer outputs.",
+          "visual_source_anchor_id": "source:u6-page-3-sublayers"
+        },
+        {
+          "id": "step:u6-assess",
+          "kind": "assess",
+          "title": "Independent FFN description",
+          "content": "Assess whether the learner can describe the feed-forward network precisely and distinguish it from attention. The answer should mention per-position application and shared parameters across positions within a layer.",
+          "learner_prompt": "How is the Transformer's position-wise feed-forward network different from an attention sub-layer?",
+          "expected_response": "The feed-forward network is applied to each position separately and identically using two linear transformations with a ReLU between them. Attention mixes information across positions through weights, while the feed-forward network transforms each position's representation independently.",
+          "remediation": "Ask the learner to locate where cross-position mixing occurs; it is in attention, not in the FFN. Then restate FFN as the same small neural network applied at every position.",
+          "visual_source_anchor_id": "source:u6-page-5-ffn-formula"
+        },
+        {
+          "id": "step:u6-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Transformer layers combine attention with a position-wise feed-forward network. Every sub-layer is wrapped as residual addition followed by layer normalization, which depends on a shared model dimension across components.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Expands LayerNorm(x + Sublayer(x)) into the correct operation order.",
+        "Explains why residual connections require matching dimensions.",
+        "Describes the FFN formula and its per-position application.",
+        "Distinguishes cross-position attention from position-wise feed-forward transformation."
+      ],
+      "common_difficulties": [
+        "Assuming the feed-forward network attends across tokens.",
+        "Placing layer normalization before residual addition despite the paper's stated formula.",
+        "Forgetting that the FFN parameters differ from layer to layer but are shared across positions within a layer."
+      ]
+    },
+    {
+      "id": "unit:embeddings-softmax-weight-sharing",
+      "title": "Embeddings, softmax, and shared weights",
+      "objective": "Explain how tokens enter and leave the Transformer through embeddings, a linear-softmax output layer, and shared weight matrices.",
+      "concept_ids": [
+        "concept:embeddings-and-softmax",
+        "concept:weight-sharing",
+        "concept:model-dimension",
+        "concept:positional-encoding",
+        "concept:decoder-stack"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:encoder-decoder-flow",
+        "unit:feed-forward-residual-normalization"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u7-page-5-embeddings-softmax",
+          "page_index": 5,
+          "page_label": "5",
+          "purpose": "explain"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u7-motivate",
+          "kind": "motivate",
+          "title": "Tokens must become vectors and probabilities",
+          "content": "The Transformer operates on vectors, but translation data begins and ends as discrete tokens. The paper therefore specifies learned embeddings at the input and output sides, and a final linear transformation plus softmax to produce next-token probabilities.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u7-page-5-embeddings-softmax"
+        },
+        {
+          "id": "step:u7-explain",
+          "kind": "explain",
+          "title": "Input and output interfaces",
+          "content": "Input tokens and output tokens are converted to vectors of dimension dmodel using learned embeddings. At the decoder output, a learned linear transformation and softmax convert the vector representation into a probability distribution over the next token.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u7-page-5-embeddings-softmax"
+        },
+        {
+          "id": "step:u7-demonstrate",
+          "kind": "demonstrate",
+          "title": "Trace output probabilities",
+          "content": "After the decoder stack produces its representation, the model applies a linear layer and then softmax. This is the step shown at the top of Figure 1 and described on page 5 as producing predicted next-token probabilities.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u7-page-5-embeddings-softmax"
+        },
+        {
+          "id": "step:u7-connect",
+          "kind": "connect",
+          "title": "Weight sharing and scaling",
+          "content": "The paper shares the same weight matrix between the two embedding layers and the pre-softmax linear transformation. In the embedding layers, those weights are multiplied by sqrt(dmodel), keeping the shared interface tied to the model's representation dimension.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u7-page-5-embeddings-softmax"
+        },
+        {
+          "id": "step:u7-practice",
+          "kind": "practice",
+          "title": "Locate the shared matrix",
+          "content": "Ask the learner to identify the three places involved in weight sharing. This prevents the common mistake of thinking only input and output embeddings are shared.",
+          "learner_prompt": "According to the paper, which three components share the same weight matrix?",
+          "expected_response": "The two embedding layers and the pre-softmax linear transformation share the same weight matrix.",
+          "remediation": "If the learner names only embeddings, point to the phrase 'and the pre-softmax linear transformation' on page 5. Then distinguish embedding lookup at the bottom from probability projection at the top.",
+          "visual_source_anchor_id": "source:u7-page-5-embeddings-softmax"
+        },
+        {
+          "id": "step:u7-assess",
+          "kind": "assess",
+          "title": "Independent interface explanation",
+          "content": "Assess whether the learner can explain both directions of the token-vector interface. The response should include dmodel and next-token probabilities.",
+          "learner_prompt": "Explain how the Transformer converts discrete tokens into internal vectors and converts decoder vectors back into token predictions.",
+          "expected_response": "It uses learned embeddings to map input and output tokens into dmodel-dimensional vectors. The decoder's final vectors are passed through a learned linear transformation and softmax to produce next-token probability distributions.",
+          "remediation": "Draw a bottom-to-top path: token to embedding to model layers to linear to softmax. Ask the learner which parts handle discrete vocabulary items and which parts handle continuous vectors.",
+          "visual_source_anchor_id": "source:u7-page-5-embeddings-softmax"
+        },
+        {
+          "id": "step:u7-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Embeddings provide the Transformer's token-to-vector interface, and the final linear-softmax layer provides the vector-to-token-probability interface. The paper ties these interfaces together through shared weights and dmodel-dimensional representations.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Explains how learned embeddings create dmodel-dimensional vectors.",
+        "Describes the linear-softmax conversion to next-token probabilities.",
+        "Identifies all three components involved in weight sharing.",
+        "Connects embedding scaling to dmodel in the paper's description."
+      ],
+      "common_difficulties": [
+        "Forgetting the pre-softmax linear transformation in the shared-weight statement.",
+        "Confusing output embeddings with output probabilities.",
+        "Thinking softmax is used to create embeddings rather than predictions."
+      ]
+    },
+    {
+      "id": "unit:positional-encoding",
+      "title": "Positional encoding in a non-recurrent model",
+      "objective": "Explain why positional encodings are required and how the paper's sinusoidal encodings represent position.",
+      "concept_ids": [
+        "concept:positional-encoding",
+        "concept:sinusoidal-positional-encoding",
+        "concept:learned-positional-embeddings",
+        "concept:model-dimension",
+        "concept:transformer-architecture"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:encoder-decoder-flow"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u8-page-6-positional-encoding",
+          "page_index": 6,
+          "page_label": "6",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u8-page-9-positional-ablation",
+          "page_index": 9,
+          "page_label": "9",
+          "purpose": "apply"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u8-motivate",
+          "kind": "motivate",
+          "title": "Attention alone has no built-in order",
+          "content": "Because the Transformer contains no recurrence and no convolution, it needs another way to make token order available. Positional encoding supplies order information while preserving the parallel attention-based architecture.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u8-page-6-positional-encoding"
+        },
+        {
+          "id": "step:u8-explain",
+          "kind": "explain",
+          "title": "What is added and where",
+          "content": "The paper adds positional encodings to input embeddings at the bottoms of both the encoder and decoder stacks. The positional encodings have the same dimension dmodel as the embeddings, so the two vectors can be summed position by position.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u8-page-6-positional-encoding"
+        },
+        {
+          "id": "step:u8-demonstrate",
+          "kind": "demonstrate",
+          "title": "Interpret the sinusoidal formula",
+          "content": "The paper uses sine on even dimensions and cosine on odd dimensions, with frequencies determined by the position, dimension index, and dmodel. The wavelengths form a geometric progression from 2 pi to 10000 times 2 pi, giving each position a patterned vector across dimensions.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u8-page-6-positional-encoding"
+        },
+        {
+          "id": "step:u8-contrast",
+          "kind": "contrast",
+          "title": "Sinusoidal versus learned positions",
+          "content": "The authors also tried learned positional embeddings and found nearly identical results in Table 3 row E. They chose sinusoidal encodings because they hypothesized these may allow extrapolation to sequence lengths longer than those encountered during training.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u8-page-9-positional-ablation"
+        },
+        {
+          "id": "step:u8-practice",
+          "kind": "practice",
+          "title": "Explain why dimensions must match",
+          "content": "Use the addition operation to reason about design constraints. This links positional encoding back to dmodel and residual-compatible representations.",
+          "learner_prompt": "Why must positional encodings have the same dimension as token embeddings in this model?",
+          "expected_response": "They are added directly to the token embeddings at the bottom of the encoder and decoder stacks, so they must have the same dmodel dimension for elementwise summation.",
+          "remediation": "If the learner says only 'for compatibility,' ask them to name the specific operation: adding positional encodings to embeddings. Then remind them that vector addition requires equal length.",
+          "visual_source_anchor_id": "source:u8-page-6-positional-encoding"
+        },
+        {
+          "id": "step:u8-assess",
+          "kind": "assess",
+          "title": "Independent positional rationale",
+          "content": "Assess whether the learner can connect positional encoding to the absence of recurrence and convolution. The answer should state both the need for order and the paper's reason for sinusoidal choice.",
+          "learner_prompt": "Why does the Transformer need positional encodings, and why did the authors choose sinusoidal encodings in the main model?",
+          "expected_response": "It needs positional encodings because without recurrence or convolution the model has no built-in way to use token order. The authors chose sinusoidal encodings because they support relative-position reasoning and may extrapolate to longer sequences, while learned positional embeddings performed nearly identically in experiments.",
+          "remediation": "Have the learner compare a bag of words with an ordered sentence, then connect the missing order mechanism to page 6's statement that the model has no recurrence or convolution.",
+          "visual_source_anchor_id": "source:u8-page-6-positional-encoding"
+        },
+        {
+          "id": "step:u8-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Positional encodings inject order into the attention-only architecture by being added to embeddings. The paper's sinusoidal version is fixed, dimension-matched to dmodel, and chosen partly for possible length extrapolation despite similar ablation performance to learned positions.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Explains why order information must be injected in the Transformer.",
+        "States where positional encodings are added and why dmodel matching matters.",
+        "Describes the sine/cosine structure at a high level.",
+        "Compares sinusoidal encodings with learned positional embeddings using the paper's stated result and rationale."
+      ],
+      "common_difficulties": [
+        "Assuming attention automatically knows token order without positional information.",
+        "Treating learned positional embeddings as absent from the study rather than as an ablated alternative.",
+        "Forgetting that positional encodings are used in both encoder and decoder inputs."
+      ]
+    },
+    {
+      "id": "unit:self-attention-comparison",
+      "title": "Why self-attention compares favorably to recurrence and convolution",
+      "objective": "Use Table 1's criteria to explain the tradeoffs among self-attention, recurrent layers, convolutional layers, and restricted self-attention.",
+      "concept_ids": [
+        "concept:self-attention",
+        "concept:recurrent-neural-networks",
+        "concept:convolutional-sequence-models",
+        "concept:computational-complexity",
+        "concept:parallelization",
+        "concept:maximum-path-length",
+        "concept:long-range-dependencies",
+        "concept:restricted-self-attention"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:scaled-dot-product-attention",
+        "unit:positional-encoding"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u9-page-6-table-1",
+          "page_index": 6,
+          "page_label": "6",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u9-page-7-comparison-text",
+          "page_index": 7,
+          "page_label": "7",
+          "purpose": "apply"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u9-motivate",
+          "kind": "motivate",
+          "title": "The paper needs more than a new formula",
+          "content": "The Transformer must be justified against established recurrent and convolutional layer types. Section 4 gives that justification by comparing computation per layer, sequential operations, and path length for long-range dependencies.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u9-page-6-table-1"
+        },
+        {
+          "id": "step:u9-explain",
+          "kind": "explain",
+          "title": "Three comparison criteria",
+          "content": "The paper compares layer types by total computational complexity per layer, the minimum number of sequential operations, and maximum path length between positions. These criteria correspond to efficiency, parallelizability, and the difficulty of learning long-range dependencies.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u9-page-6-table-1"
+        },
+        {
+          "id": "step:u9-demonstrate",
+          "kind": "demonstrate",
+          "title": "Read Table 1",
+          "content": "Table 1 lists self-attention as O(n^2 d) per layer, O(1) sequential operations, and O(1) maximum path length. Recurrent layers require O(n) sequential operations and O(n) maximum path length, while convolutional layers are parallel but need longer paths unless enough layers or dilation are used.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u9-page-6-table-1"
+        },
+        {
+          "id": "step:u9-contrast",
+          "kind": "contrast",
+          "title": "Self-attention is not always cheaper",
+          "content": "The authors do not claim self-attention has lower complexity in every setting. They state it is faster than recurrent layers when sequence length n is smaller than representation dimension d, which is common for sentence representations, and they mention restricted self-attention for very long sequences.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u9-page-7-comparison-text"
+        },
+        {
+          "id": "step:u9-practice",
+          "kind": "practice",
+          "title": "Apply the three criteria",
+          "content": "Ask the learner to interpret the table rather than memorize a single row. The answer should connect each criterion to a modeling consequence.",
+          "learner_prompt": "Using Table 1, why does self-attention help with long-range dependencies compared with recurrent layers?",
+          "expected_response": "Self-attention has O(1) maximum path length between positions because each position can attend directly to every other position in one layer. Recurrent layers have O(n) path length and O(n) sequential operations, so signals between distant positions traverse many steps.",
+          "remediation": "If the learner focuses only on complexity, redirect to the 'Maximum Path Length' column. Explain that shorter forward and backward signal paths make distant dependencies easier to learn.",
+          "visual_source_anchor_id": "source:u9-page-6-table-1"
+        },
+        {
+          "id": "step:u9-assess",
+          "kind": "assess",
+          "title": "Independent tradeoff analysis",
+          "content": "Assess whether the learner can state a tradeoff, not just advantages. The response should include restricted self-attention's lower cost and increased path length.",
+          "learner_prompt": "What tradeoff does the paper identify for restricted self-attention?",
+          "expected_response": "Restricting self-attention to a neighborhood of size r can improve computational performance for very long sequences, giving O(r n d) complexity. But it increases maximum path length to O(n/r), so distant positions are no longer connected in a constant number of steps.",
+          "remediation": "Show the restricted self-attention row in Table 1 and compare only two columns: complexity and maximum path length. Ask what improves and what worsens.",
+          "visual_source_anchor_id": "source:u9-page-6-table-1"
+        },
+        {
+          "id": "step:u9-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Section 4 argues for self-attention through parallel computation and short paths between positions. The advantage is strongest for typical sentence lengths, while restricted self-attention is presented as a possible long-sequence efficiency tradeoff.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Uses all three Section 4 criteria to compare layer types.",
+        "Explains why O(1) maximum path length supports long-range dependency learning.",
+        "States when self-attention is computationally favorable relative to recurrence according to the paper.",
+        "Analyzes restricted self-attention as a cost-versus-path-length tradeoff."
+      ],
+      "common_difficulties": [
+        "Claiming self-attention is always computationally cheaper than every alternative.",
+        "Confusing sequential operations with total operations.",
+        "Ignoring maximum path length when discussing long-range dependencies."
+      ]
+    },
+    {
+      "id": "unit:training-regime",
+      "title": "Training data, batching, optimizer, and schedule",
+      "objective": "Summarize the training regime that produced the paper's main translation models.",
+      "concept_ids": [
+        "concept:training-data-and-batching",
+        "concept:adam-optimizer-and-learning-rate",
+        "concept:translation-results",
+        "concept:model-dimension"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:problem-and-proposal"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u10-page-7-training",
+          "page_index": 7,
+          "page_label": "7",
+          "purpose": "explain"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u10-motivate",
+          "kind": "motivate",
+          "title": "Architecture results depend on a training recipe",
+          "content": "The Transformer is an architecture, but the paper's empirical claims also depend on how it was trained. Section 5 specifies datasets, batching, hardware, optimizer settings, and a learning-rate schedule so the results can be interpreted and reproduced.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u10-page-7-training"
+        },
+        {
+          "id": "step:u10-explain",
+          "kind": "explain",
+          "title": "Datasets and batching",
+          "content": "For English-German, the model was trained on WMT 2014 with about 4.5 million sentence pairs and byte-pair encoding with about 37,000 shared tokens. For English-French, it used 36 million sentence pairs and a 32,000 word-piece vocabulary; batches grouped sentence pairs by approximate length with about 25,000 source and 25,000 target tokens.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u10-page-7-training"
+        },
+        {
+          "id": "step:u10-demonstrate",
+          "kind": "demonstrate",
+          "title": "Trace the learning-rate schedule",
+          "content": "The paper uses Adam with beta1 = 0.9, beta2 = 0.98, and epsilon = 10^-9. The learning rate increases linearly during the first 4,000 warmup steps and then decreases proportionally to the inverse square root of the step number.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u10-page-7-training"
+        },
+        {
+          "id": "step:u10-connect",
+          "kind": "connect",
+          "title": "Connect base and big training duration",
+          "content": "The base models used the paper's standard hyperparameters and trained for 100,000 steps, about 12 hours on eight P100 GPUs. The big models trained for 300,000 steps, about 3.5 days, reflecting a larger model and longer schedule.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u10-page-7-training"
+        },
+        {
+          "id": "step:u10-practice",
+          "kind": "practice",
+          "title": "Interpret warmup and decay",
+          "content": "Ask the learner to describe the schedule qualitatively rather than calculate exact rates. This checks whether they understand the two-phase behavior of the formula.",
+          "learner_prompt": "What happens to the learning rate before and after the 4,000 warmup steps?",
+          "expected_response": "It increases linearly during the first 4,000 warmup steps. After that, it decreases according to the inverse square root of the training step number, with scaling by dmodel^-0.5.",
+          "remediation": "If the learner focuses on Adam only, separate optimizer choice from learning-rate schedule. Then point to the formula and identify the two terms inside the min expression.",
+          "visual_source_anchor_id": "source:u10-page-7-training"
+        },
+        {
+          "id": "step:u10-assess",
+          "kind": "assess",
+          "title": "Independent training summary",
+          "content": "Assess whether the learner can summarize the regime without mixing up datasets or schedules. The answer should identify WMT data, tokenization, approximate-length batching, Adam, and warmup-plus-decay.",
+          "learner_prompt": "Give a concise summary of the training regime for the translation models in Section 5.",
+          "expected_response": "The models were trained on WMT 2014 English-German and English-French datasets using subword tokenization, with batches grouped by approximate sequence length and about 25,000 source and target tokens. Training used Adam with specified beta values and epsilon, plus a learning-rate schedule that warms up for 4,000 steps and then decays with inverse square root of step number.",
+          "remediation": "Have the learner organize the answer into four headings: data, batching, optimizer, and schedule. Fill each heading from page 7 one at a time.",
+          "visual_source_anchor_id": "source:u10-page-7-training"
+        },
+        {
+          "id": "step:u10-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "The translation results rest on large WMT datasets, subword vocabularies, length-based token batching, and Adam optimization. The learning-rate schedule is two-phase: warmup first, inverse-square-root decay afterward.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Summarizes the WMT training datasets and tokenization choices.",
+        "Explains approximate-length batching in terms of source and target token counts.",
+        "Describes Adam settings at a high level and the warmup-plus-decay learning-rate schedule.",
+        "Distinguishes base model training duration from big model training duration."
+      ],
+      "common_difficulties": [
+        "Confusing byte-pair encoding for English-German with word-piece vocabulary for English-French.",
+        "Treating warmup as the entire learning-rate schedule.",
+        "Ignoring batching by approximate sequence length."
+      ]
+    },
+    {
+      "id": "unit:regularization",
+      "title": "Dropout and label smoothing",
+      "objective": "Explain how dropout and label smoothing regularize the Transformer during training and how the paper reports their effects.",
+      "concept_ids": [
+        "concept:dropout-regularization",
+        "concept:label-smoothing",
+        "concept:bleu-score",
+        "concept:model-variations-ablation"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:training-regime"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u11-page-8-regularization",
+          "page_index": 8,
+          "page_label": "8",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u11-page-9-ablation-regularization",
+          "page_index": 9,
+          "page_label": "9",
+          "purpose": "apply"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u11-motivate",
+          "kind": "motivate",
+          "title": "Training powerful models without overfitting",
+          "content": "The paper reports high translation quality, but model capacity alone is not enough. Section 5.4 describes regularization methods, and Table 3 shows that dropout in particular is important for avoiding overfitting.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u11-page-8-regularization"
+        },
+        {
+          "id": "step:u11-explain",
+          "kind": "explain",
+          "title": "Dropout placement",
+          "content": "Residual dropout is applied to the output of each sub-layer before it is added to the sub-layer input and normalized. Dropout is also applied to the sums of embeddings and positional encodings in both encoder and decoder stacks, with the base model using Pdrop = 0.1.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u11-page-8-regularization"
+        },
+        {
+          "id": "step:u11-demonstrate",
+          "kind": "demonstrate",
+          "title": "Label smoothing's reported effect",
+          "content": "The paper uses label smoothing with value epsilon_ls = 0.1. It explicitly notes that label smoothing hurts perplexity because the model learns to be more unsure, but improves accuracy and BLEU score.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u11-page-8-regularization"
+        },
+        {
+          "id": "step:u11-connect",
+          "kind": "connect",
+          "title": "Connect regularization to ablation results",
+          "content": "In Table 3, the authors vary dropout settings and observe that bigger models improve quality while dropout is very helpful in avoiding overfitting. This connects Section 5's training choices to Section 6.2's evidence about model variations.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u11-page-9-ablation-regularization"
+        },
+        {
+          "id": "step:u11-practice",
+          "kind": "practice",
+          "title": "Explain a counterintuitive metric effect",
+          "content": "Label smoothing has a subtle effect because one metric worsens while task quality improves. Ask the learner to explain this using the paper's wording.",
+          "learner_prompt": "Why can label smoothing hurt perplexity but improve BLEU according to the paper?",
+          "expected_response": "It makes the model less certain, which hurts perplexity because the target probability is not pushed as sharply. But this uncertainty improves accuracy and BLEU score in the reported training.",
+          "remediation": "If the learner treats all metrics as moving together, separate calibration or uncertainty from translation quality. Emphasize the paper's exact contrast: worse perplexity, better accuracy and BLEU.",
+          "visual_source_anchor_id": "source:u11-page-8-regularization"
+        },
+        {
+          "id": "step:u11-assess",
+          "kind": "assess",
+          "title": "Independent regularization placement check",
+          "content": "Assess whether the learner can name where dropout is applied, not merely that dropout exists. The answer should include both sub-layer outputs and embedding-plus-position sums.",
+          "learner_prompt": "Where does the paper apply dropout in the base Transformer, and what rate does it use?",
+          "expected_response": "It applies dropout to each sub-layer output before residual addition and normalization, and to the sums of embeddings and positional encodings in both encoder and decoder stacks. The base model uses Pdrop = 0.1.",
+          "remediation": "Return to the residual formula from Unit 6 and insert dropout just before the addition. Then point to the separate sentence about embedding and positional encoding sums.",
+          "visual_source_anchor_id": "source:u11-page-8-regularization"
+        },
+        {
+          "id": "step:u11-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "The paper regularizes the Transformer with dropout at sub-layer and embedding-position interfaces, and with label smoothing on targets. Dropout helps avoid overfitting, while label smoothing trades worse perplexity for better accuracy and BLEU.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Identifies the two dropout locations described in Section 5.4.",
+        "States the base dropout rate and label smoothing value.",
+        "Explains why label smoothing can hurt perplexity but improve BLEU.",
+        "Uses Table 3 to support the claim that dropout helps avoid overfitting."
+      ],
+      "common_difficulties": [
+        "Thinking dropout is only applied inside feed-forward networks.",
+        "Assuming lower perplexity always corresponds to better BLEU in the paper's label-smoothing discussion.",
+        "Forgetting dropout on embedding plus positional encoding sums."
+      ]
+    },
+    {
+      "id": "unit:translation-results-and-cost",
+      "title": "Translation results and training cost",
+      "objective": "Interpret Table 2's quality and efficiency claims for WMT 2014 English-German and English-French translation.",
+      "concept_ids": [
+        "concept:translation-results",
+        "concept:bleu-score",
+        "concept:training-cost-flops",
+        "concept:beam-search-checkpoint-averaging",
+        "concept:transformer-architecture"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:training-regime",
+        "unit:regularization"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u12-page-8-table-2",
+          "page_index": 8,
+          "page_label": "8",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u12-page-1-abstract-results",
+          "page_index": 1,
+          "page_label": "1",
+          "purpose": "introduce"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u12-motivate",
+          "kind": "motivate",
+          "title": "The architecture is judged by quality and efficiency",
+          "content": "The paper's main empirical claim is not only that the Transformer works, but that it improves translation quality while reducing training cost. Table 2 is the central evidence comparing BLEU scores and estimated FLOPs against prior systems.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u12-page-8-table-2"
+        },
+        {
+          "id": "step:u12-explain",
+          "kind": "explain",
+          "title": "How results are reported",
+          "content": "Translation quality is reported using BLEU on WMT 2014 English-to-German and English-to-French newstest2014 tests. Training cost is estimated in floating point operations by multiplying training time, number of GPUs, and estimated GPU capacity.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u12-page-8-table-2"
+        },
+        {
+          "id": "step:u12-demonstrate",
+          "kind": "demonstrate",
+          "title": "Read the main numbers",
+          "content": "For English-German, Transformer big reaches 28.4 BLEU, more than 2 BLEU above the best previously reported models including ensembles. For English-French, Transformer big reaches 41.8 BLEU after training for 3.5 days on eight GPUs, and the table shows this at lower training cost than several prior strong systems.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u12-page-8-table-2"
+        },
+        {
+          "id": "step:u12-connect",
+          "kind": "connect",
+          "title": "Connect inference settings to reported scores",
+          "content": "The reported translation results use model checkpoint averaging and beam search with beam size 4 and length penalty alpha = 0.6. These settings matter because the paper is comparing complete trained-and-decoded systems, not only raw architecture definitions.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u12-page-8-table-2"
+        },
+        {
+          "id": "step:u12-practice",
+          "kind": "practice",
+          "title": "Support a claim from Table 2",
+          "content": "Ask the learner to back a qualitative claim with table evidence. The goal is to combine BLEU and training-cost columns rather than citing one number alone.",
+          "learner_prompt": "Use Table 2 to support the claim that the Transformer improved both translation quality and efficiency.",
+          "expected_response": "Transformer big achieves 28.4 BLEU on English-German, above prior single models and ensembles, and Transformer base already surpasses previous English-German systems at a much lower reported training cost. On English-French, Transformer big achieves 41.8 BLEU with substantially less training cost than several previous state-of-the-art systems.",
+          "remediation": "If the learner cites only BLEU, ask them to read the Training Cost columns as well. If they cite only cost, ask which BLEU scores establish quality improvement.",
+          "visual_source_anchor_id": "source:u12-page-8-table-2"
+        },
+        {
+          "id": "step:u12-assess",
+          "kind": "assess",
+          "title": "Independent interpretation",
+          "content": "Assess whether the learner can state the results without overclaiming. The answer should distinguish base and big models and mention task-specific claims.",
+          "learner_prompt": "What are the paper's main WMT 2014 translation findings for Transformer base and Transformer big?",
+          "expected_response": "Transformer big sets a new state of the art on English-German at 28.4 BLEU, outperforming prior reported ensembles by more than 2 BLEU. The base model also beats previously published English-German models at much lower cost, and Transformer big achieves a strong English-French result of 41.8 BLEU with relatively low training cost.",
+          "remediation": "Have the learner read the English-German and English-French columns separately. Then label which rows are base versus big before comparing them to previous systems.",
+          "visual_source_anchor_id": "source:u12-page-8-table-2"
+        },
+        {
+          "id": "step:u12-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Table 2 supports the paper's claim through both BLEU and estimated training FLOPs. The strongest result is Transformer big's English-German score, while the broader message is high translation quality at a fraction of prior training cost.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Interprets BLEU as the paper's translation quality metric.",
+        "Explains how training cost in FLOPs is estimated.",
+        "Uses Table 2 to compare Transformer base and big against prior systems.",
+        "States the main English-German and English-French findings without exaggeration."
+      ],
+      "common_difficulties": [
+        "Ignoring training cost when interpreting the empirical contribution.",
+        "Confusing development-set BLEU in Table 3 with test-set BLEU in Table 2.",
+        "Treating base and big Transformer rows as the same model."
+      ]
+    },
+    {
+      "id": "unit:model-variations",
+      "title": "What the ablations show about Transformer components",
+      "objective": "Use Table 3 to explain how heads, key dimensions, model size, dropout, and positional encodings affect development performance.",
+      "concept_ids": [
+        "concept:model-variations-ablation",
+        "concept:number-of-heads",
+        "concept:key-value-dimensions",
+        "concept:model-dimension",
+        "concept:dropout-regularization",
+        "concept:learned-positional-embeddings",
+        "concept:sinusoidal-positional-encoding",
+        "concept:bleu-score"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:multi-head-attention",
+        "unit:positional-encoding",
+        "unit:regularization"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u13-page-9-table-3",
+          "page_index": 9,
+          "page_label": "9",
+          "purpose": "explain"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u13-motivate",
+          "kind": "motivate",
+          "title": "Ablations reveal which design choices matter",
+          "content": "After reporting headline results, the paper varies parts of the base model to test their importance. Table 3 helps learners see that the architecture is not a single unexplained block; individual choices such as head count, dimensions, and dropout affect quality.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u13-page-9-table-3"
+        },
+        {
+          "id": "step:u13-explain",
+          "kind": "explain",
+          "title": "How to read Table 3",
+          "content": "Table 3 reports English-German development-set perplexity and BLEU for variations, with unlisted values identical to the base model. The base model has N = 6, dmodel = 512, dff = 2048, h = 8, dk = dv = 64, dropout 0.1, label smoothing 0.1, and 65 million parameters.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u13-page-9-table-3"
+        },
+        {
+          "id": "step:u13-demonstrate",
+          "kind": "demonstrate",
+          "title": "Trace the head-count finding",
+          "content": "Rows A vary the number of attention heads while keeping computation roughly constant. Single-head attention is 0.9 BLEU worse than the best setting, but quality also drops with too many heads, showing that more heads are not automatically better.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u13-page-9-table-3"
+        },
+        {
+          "id": "step:u13-connect",
+          "kind": "connect",
+          "title": "Connect other variations to earlier mechanisms",
+          "content": "Rows B show that reducing attention key size hurts quality, suggesting compatibility computation is not trivial. Rows C and D show that bigger models improve results and dropout is helpful against overfitting, while row E shows learned positional embeddings perform nearly identically to sinusoidal encodings.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u13-page-9-table-3"
+        },
+        {
+          "id": "step:u13-practice",
+          "kind": "practice",
+          "title": "Infer a design lesson",
+          "content": "Ask the learner to turn table observations into design implications. The answer should use at least two row groups, not just repeat one number.",
+          "learner_prompt": "What design lessons can you infer from Table 3 about head count and model capacity?",
+          "expected_response": "For head count, one head performs worse than the base setting, but too many heads can also reduce quality when dimensions per head become small. For capacity, larger model dimensions and feed-forward dimensions generally improve BLEU, though they increase parameter count and require regularization such as dropout.",
+          "remediation": "If the learner only lists numbers, ask them to compare rows A and C against the base row. Then have them phrase each comparison as 'changing X caused Y, suggesting Z.'",
+          "visual_source_anchor_id": "source:u13-page-9-table-3"
+        },
+        {
+          "id": "step:u13-assess",
+          "kind": "assess",
+          "title": "Independent ablation interpretation",
+          "content": "Assess whether the learner can interpret row E and avoid overstating positional results. The answer should mention nearly identical results and the authors' separate reason for choosing sinusoids.",
+          "learner_prompt": "What does Table 3 row E show about learned positional embeddings, and what does it not prove?",
+          "expected_response": "It shows that learned positional embeddings produced nearly identical development performance to sinusoidal positional encodings in this experiment. It does not prove learned embeddings are always equivalent; the authors still chose sinusoids because they may extrapolate to longer sequence lengths.",
+          "remediation": "Point to row E's BLEU compared with the base row, then return to page 6 for the extrapolation rationale. Separate experimental result from design preference.",
+          "visual_source_anchor_id": "source:u13-page-9-table-3"
+        },
+        {
+          "id": "step:u13-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "Table 3 shows that multi-head configuration, key dimensions, model size, and dropout all affect Transformer quality. Learned and sinusoidal positional encodings perform similarly in this experiment, but the paper retains sinusoids for a hypothesized extrapolation advantage.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Reads Table 3 relative to the base row and unlisted unchanged values.",
+        "Explains the non-monotonic head-count result.",
+        "Connects reduced key dimension to weaker compatibility computation.",
+        "Interprets bigger models, dropout, and positional embedding results using the paper's text."
+      ],
+      "common_difficulties": [
+        "Assuming more heads always improve performance.",
+        "Comparing Table 3 perplexity as per-word rather than per-wordpiece despite the note.",
+        "Treating row E as a universal conclusion about all positional encodings."
+      ]
+    },
+    {
+      "id": "unit:generalization-and-interpretability",
+      "title": "Generalization to parsing and interpretability from attention maps",
+      "objective": "Explain how the paper uses constituency parsing and attention visualizations to argue that the Transformer generalizes and learns meaningful dependencies.",
+      "concept_ids": [
+        "concept:constituency-parsing",
+        "concept:semi-supervised-parsing",
+        "concept:interpretability-attention-visualizations",
+        "concept:attention-heads",
+        "concept:long-range-dependencies",
+        "concept:self-attention",
+        "concept:future-work-attention-models"
+      ],
+      "prerequisite_unit_ids": [
+        "unit:self-attention-comparison",
+        "unit:model-variations"
+      ],
+      "source_anchors": [
+        {
+          "id": "source:u14-page-9-parsing-setup",
+          "page_index": 9,
+          "page_label": "9",
+          "purpose": "explain"
+        },
+        {
+          "id": "source:u14-page-10-parsing-results",
+          "page_index": 10,
+          "page_label": "10",
+          "purpose": "apply"
+        },
+        {
+          "id": "source:u14-page-13-long-distance-visual",
+          "page_index": 13,
+          "page_label": "13",
+          "purpose": "illustrate"
+        },
+        {
+          "id": "source:u14-page-14-anaphora-visual",
+          "page_index": 14,
+          "page_label": "14",
+          "purpose": "illustrate"
+        },
+        {
+          "id": "source:u14-page-15-structure-visual",
+          "page_index": 15,
+          "page_label": "15",
+          "purpose": "illustrate"
+        }
+      ],
+      "lesson_steps": [
+        {
+          "id": "step:u14-motivate",
+          "kind": "motivate",
+          "title": "Beyond translation scores",
+          "content": "The paper closes by asking whether the Transformer is useful beyond the translation tasks used to develop it. It provides two kinds of evidence: performance on English constituency parsing and qualitative attention visualizations that suggest learned linguistic structure.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u14-page-10-parsing-results"
+        },
+        {
+          "id": "step:u14-explain",
+          "kind": "explain",
+          "title": "Parsing experiment setup",
+          "content": "For English constituency parsing, the authors trained a 4-layer Transformer with dmodel = 1024 on the WSJ portion of the Penn Treebank, about 40,000 training sentences. They also evaluated a semi-supervised setting using larger high-confidence and BerkeleyParser corpora, with only limited task-specific tuning.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u14-page-9-parsing-setup"
+        },
+        {
+          "id": "step:u14-demonstrate",
+          "kind": "demonstrate",
+          "title": "Read Table 4 results",
+          "content": "Table 4 shows the Transformer reaching 91.3 F1 in the WSJ-only discriminative setting and 92.7 F1 in the semi-supervised setting. The authors emphasize that it outperforms BerkeleyParser when trained only on WSJ and performs surprisingly well despite limited task-specific tuning.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u14-page-10-parsing-results"
+        },
+        {
+          "id": "step:u14-connect",
+          "kind": "connect",
+          "title": "Connect visualizations to self-attention",
+          "content": "The appendix visualizes encoder self-attention heads from layer 5 of 6. Figure 3 shows attention from 'making' to a distant phrase completing 'making ... more difficult,' Figure 4 shows heads apparently involved in anaphora resolution for 'its,' and Figure 5 shows heads with sentence-structure-related behavior.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": "source:u14-page-13-long-distance-visual"
+        },
+        {
+          "id": "step:u14-practice",
+          "kind": "practice",
+          "title": "Classify the evidence type",
+          "content": "Ask the learner to separate quantitative generalization evidence from qualitative interpretability evidence. This prevents treating attention figures as the same kind of proof as task metrics.",
+          "learner_prompt": "Which evidence in the paper supports generalization beyond translation, and which evidence supports interpretability of learned attention behavior?",
+          "expected_response": "The constituency parsing experiments and Table 4 support generalization beyond translation. The appendix attention visualizations support interpretability by showing heads that appear to track long-distance dependencies, anaphora, and sentence structure.",
+          "remediation": "If the learner mixes them, label Table 4 as metric-based task performance and Figures 3-5 as qualitative examples. Then ask what each kind of evidence can and cannot establish.",
+          "visual_source_anchor_id": "source:u14-page-10-parsing-results"
+        },
+        {
+          "id": "step:u14-assess",
+          "kind": "assess",
+          "title": "Independent synthesis of conclusion",
+          "content": "Assess whether the learner can synthesize final claims without overstating attention maps. The answer should include parsing results, interpretability examples, and future directions from the conclusion.",
+          "learner_prompt": "How do the parsing experiments and attention visualizations support the paper's concluding view of attention-based models?",
+          "expected_response": "The parsing experiments show that a Transformer can perform well on a structurally different task beyond translation, including a strong semi-supervised result. The attention visualizations suggest that different heads can learn interpretable relations such as long-distance dependencies, anaphora, and sentence structure, supporting interest in applying and extending attention-based models to other tasks and modalities.",
+          "remediation": "Have the learner build the answer in three clauses: 'parsing shows...', 'visualizations suggest...', and 'therefore future work...'. Remind them that the figures are suggestive qualitative evidence, not formal proof of linguistic understanding.",
+          "visual_source_anchor_id": "source:u14-page-15-structure-visual"
+        },
+        {
+          "id": "step:u14-recap",
+          "kind": "recap",
+          "title": "Durable takeaways",
+          "content": "The paper argues for generality through constituency parsing and for interpretability through attention-head visualizations. Its conclusion points forward to other modalities, local restricted attention for large inputs and outputs, and less sequential generation.",
+          "learner_prompt": null,
+          "expected_response": null,
+          "remediation": null,
+          "visual_source_anchor_id": null
+        }
+      ],
+      "mastery_criteria": [
+        "Summarizes the WSJ-only and semi-supervised parsing setups.",
+        "Interprets Table 4's F1 results as evidence of generalization beyond translation.",
+        "Explains what Figures 3-5 illustrate about attention heads.",
+        "Distinguishes quantitative performance evidence from qualitative interpretability evidence.",
+        "Connects the final future-work directions to limitations and extensions discussed in the paper."
+      ],
+      "common_difficulties": [
+        "Treating attention visualizations as definitive proof rather than interpretability examples.",
+        "Forgetting that the parsing model used limited task-specific tuning.",
+        "Confusing semi-supervised parsing data with the WMT translation datasets."
+      ]
+    }
+  ]
+}

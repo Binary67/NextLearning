@@ -4,8 +4,6 @@ import {
   ArrowRight,
   BookOpen,
   FileText,
-  GraduationCap,
-  LayoutDashboard,
   LibraryBig,
   Trash2,
   X,
@@ -13,6 +11,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { AppHeader } from "@/app/app-header";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import type { TutorialResponse } from "@/lib/tutorial";
 
@@ -32,7 +31,7 @@ export default function LibraryPage() {
   const [deleting, setDeleting] = useState(false);
   const dashboardHref = tutorials[0]
     ? `/tutorials/${tutorials[0].id}`
-    : "/library";
+    : null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -110,64 +109,22 @@ export default function LibraryPage() {
 
   return (
     <div className="app-shell library-shell">
-      <aside className="library-sidebar">
-        <Link
-          className="library-brand"
-          href="/library"
-          aria-label="NextLearning home"
-        >
-          <span className="brand-mark" aria-hidden="true">
-            N
-          </span>
-          <span className="library-brand-name">NextLearning</span>
-        </Link>
-
-        <nav className="library-navigation" aria-label="Primary navigation">
-          <Link
-            className="library-nav-item"
-            href={dashboardHref}
-            aria-label="Dashboard"
-          >
-            <LayoutDashboard size={18} aria-hidden="true" />
-            <span>Dashboard</span>
-          </Link>
-          <button
-            className="library-nav-item"
-            type="button"
-            aria-label="Courses"
-            onClick={() =>
-              showToast("Courses are ready for future learning paths.")
-            }
-          >
-            <GraduationCap size={18} aria-hidden="true" />
-            <span>Courses</span>
-          </button>
-          <Link
-            className="library-nav-item active"
-            href="/library"
-            aria-current="page"
-            aria-label="Library"
-          >
-            <LibraryBig size={18} aria-hidden="true" />
-            <span>Library</span>
-          </Link>
-        </nav>
-
+      <AppHeader
+        activeSection="library"
+        dashboardHref={dashboardHref}
+        onCoursesClick={() =>
+          showToast("Courses are ready for future learning paths.")
+        }
+      >
         <button
-          className="library-profile"
+          className="avatar"
           type="button"
           onClick={() => showToast("Profile selected.")}
           aria-label="Open profile"
         >
-          <span className="avatar" aria-hidden="true">
-            AM
-          </span>
-          <span className="library-profile-copy">
-            <strong>Profile</strong>
-            <small>Your learning space</small>
-          </span>
+          AM
         </button>
-      </aside>
+      </AppHeader>
 
       <main className="library-main">
         <section className="library-content" aria-labelledby="library-title">
