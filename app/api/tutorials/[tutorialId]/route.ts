@@ -1,5 +1,3 @@
-import { after } from "next/server";
-
 import {
   deleteStoredTutorial,
   isTutorialId,
@@ -8,7 +6,7 @@ import {
   readPreparedTutorial,
   toTutorialResponse,
 } from "@/lib/tutorial";
-import { queueRemainingTeachingUnits } from "@/lib/tutorial-background-generation";
+import { prioritizeTutorialGeneration } from "@/lib/tutorial-background-generation";
 import { hasPendingTeachingUnits } from "@/lib/tutorial-generation-status";
 
 export const runtime = "nodejs";
@@ -34,7 +32,7 @@ export async function GET(
   }
 
   if (hasPendingTeachingUnits(prepared.generationStatus)) {
-    after(() => queueRemainingTeachingUnits(tutorialId));
+    prioritizeTutorialGeneration(tutorialId);
   }
 
   return Response.json({

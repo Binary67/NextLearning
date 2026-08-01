@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { after } from "next/server";
 
 import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
 import {
@@ -12,7 +11,7 @@ import {
   type TutorialResponse,
   toTutorialResponse,
 } from "@/lib/tutorial";
-import { queueRemainingTeachingUnits } from "@/lib/tutorial-background-generation";
+import { prioritizeTutorialGeneration } from "@/lib/tutorial-background-generation";
 import { generateTutorial } from "@/lib/tutorial-generation";
 
 export const runtime = "nodejs";
@@ -67,13 +66,8 @@ export async function POST(request: Request) {
   const tutorialId = randomUUID();
   const fileData = Buffer.from(await file.arrayBuffer());
   const encoder = new TextEncoder();
-  let finishInitialPreparation!: (prepared: boolean) => void;
-  const initialPreparation = new Promise<boolean>((resolve) => {
-    finishInitialPreparation = resolve;
-  });
   const stream = new ReadableStream({
     async start(controller) {
-      let prepared = false;
       const send = (event: TutorialPreparationEvent) => {
         controller.enqueue(
           encoder.encode(`${JSON.stringify(event)}\n`),
@@ -107,7 +101,7 @@ export async function POST(request: Request) {
             progress: createLearningProgress(tutorialId, tutorial.createdAt),
           }),
         });
-        prepared = true;
+        prioritizeTutorialGeneration(tutorialId);
       } catch (error) {
         console.error("Document preparation failed:", error);
         send({
@@ -118,16 +112,9 @@ export async function POST(request: Request) {
               : "The document could not be prepared. Try again.",
         });
       } finally {
-        finishInitialPreparation(prepared);
         controller.close();
       }
     },
-  });
-
-  after(async () => {
-    if (await initialPreparation) {
-      await queueRemainingTeachingUnits(tutorialId);
-    }
   });
 
   return new Response(stream, {
