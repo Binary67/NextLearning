@@ -49,6 +49,9 @@ import {
 } from "@/lib/learning-progress";
 import {
   assembleTeachingUnit,
+  findTeachingSourceChunk,
+  getTeachingUnitConceptIds,
+  getTeachingUnitSourceChunks,
   type TeachingPlan,
   type TeachingUnitDetails,
   type TeachingUnitDetailsById,
@@ -250,7 +253,7 @@ export function TutorialWorkspace({
         );
 
         if (initialUnit) {
-          setCurrentPage(getInitialUnitPageIndex(initialUnit));
+          setCurrentPage(getInitialUnitPageIndex(data.plan, initialUnit));
         }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
@@ -449,8 +452,8 @@ export function TutorialWorkspace({
         ? findActiveTeachingUnit(teachingPlan, data.progress)
         : null;
 
-      if (firstUnit) {
-        setCurrentPage(getInitialUnitPageIndex(firstUnit));
+      if (teachingPlan && firstUnit) {
+        setCurrentPage(getInitialUnitPageIndex(teachingPlan, firstUnit));
       }
 
       setModal(null);
@@ -1220,8 +1223,9 @@ export function TutorialWorkspace({
                   {activeTutorial?.map.title ?? "Teaching plan"}
                 </h2>
                 <p className="modal-copy">
-                  A single preparation pass mapped the full PDF and ordered the
-                  material by learning dependency instead of page number.
+                  A single preparation pass accounted for every PDF page,
+                  mapped its substantial source material, and ordered the
+                  lessons by learning dependency.
                 </p>
                 <div className="analysis-grid">
                   <div>
@@ -1884,6 +1888,7 @@ function TeachingPlanContent({
       {plan.units.map((unit, index) => (
         <TeachingUnitCard
           key={unit.id}
+          plan={plan}
           unit={unit}
           details={unitDetails[unit.id] ?? null}
           generationState={generationStatus?.unit_status[unit.id] ?? null}
@@ -1896,21 +1901,25 @@ function TeachingPlanContent({
 }
 
 function TeachingUnitCard({
+  plan,
   unit,
   details,
   generationState,
   index,
   unitTitlesById,
 }: {
+  plan: TeachingPlan;
   unit: TeachingUnitOutline;
   details: TeachingUnitDetails | null;
   generationState: TeachingUnitGenerationState | null;
   index: number;
   unitTitlesById: ReadonlyMap<string, string>;
 }) {
+  const sourceChunks = getTeachingUnitSourceChunks(plan, unit);
   const sourcePageLabels = Array.from(
-    new Set(unit.source_anchors.map((anchor) => anchor.page_label)),
+    new Set(sourceChunks.map((chunk) => chunk.page_label)),
   ).join(", ");
+  const conceptIds = getTeachingUnitConceptIds(plan, unit);
   const prerequisiteTitles = unit.prerequisite_unit_ids.length
     ? unit.prerequisite_unit_ids
         .map((id) => unitTitlesById.get(id) ?? id)
@@ -1927,7 +1936,7 @@ function TeachingUnitCard({
         <div>
           <h3>{unit.title}</h3>
           <small>
-            {unit.concept_ids.map(formatConceptId).join(" · ")}
+            {conceptIds.map(formatConceptId).join(" · ")}
           </small>
         </div>
       </div>
@@ -2025,15 +2034,25 @@ function formatLessonStepKind(kind: string) {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
-function getInitialUnitPageIndex(unit: TeachingUnitOutline) {
-  const firstVisualAnchorId = unit.lesson_steps.find(
-    (step) => step.visual_source_anchor_id !== null,
-  )?.visual_source_anchor_id;
-  const firstVisualAnchor = unit.source_anchors.find(
-    (anchor) => anchor.id === firstVisualAnchorId,
-  );
+function getInitialUnitPageIndex(
+  plan: TeachingPlan,
+  unit: TeachingUnitOutline,
+) {
+  const firstVisualChunkId = unit.lesson_steps.find(
+    (step) => step.visual_source_chunk_id !== null,
+  )?.visual_source_chunk_id;
+  const firstVisualChunk = firstVisualChunkId
+    ? findTeachingSourceChunk(plan, firstVisualChunkId)
+    : null;
+  const firstSourceChunk = getTeachingUnitSourceChunks(plan, unit)[0];
 
-  return firstVisualAnchor?.page_index ?? unit.source_anchors[0].page_index;
+  return (
+    firstVisualChunk?.page_index ??
+    firstSourceChunk?.page_index ??
+    plan.page_coverage.find((page) => page.disposition === "teach")
+      ?.page_index ??
+    1
+  );
 }
 
 function getLatestTutorQuestion(transcript: string) {

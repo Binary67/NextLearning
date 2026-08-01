@@ -7,6 +7,9 @@ import type { LearningProgress } from "@/lib/learning-progress";
 import { renderPdfPageForTutor } from "@/lib/pdf-page-renderer";
 import {
   assembleTeachingUnit,
+  findTeachingSourceChunk,
+  getTeachingUnitConceptIds,
+  getTeachingUnitSourceChunks,
   type TeachingLessonStep,
   type TeachingPlan,
   type TeachingUnit,
@@ -848,7 +851,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
   async function setVisualGuide(functionCall: RealtimeFunctionCall) {
     const args = parseArguments(functionCall.arguments);
-    const { activeUnit } = optionsRef.current;
+    const { activeUnit, teachingPlan } = optionsRef.current;
     const currentStep = getCurrentLessonStep();
     const lessonStepId = args.lesson_step_id;
     const pageIndex = args.page_index;
@@ -856,18 +859,18 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     const endBand = args.end_band;
     const label = args.label;
 
-    if (!activeUnit || !currentStep) {
+    if (!activeUnit || !teachingPlan || !currentStep) {
       throw new Error("That visual guide is not available.");
     }
 
-    const sourceAnchor = getVisualSourceAnchor(activeUnit, currentStep);
+    const sourceChunk = getVisualSourceChunk(teachingPlan, currentStep);
 
     if (
-      !sourceAnchor ||
+      !sourceChunk ||
       lessonStepId !== currentStep.id ||
       typeof pageIndex !== "number" ||
       !Number.isInteger(pageIndex) ||
-      pageIndex !== sourceAnchor.page_index ||
+      pageIndex !== sourceChunk.page_index ||
       !isVisualGuideBand(startBand) ||
       !isVisualGuideBand(endBand) ||
       typeof label !== "string" ||
@@ -925,7 +928,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     if (
-      currentStep.visual_source_anchor_id !== null &&
+      currentStep.visual_source_chunk_id !== null &&
       !guidedLessonStepIdsRef.current.has(lessonStepId)
     ) {
       throw new Error(
@@ -1127,7 +1130,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         session: {
           type: "realtime",
           instructions: tutorInstructions,
-          tools: buildTutorTools(unit),
+          tools: buildTutorTools(teachingPlan, unit),
           tool_choice: "auto",
           parallel_tool_calls: false,
         },
@@ -1149,14 +1152,20 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     updateReadyLessonStep(null);
     answeredLessonStepIdRef.current = null;
 
-    if (lessonStep.visual_source_anchor_id === null) {
+    if (lessonStep.visual_source_chunk_id === null) {
       await requestTeachingStep(lessonStep);
       return;
     }
 
+    const { teachingPlan } = optionsRef.current;
+
+    if (!teachingPlan) {
+      throw new Error("The teaching context is unavailable.");
+    }
+
     await requestResponse({
       instructions: `The current lesson step is "${lessonStep.title}" (${lessonStep.id}). Call set_visual_guide now for its linked source page. Do not speak or mark the step ready yet.`,
-      tools: [buildSetVisualGuideTool(unit)],
+      tools: [buildSetVisualGuideTool(teachingPlan, unit)],
       toolChoice: "required",
     });
   }
@@ -1182,36 +1191,38 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   }
 
   async function prepareLessonStepSource(unit: TeachingUnit) {
+    const { teachingPlan } = optionsRef.current;
     const lessonStep = getCurrentLessonStep(unit);
-    const sourceAnchor = lessonStep
-      ? getVisualSourceAnchor(unit, lessonStep)
-      : null;
+    const sourceChunk =
+      teachingPlan && lessonStep
+        ? getVisualSourceChunk(teachingPlan, lessonStep)
+        : null;
 
     activeVisualGuideRef.current = null;
     setActiveVisualGuide(null);
 
-    if (!lessonStep || !sourceAnchor) {
+    if (!lessonStep || !sourceChunk) {
       await removeSourcePageImage();
       return;
     }
 
-    optionsRef.current.onPageChange(sourceAnchor.page_index);
+    optionsRef.current.onPageChange(sourceChunk.page_index);
     const currentSourcePage = sourcePageItemRef.current;
 
     if (
       currentSourcePage?.unitId === unit.id &&
-      currentSourcePage.pageIndex === sourceAnchor.page_index
+      currentSourcePage.pageIndex === sourceChunk.page_index
     ) {
       return;
     }
 
-    const image = await renderSourcePage(unit, sourceAnchor.page_index);
+    const image = await renderSourcePage(unit, sourceChunk.page_index);
 
     await removeSourcePageImage();
-    const itemId = await sendPageImage(unit, sourceAnchor.page_index, image);
+    const itemId = await sendPageImage(unit, sourceChunk.page_index, image);
     sourcePageItemRef.current = {
       unitId: unit.id,
-      pageIndex: sourceAnchor.page_index,
+      pageIndex: sourceChunk.page_index,
       itemId,
     };
   }
@@ -1651,10 +1662,11 @@ function buildTutorInstructions(
   unit: TeachingUnit,
   isSessionStart: boolean,
 ) {
+  const sourceChunks = getTeachingUnitSourceChunks(plan, unit);
+  const conceptIds = new Set(getTeachingUnitConceptIds(plan, unit));
   const concepts = model.concepts.filter((concept) =>
-    unit.concept_ids.includes(concept.id),
+    conceptIds.has(concept.id),
   );
-  const conceptIds = new Set(unit.concept_ids);
   const connections = model.connections.filter(
     (connection) =>
       conceptIds.has(connection.from) || conceptIds.has(connection.to),
@@ -1673,7 +1685,7 @@ ${JSON.stringify({
   title: unit.title,
   objective: unit.objective,
   prerequisite_titles: prerequisiteTitles,
-  source_anchors: unit.source_anchors,
+  source_chunks: sourceChunks,
   lesson_steps: unit.lesson_steps,
   mastery_criteria: unit.mastery_criteria,
   common_difficulties: unit.common_difficulties,
@@ -1685,9 +1697,10 @@ ${JSON.stringify({
 Teaching flow:
 - Teach only the lesson step explicitly initiated by the application. Never begin another step in the same response.
 - ${isSessionStart ? "Briefly welcome the learner and introduce the unit objective as part of the first step." : "Briefly acknowledge the completed unit and introduce this unit objective as part of the first step."}
+- Cover every source chunk assigned to the current lesson step. Source chunk summaries are document evidence, while step content defines how to teach them.
 - Cover the full planned content with meaningful explanation, reasoning, examples, comparisons, or synthesis. Never substitute an announcement such as "I will show you this" for teaching.
-- When the current lesson step has visual_source_anchor_id, the application supplies only that linked source page as a just-in-time image with four horizontal bands labeled A through D.
-- Call set_visual_guide only when the application explicitly asks for it, using the current lesson_step_id and the smallest helpful range of horizontal bands. A step with visual_source_anchor_id null needs no visual guide.
+- When the current lesson step has visual_source_chunk_id, the application supplies that chunk's page as a just-in-time image with four horizontal bands labeled A through D.
+- Call set_visual_guide only when the application explicitly asks for it, using the current lesson_step_id and the smallest helpful range of horizontal bands. A step with visual_source_chunk_id null needs no visual guide.
 - Visual guidance is for orientation, not a claim that every detail inside the selected area is relevant. Keep it stable while discussing the same area.
 - Do not ask for a learner response during motivate, explain, demonstrate, contrast, connect, or recap unless the learner interrupts with a question.
 - If the learner interrupts, answer the question directly. Do not treat the interrupted lesson step as complete; the application will explicitly ask you to resume it.
@@ -1782,15 +1795,18 @@ ${JSON.stringify({
 })}`;
 }
 
-function buildTutorTools(unit: TeachingUnit) {
+function buildTutorTools(plan: TeachingPlan, unit: TeachingUnit) {
   return [
-    buildSetVisualGuideTool(unit),
+    buildSetVisualGuideTool(plan, unit),
     buildMarkStepReadyTool(unit),
     buildCompleteUnitTool(),
   ];
 }
 
-function buildSetVisualGuideTool(unit: TeachingUnit) {
+function buildSetVisualGuideTool(
+  plan: TeachingPlan,
+  unit: TeachingUnit,
+) {
   return {
     type: "function",
     name: "set_visual_guide",
@@ -1807,7 +1823,7 @@ function buildSetVisualGuideTool(unit: TeachingUnit) {
         },
         page_index: {
           type: "integer",
-          enum: getSourcePageIndexes(unit),
+          enum: getSourcePageIndexes(plan, unit),
           description:
             "The linked source page supplied for the current lesson step.",
         },
@@ -1884,21 +1900,26 @@ function buildCompleteUnitTool() {
   };
 }
 
-function getSourcePageIndexes(unit: TeachingUnit) {
+function getSourcePageIndexes(
+  plan: TeachingPlan,
+  unit: TeachingUnit,
+) {
   return [
-    ...new Set(unit.source_anchors.map((anchor) => anchor.page_index)),
+    ...new Set(
+      getTeachingUnitSourceChunks(plan, unit).map(
+        (chunk) => chunk.page_index,
+      ),
+    ),
   ];
 }
 
-function getVisualSourceAnchor(
-  unit: TeachingUnit,
+function getVisualSourceChunk(
+  plan: TeachingPlan,
   lessonStep: TeachingLessonStep,
 ) {
-  return (
-    unit.source_anchors.find(
-      (anchor) => anchor.id === lessonStep.visual_source_anchor_id,
-    ) ?? null
-  );
+  return lessonStep.visual_source_chunk_id
+    ? findTeachingSourceChunk(plan, lessonStep.visual_source_chunk_id)
+    : null;
 }
 
 function buildSourcePageEvent(
