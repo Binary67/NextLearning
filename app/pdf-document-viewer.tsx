@@ -145,8 +145,27 @@ export function PdfDocumentViewer({
         renderTask = pageRenderTask;
         renderTaskRef.current = pageRenderTask;
 
-        const [textContent, pdfModule] = await Promise.all([
-          page.getTextContent(),
+        const [textItems, pdfModule] = await Promise.all([
+          (async () => {
+            const reader = page.streamTextContent().getReader();
+            const items: Awaited<
+              ReturnType<typeof page.getTextContent>
+            >["items"] = [];
+
+            try {
+              while (true) {
+                const { value, done } = await reader.read();
+
+                if (done) {
+                  return items;
+                }
+
+                items.push(...value.items);
+              }
+            } finally {
+              reader.releaseLock();
+            }
+          })(),
           import("pdfjs-dist/webpack.mjs"),
           pageRenderTask.promise,
         ]);
@@ -159,7 +178,7 @@ export function PdfDocumentViewer({
           return;
         }
 
-        textRegionsRef.current = textContent.items.flatMap((item) => {
+        textRegionsRef.current = textItems.flatMap((item) => {
           if (!("str" in item) || !item.str.trim()) {
             return [];
           }
