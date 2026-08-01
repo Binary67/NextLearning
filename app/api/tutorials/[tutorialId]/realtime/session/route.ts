@@ -1,8 +1,5 @@
-import {
-  isTutorialId,
-  readStoredTutorial,
-  readTeachingPlan,
-} from "@/lib/document-storage";
+import { isTutorialId } from "@/lib/document-storage";
+import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
@@ -20,12 +17,9 @@ export async function POST(
     return tutorialNotFoundResponse();
   }
 
-  const [tutorial, plan] = await Promise.all([
-    readStoredTutorial(tutorialId),
-    readTeachingPlan(tutorialId),
-  ]);
+  const tutorial = await readPreparedTutorial(tutorialId);
 
-  if (!tutorial || !plan) {
+  if (!tutorial) {
     return tutorialNotFoundResponse();
   }
 
@@ -139,7 +133,7 @@ export async function POST(
 
 function tutorialNotFoundResponse() {
   return Response.json(
-    { message: "That tutorial is not available." },
+    { message: "That document is not available." },
     { status: 404 },
   );
 }

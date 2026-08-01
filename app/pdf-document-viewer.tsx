@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
-import { loadPdfDocument } from "@/lib/pdf-page-renderer";
 import {
-  getVisualGuideBounds,
-  type VisualGuideRegion,
-} from "@/lib/visual-guide";
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import type {
+  DocumentSelection,
+  SelectionBounds,
+} from "@/lib/document-selection";
+import { loadPdfDocument } from "@/lib/pdf-page-renderer";
 
 type PdfDocumentViewerProps = {
   documentId: string;
   documentUrl: string;
   documentName: string;
   pageIndex: number;
-  visualGuide: VisualGuideRegion | null;
+  selection: DocumentSelection | null;
+  onSelectionChange: (selection: DocumentSelection | null) => void;
 };
 
 type PageSize = {
@@ -21,28 +27,43 @@ type PageSize = {
   height: number;
 };
 
+type PagePoint = {
+  x: number;
+  y: number;
+};
+
+type TextRegion = SelectionBounds & {
+  text: string;
+};
+
 type PdfRenderTask = {
   cancel: () => void;
   promise: Promise<void>;
 };
+
+const MINIMUM_SELECTION_SIZE = 0.01;
+const MAXIMUM_SELECTION_IMAGE_BYTES = 48 * 1024;
 
 export function PdfDocumentViewer({
   documentId,
   documentUrl,
   documentName,
   pageIndex,
-  visualGuide,
+  selection,
+  onSelectionChange,
 }: PdfDocumentViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const visualGuideRef = useRef<HTMLSpanElement>(null);
   const renderTaskRef = useRef<PdfRenderTask | null>(null);
+  const dragStartRef = useRef<PagePoint | null>(null);
+  const textRegionsRef = useRef<TextRegion[]>([]);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
+  const [draftBounds, setDraftBounds] = useState<SelectionBounds | null>(
+    null,
+  );
   const [error, setError] = useState("");
-  const visualGuideBounds = visualGuide
-    ? getVisualGuideBounds(visualGuide)
-    : null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -75,6 +96,8 @@ export function PdfDocumentViewer({
     async function renderPage() {
       setError("");
       setPageSize(null);
+      setDraftBounds(null);
+      textRegionsRef.current = [];
 
       try {
         const pendingRenderTask = renderTaskRef.current;
@@ -93,11 +116,6 @@ export function PdfDocumentViewer({
         }
 
         const pdfDocument = await loadPdfDocument(documentId, documentUrl);
-
-        if (!active) {
-          return;
-        }
-
         const page = await pdfDocument.getPage(pageIndex);
 
         if (!active) {
@@ -127,20 +145,45 @@ export function PdfDocumentViewer({
         renderTask = pageRenderTask;
         renderTaskRef.current = pageRenderTask;
 
-        try {
-          await pageRenderTask.promise;
-        } finally {
-          if (renderTaskRef.current === pageRenderTask) {
-            renderTaskRef.current = null;
-          }
+        const [textContent, pdfModule] = await Promise.all([
+          page.getTextContent(),
+          import("pdfjs-dist/webpack.mjs"),
+          pageRenderTask.promise,
+        ]);
+
+        if (renderTaskRef.current === pageRenderTask) {
+          renderTaskRef.current = null;
         }
 
-        if (active) {
-          setPageSize({
-            width: viewport.width,
-            height: viewport.height,
-          });
+        if (!active) {
+          return;
         }
+
+        textRegionsRef.current = textContent.items.flatMap((item) => {
+          if (!("str" in item) || !item.str.trim()) {
+            return [];
+          }
+
+          const transform = pdfModule.Util.transform(
+            viewport.transform,
+            item.transform,
+          );
+          const height = Math.hypot(transform[2], transform[3]);
+
+          return [
+            {
+              x: transform[4] / viewport.width,
+              y: (transform[5] - height) / viewport.height,
+              width: (item.width * viewport.scale) / viewport.width,
+              height: height / viewport.height,
+              text: item.str,
+            },
+          ];
+        });
+        setPageSize({
+          width: viewport.width,
+          height: viewport.height,
+        });
       } catch (reason) {
         if (active) {
           setError(
@@ -160,17 +203,92 @@ export function PdfDocumentViewer({
     };
   }, [containerWidth, documentId, documentUrl, pageIndex]);
 
-  useEffect(() => {
-    if (!pageSize || !visualGuide) {
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !pageSize) {
       return;
     }
 
-    visualGuideRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-      inline: "center",
+    const point = getPagePoint(event);
+
+    if (!point) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartRef.current = point;
+    setDraftBounds({ ...point, width: 0, height: 0 });
+    onSelectionChange(null);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const dragStart = dragStartRef.current;
+
+    if (!dragStart) {
+      return;
+    }
+
+    const point = getPagePoint(event);
+
+    if (point) {
+      setDraftBounds(getBounds(dragStart, point));
+    }
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    const dragStart = dragStartRef.current;
+    dragStartRef.current = null;
+
+    if (!dragStart) {
+      return;
+    }
+
+    const point = getPagePoint(event);
+    const bounds = point ? getBounds(dragStart, point) : null;
+    setDraftBounds(null);
+
+    if (
+      !bounds ||
+      bounds.width < MINIMUM_SELECTION_SIZE ||
+      bounds.height < MINIMUM_SELECTION_SIZE
+    ) {
+      onSelectionChange(null);
+      return;
+    }
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    onSelectionChange({
+      page_index: pageIndex,
+      bounds,
+      text: extractSelectedText(textRegionsRef.current, bounds),
+      image_url: createSelectionImage(canvas, bounds),
     });
-  }, [pageSize, visualGuide]);
+  }
+
+  function getPagePoint(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): PagePoint | null {
+    const surface = surfaceRef.current;
+
+    if (!surface) {
+      return null;
+    }
+
+    const rect = surface.getBoundingClientRect();
+
+    return {
+      x: clamp((event.clientX - rect.left) / rect.width),
+      y: clamp((event.clientY - rect.top) / rect.height),
+    };
+  }
+
+  const visibleBounds =
+    draftBounds ??
+    (selection?.page_index === pageIndex ? selection.bounds : null);
 
   return (
     <div
@@ -184,7 +302,8 @@ export function PdfDocumentViewer({
         </p>
       ) : (
         <div
-          className="pdf-page-surface"
+          ref={surfaceRef}
+          className="pdf-page-surface selectable"
           style={
             pageSize
               ? {
@@ -193,15 +312,25 @@ export function PdfDocumentViewer({
                 }
               : undefined
           }
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => {
+            dragStartRef.current = null;
+            setDraftBounds(null);
+          }}
         >
           <canvas ref={canvasRef} />
-          {pageSize && visualGuideBounds && (
+          {pageSize && visibleBounds && (
             <span
-              ref={visualGuideRef}
-              className="pdf-visual-guide"
+              className={`pdf-user-selection${
+                draftBounds ? " drawing" : ""
+              }`}
               style={{
-                top: `${visualGuideBounds.y * 100}%`,
-                height: `${visualGuideBounds.height * 100}%`,
+                left: `${visibleBounds.x * 100}%`,
+                top: `${visibleBounds.y * 100}%`,
+                width: `${visibleBounds.width * 100}%`,
+                height: `${visibleBounds.height * 100}%`,
               }}
               aria-hidden="true"
             />
@@ -210,4 +339,96 @@ export function PdfDocumentViewer({
       )}
     </div>
   );
+}
+
+function getBounds(start: PagePoint, end: PagePoint): SelectionBounds {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
+function extractSelectedText(
+  textRegions: TextRegion[],
+  selection: SelectionBounds,
+) {
+  return textRegions
+    .filter((region) => intersects(region, selection))
+    .sort((left, right) => left.y - right.y || left.x - right.x)
+    .map((region) => region.text)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function intersects(left: SelectionBounds, right: SelectionBounds) {
+  return (
+    left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y
+  );
+}
+
+function createSelectionImage(
+  source: HTMLCanvasElement,
+  selection: SelectionBounds,
+) {
+  const padding = 0.025;
+  const x = Math.max(0, selection.x - padding);
+  const y = Math.max(0, selection.y - padding);
+  const right = Math.min(1, selection.x + selection.width + padding);
+  const bottom = Math.min(1, selection.y + selection.height + padding);
+  const sourceX = Math.floor(x * source.width);
+  const sourceY = Math.floor(y * source.height);
+  const sourceWidth = Math.max(1, Math.ceil((right - x) * source.width));
+  const sourceHeight = Math.max(1, Math.ceil((bottom - y) * source.height));
+  let longestEdge = Math.min(1200, Math.max(sourceWidth, sourceHeight));
+  let quality = 0.82;
+
+  while (true) {
+    const scale = Math.min(
+      1,
+      longestEdge / Math.max(sourceWidth, sourceHeight),
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("The selected document region could not be prepared.");
+    }
+
+    context.drawImage(
+      source,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    const imageUrl = canvas.toDataURL("image/jpeg", quality);
+
+    if (imageUrl.length <= MAXIMUM_SELECTION_IMAGE_BYTES) {
+      return imageUrl;
+    }
+
+    if (longestEdge > 420) {
+      longestEdge = Math.max(420, Math.floor(longestEdge * 0.8));
+    } else if (quality > 0.42) {
+      quality = Math.max(0.42, quality - 0.1);
+    } else {
+      throw new Error("The selected document region is too large.");
+    }
+  }
+}
+
+function clamp(value: number) {
+  return Math.min(1, Math.max(0, value));
 }

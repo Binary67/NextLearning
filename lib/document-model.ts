@@ -1,4 +1,4 @@
-export const DOCUMENT_MODEL_SCHEMA_VERSION = 1;
+export const DOCUMENT_MODEL_SCHEMA_VERSION = 2;
 
 const occurrenceRoles = [
   "introduced",
@@ -29,6 +29,19 @@ export type OccurrenceRole = (typeof occurrenceRoles)[number];
 export type Explicitness = (typeof explicitnessValues)[number];
 export type ConceptRelationship = (typeof relationshipValues)[number];
 
+export type DocumentChunk = {
+  id: string;
+  title: string;
+  summary: string;
+  concept_ids: string[];
+};
+
+export type DocumentPage = {
+  page_index: number;
+  page_label: string;
+  chunks: DocumentChunk[];
+};
+
 export type ConceptOccurrence = {
   page_index: number;
   page_label: string;
@@ -49,7 +62,7 @@ export type DocumentConnection = {
   to: string;
   relationship: ConceptRelationship;
   relevant_pages: number[];
-  teaching_reason: string;
+  reason: string;
   confidence: number;
 };
 
@@ -58,12 +71,12 @@ export type DocumentModel = {
   document_id: string;
   title: string;
   page_count: number;
+  pages: DocumentPage[];
   concepts: DocumentConcept[];
   connections: DocumentConnection[];
 };
 
 export type DocumentMapSummary = {
-  title: string;
   page_count: number;
   concept_count: number;
   connection_count: number;
@@ -80,22 +93,53 @@ export type PageLearningContext = {
     role: OccurrenceRole;
     explicitness: Explicitness;
   }>;
-  future_connections: Array<{
-    from_concept_id: string;
-    to_concept_id: string;
-    name: string;
+  related_pages: Array<{
     page_index: number;
     page_label: string;
-    relationship: ConceptRelationship | "continued_on";
+    concept_name: string;
     reason: string;
-    disclosure: "mention_if_helpful" | "explain_if_asked";
   }>;
 };
 
-type FutureConnectionCandidate =
-  PageLearningContext["future_connections"][number] & {
-    confidence: number;
+export type SelectionGrounding = {
+  current_page: {
+    page_index: number;
+    page_label: string;
   };
+  current_chunks: DocumentChunk[];
+  current_concepts: Array<{
+    id: string;
+    name: string;
+    definition: string;
+    role: OccurrenceRole;
+  }>;
+  connections: Array<{
+    from: string;
+    to: string;
+    relationship: ConceptRelationship;
+    relevant_pages: number[];
+    reason: string;
+  }>;
+  related_chunks: Array<DocumentChunk & {
+    page_index: number;
+    page_label: string;
+  }>;
+};
+
+const documentChunkJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    title: { type: "string" },
+    summary: { type: "string" },
+    concept_ids: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: ["id", "title", "summary", "concept_ids"],
+  additionalProperties: false,
+} as const;
 
 export const documentModelJsonSchema = {
   type: "object",
@@ -107,14 +151,28 @@ export const documentModelJsonSchema = {
     document_id: { type: "string" },
     title: { type: "string" },
     page_count: { type: "integer" },
+    pages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          page_index: { type: "integer" },
+          page_label: { type: "string" },
+          chunks: {
+            type: "array",
+            items: documentChunkJsonSchema,
+          },
+        },
+        required: ["page_index", "page_label", "chunks"],
+        additionalProperties: false,
+      },
+    },
     concepts: {
       type: "array",
       items: {
         type: "object",
         properties: {
-          id: {
-            type: "string",
-          },
+          id: { type: "string" },
           name: { type: "string" },
           definition: { type: "string" },
           occurrences: {
@@ -129,9 +187,7 @@ export const documentModelJsonSchema = {
                   type: "string",
                   enum: explicitnessValues,
                 },
-                confidence: {
-                  type: "number",
-                },
+                confidence: { type: "number" },
               },
               required: [
                 "page_index",
@@ -163,17 +219,15 @@ export const documentModelJsonSchema = {
             type: "array",
             items: { type: "integer" },
           },
-          teaching_reason: { type: "string" },
-          confidence: {
-            type: "number",
-          },
+          reason: { type: "string" },
+          confidence: { type: "number" },
         },
         required: [
           "from",
           "to",
           "relationship",
           "relevant_pages",
-          "teaching_reason",
+          "reason",
           "confidence",
         ],
         additionalProperties: false,
@@ -185,6 +239,7 @@ export const documentModelJsonSchema = {
     "document_id",
     "title",
     "page_count",
+    "pages",
     "concepts",
     "connections",
   ],
@@ -195,7 +250,6 @@ export function summarizeDocumentModel(
   model: DocumentModel,
 ): DocumentMapSummary {
   return {
-    title: model.title,
     page_count: model.page_count,
     concept_count: model.concepts.length,
     connection_count: model.connections.length,
@@ -206,100 +260,55 @@ export function buildPageLearningContext(
   model: DocumentModel,
   pageIndex: number,
 ): PageLearningContext {
-  const currentOccurrences = model.concepts.flatMap((concept) =>
-    concept.occurrences
-      .filter((occurrence) => occurrence.page_index === pageIndex)
-      .map((occurrence) => ({ concept, occurrence })),
-  );
+  const page = model.pages[pageIndex - 1];
+  const currentOccurrences = getPageConceptOccurrences(model, pageIndex);
   const currentConceptIds = new Set(
     currentOccurrences.map(({ concept }) => concept.id),
   );
-  const candidates: FutureConnectionCandidate[] = [];
+  const relatedPages = new Map<
+    number,
+    PageLearningContext["related_pages"][number]
+  >();
 
-  for (const { concept, occurrence } of currentOccurrences) {
-    const continuation = findNextOccurrence(concept, pageIndex);
-
-    if (continuation) {
-      candidates.push({
-        from_concept_id: concept.id,
-        to_concept_id: concept.id,
-        name: concept.name,
-        page_index: continuation.page_index,
-        page_label: continuation.page_label,
-        relationship: "continued_on",
-        reason: `${concept.name} is ${continuation.role} later in the document.`,
-        disclosure:
-          occurrence.explicitness === "implicit"
-            ? "explain_if_asked"
-            : "mention_if_helpful",
-        confidence: continuation.confidence,
-      });
+  for (const connection of model.connections) {
+    if (
+      !currentConceptIds.has(connection.from) &&
+      !currentConceptIds.has(connection.to)
+    ) {
+      continue;
     }
 
-    for (const connection of model.connections) {
-      if (connection.from !== concept.id) {
+    const relatedConceptId = currentConceptIds.has(connection.from)
+      ? connection.to
+      : connection.from;
+    const relatedConcept = model.concepts.find(
+      (concept) => concept.id === relatedConceptId,
+    );
+
+    if (!relatedConcept) {
+      continue;
+    }
+
+    for (const relatedPageIndex of connection.relevant_pages) {
+      if (relatedPageIndex === pageIndex || relatedPages.has(relatedPageIndex)) {
         continue;
       }
 
-      const target = model.concepts.find(
-        (item) => item.id === connection.to,
-      );
-      const targetOccurrence = target
-        ? findNextOccurrence(target, pageIndex)
-        : undefined;
-
-      if (!target || !targetOccurrence || currentConceptIds.has(target.id)) {
-        continue;
-      }
-
-      candidates.push({
-        from_concept_id: concept.id,
-        to_concept_id: target.id,
-        name: target.name,
-        page_index: targetOccurrence.page_index,
-        page_label: targetOccurrence.page_label,
-        relationship: connection.relationship,
-        reason: connection.teaching_reason,
-        disclosure: "mention_if_helpful",
-        confidence: Math.min(
-          connection.confidence,
-          targetOccurrence.confidence,
-        ),
+      relatedPages.set(relatedPageIndex, {
+        page_index: relatedPageIndex,
+        page_label:
+          model.pages[relatedPageIndex - 1]?.page_label ??
+          String(relatedPageIndex),
+        concept_name: relatedConcept.name,
+        reason: connection.reason,
       });
     }
   }
 
-  const futureConnections = Array.from(
-    new Map(
-      candidates
-        .sort(
-          (left, right) =>
-            left.page_index - right.page_index ||
-            right.confidence - left.confidence,
-        )
-        .map((candidate) => [
-          `${candidate.to_concept_id}:${candidate.page_index}`,
-          candidate,
-        ]),
-    ).values(),
-  )
-    .slice(0, 5)
-    .map((candidate) => ({
-      from_concept_id: candidate.from_concept_id,
-      to_concept_id: candidate.to_concept_id,
-      name: candidate.name,
-      page_index: candidate.page_index,
-      page_label: candidate.page_label,
-      relationship: candidate.relationship,
-      reason: candidate.reason,
-      disclosure: candidate.disclosure,
-    }));
-
   return {
     current_page: {
       page_index: pageIndex,
-      page_label:
-        currentOccurrences[0]?.occurrence.page_label ?? String(pageIndex),
+      page_label: page?.page_label ?? String(pageIndex),
     },
     current_concepts: currentOccurrences.map(({ concept, occurrence }) => ({
       concept_id: concept.id,
@@ -307,7 +316,75 @@ export function buildPageLearningContext(
       role: occurrence.role,
       explicitness: occurrence.explicitness,
     })),
-    future_connections: futureConnections,
+    related_pages: [...relatedPages.values()].slice(0, 5),
+  };
+}
+
+export function buildSelectionGrounding(
+  model: DocumentModel,
+  pageIndex: number,
+): SelectionGrounding {
+  const page = model.pages[pageIndex - 1];
+  const currentOccurrences = getPageConceptOccurrences(model, pageIndex);
+  const currentConceptIds = new Set(
+    currentOccurrences.map(({ concept }) => concept.id),
+  );
+  const connections = model.connections
+    .filter(
+      (connection) =>
+        currentConceptIds.has(connection.from) ||
+        currentConceptIds.has(connection.to),
+    )
+    .sort((left, right) => right.confidence - left.confidence)
+    .slice(0, 12);
+  const relatedConceptIds = new Set(
+    connections.flatMap((connection) => [connection.from, connection.to]),
+  );
+  const relatedPageIndexes = new Set(
+    connections.flatMap((connection) => connection.relevant_pages),
+  );
+  relatedPageIndexes.delete(pageIndex);
+
+  const relatedChunks = model.pages
+    .filter((item) => relatedPageIndexes.has(item.page_index))
+    .flatMap((item) =>
+      item.chunks
+        .filter((chunk) =>
+          chunk.concept_ids.some((conceptId) =>
+            relatedConceptIds.has(conceptId),
+          ),
+        )
+        .map((chunk) => ({
+          ...chunk,
+          page_index: item.page_index,
+          page_label: item.page_label,
+        })),
+    )
+    .slice(0, 8);
+  const conceptNamesById = new Map(
+    model.concepts.map((concept) => [concept.id, concept.name]),
+  );
+
+  return {
+    current_page: {
+      page_index: pageIndex,
+      page_label: page?.page_label ?? String(pageIndex),
+    },
+    current_chunks: page?.chunks ?? [],
+    current_concepts: currentOccurrences.map(({ concept, occurrence }) => ({
+      id: concept.id,
+      name: concept.name,
+      definition: concept.definition,
+      role: occurrence.role,
+    })),
+    connections: connections.map((connection) => ({
+      from: conceptNamesById.get(connection.from) ?? connection.from,
+      to: conceptNamesById.get(connection.to) ?? connection.to,
+      relationship: connection.relationship,
+      relevant_pages: connection.relevant_pages,
+      reason: connection.reason,
+    })),
+    related_chunks: relatedChunks,
   };
 }
 
@@ -316,38 +393,100 @@ export function validateDocumentModel(
   documentId: string,
 ): DocumentModel {
   if (!isRecord(value)) {
-    throw new Error("The generated document map is not an object.");
+    throw new Error("The generated document model is not an object.");
   }
 
   if (
     value.schema_version !== DOCUMENT_MODEL_SCHEMA_VERSION ||
     value.document_id !== documentId ||
-    typeof value.title !== "string" ||
+    !isNonEmptyString(value.title) ||
     !isPositiveInteger(value.page_count) ||
+    !Array.isArray(value.pages) ||
+    value.pages.length !== value.page_count ||
     !Array.isArray(value.concepts) ||
+    value.concepts.length === 0 ||
     value.concepts.length > 120 ||
     !Array.isArray(value.connections) ||
     value.connections.length > 400
   ) {
-    throw new Error("The generated document map has invalid metadata.");
+    throw new Error("The generated document model has invalid metadata.");
   }
 
-  const pageCount = value.page_count;
-  const concepts = value.concepts;
+  const pageLabels = validatePages(value.pages);
+  const conceptIds = validateConcepts(
+    value.concepts,
+    value.page_count,
+    pageLabels,
+  );
+  validatePageChunks(value.pages, conceptIds, value.concepts);
+  validateConnections(value.connections, conceptIds, value.page_count);
+
+  return value as DocumentModel;
+}
+
+function validatePages(pages: unknown[]) {
+  const pageLabels = new Map<number, string>();
+  const chunkIds = new Set<string>();
+  let chunkCount = 0;
+
+  for (const [index, page] of pages.entries()) {
+    if (
+      !isRecord(page) ||
+      page.page_index !== index + 1 ||
+      !isNonEmptyString(page.page_label) ||
+      !Array.isArray(page.chunks) ||
+      page.chunks.length > 20
+    ) {
+      throw new Error("The generated document model has an invalid page.");
+    }
+
+    pageLabels.set(page.page_index, page.page_label);
+
+    for (const chunk of page.chunks) {
+      if (
+        !isRecord(chunk) ||
+        !isChunkId(chunk.id) ||
+        chunkIds.has(chunk.id) ||
+        !isNonEmptyString(chunk.title) ||
+        !isSourceSummary(chunk.summary) ||
+        !isStringArray(chunk.concept_ids, 1, 12)
+      ) {
+        throw new Error(
+          "The generated document model has an invalid page chunk.",
+        );
+      }
+
+      chunkIds.add(chunk.id);
+      chunkCount += 1;
+    }
+  }
+
+  if (chunkCount === 0 || chunkCount > 400) {
+    throw new Error("The generated document model has invalid page chunks.");
+  }
+
+  return pageLabels;
+}
+
+function validateConcepts(
+  concepts: unknown[],
+  pageCount: number,
+  pageLabels: ReadonlyMap<number, string>,
+) {
   const conceptIds = new Set<string>();
 
   for (const concept of concepts) {
     if (
       !isRecord(concept) ||
       !isConceptId(concept.id) ||
-      typeof concept.name !== "string" ||
-      typeof concept.definition !== "string" ||
+      conceptIds.has(concept.id) ||
+      !isNonEmptyString(concept.name) ||
+      !isNonEmptyString(concept.definition) ||
       !Array.isArray(concept.occurrences) ||
       concept.occurrences.length === 0 ||
-      concept.occurrences.length > 40 ||
-      conceptIds.has(concept.id)
+      concept.occurrences.length > 40
     ) {
-      throw new Error("The generated document map has an invalid concept.");
+      throw new Error("The generated document model has an invalid concept.");
     }
 
     conceptIds.add(concept.id);
@@ -358,7 +497,7 @@ export function validateDocumentModel(
         !isRecord(occurrence) ||
         !isPositiveInteger(occurrence.page_index) ||
         occurrence.page_index > pageCount ||
-        typeof occurrence.page_label !== "string" ||
+        occurrence.page_label !== pageLabels.get(occurrence.page_index) ||
         !occurrenceRoles.includes(occurrence.role as OccurrenceRole) ||
         !explicitnessValues.includes(
           occurrence.explicitness as Explicitness,
@@ -367,7 +506,7 @@ export function validateDocumentModel(
         occurrencePages.has(occurrence.page_index)
       ) {
         throw new Error(
-          "The generated document map has an invalid occurrence.",
+          "The generated document model has an invalid occurrence.",
         );
       }
 
@@ -375,7 +514,65 @@ export function validateDocumentModel(
     }
   }
 
-  for (const connection of value.connections) {
+  return conceptIds;
+}
+
+function validatePageChunks(
+  pages: unknown[],
+  conceptIds: ReadonlySet<string>,
+  concepts: unknown[],
+) {
+  const occurrencePagesByConceptId = new Map<string, Set<number>>();
+
+  for (const concept of concepts) {
+    if (!isRecord(concept) || !Array.isArray(concept.occurrences)) {
+      continue;
+    }
+
+    occurrencePagesByConceptId.set(
+      concept.id as string,
+      new Set(
+        concept.occurrences
+          .filter(isRecord)
+          .map((occurrence) => occurrence.page_index as number),
+      ),
+    );
+  }
+
+  for (const page of pages) {
+    if (!isRecord(page) || !Array.isArray(page.chunks)) {
+      continue;
+    }
+
+    for (const chunk of page.chunks) {
+      if (!isRecord(chunk) || !Array.isArray(chunk.concept_ids)) {
+        continue;
+      }
+
+      const isGrounded = chunk.concept_ids.every(
+        (conceptId) =>
+          typeof conceptId === "string" &&
+          conceptIds.has(conceptId) &&
+          occurrencePagesByConceptId
+            .get(conceptId)
+            ?.has(page.page_index as number),
+      );
+
+      if (!isGrounded) {
+        throw new Error(
+          "The generated document model has an ungrounded page chunk.",
+        );
+      }
+    }
+  }
+}
+
+function validateConnections(
+  connections: unknown[],
+  conceptIds: ReadonlySet<string>,
+  pageCount: number,
+) {
+  for (const connection of connections) {
     if (
       !isRecord(connection) ||
       typeof connection.from !== "string" ||
@@ -391,27 +588,33 @@ export function validateDocumentModel(
       !connection.relevant_pages.every(
         (page) => isPositiveInteger(page) && page <= pageCount,
       ) ||
-      typeof connection.teaching_reason !== "string" ||
+      !isNonEmptyString(connection.reason) ||
       !isConfidence(connection.confidence)
     ) {
-      throw new Error("The generated document map has an invalid connection.");
+      throw new Error(
+        "The generated document model has an invalid connection.",
+      );
     }
   }
-
-  return value as DocumentModel;
 }
 
-function findNextOccurrence(
-  concept: DocumentConcept,
+function getPageConceptOccurrences(
+  model: DocumentModel,
   pageIndex: number,
 ) {
-  return concept.occurrences
-    .filter((occurrence) => occurrence.page_index > pageIndex)
-    .sort((left, right) => left.page_index - right.page_index)[0];
+  return model.concepts.flatMap((concept) =>
+    concept.occurrences
+      .filter((occurrence) => occurrence.page_index === pageIndex)
+      .map((occurrence) => ({ concept, occurrence })),
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -425,6 +628,31 @@ function isConceptId(value: unknown): value is string {
     typeof value === "string" &&
     /^concept:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
   );
+}
+
+function isChunkId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^chunk:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+  );
+}
+
+function isStringArray(
+  value: unknown,
+  minimumLength: number,
+  maximumLength: number,
+): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= minimumLength &&
+    value.length <= maximumLength &&
+    value.every(isNonEmptyString) &&
+    new Set(value).size === value.length
+  );
+}
+
+function isSourceSummary(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= 1600;
 }
 
 function isConfidence(value: unknown): value is number {

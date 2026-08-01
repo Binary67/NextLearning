@@ -23,12 +23,12 @@ const PREPARATION_STATUS = {
     description: "Sending your document for preparation.",
   },
   analyzing: {
-    label: "Analyzing concepts and building your tutorial",
-    description: "Organizing the document into focused learning units.",
+    label: "Analyzing concepts and page context",
+    description: "Preparing the document for selection-based questions.",
   },
   saving: {
     label: "Finalizing and saving",
-    description: "Saving the tutorial and getting it ready to use.",
+    description: "Saving the PDF and its document model.",
   },
 } as const;
 
@@ -103,7 +103,7 @@ export function NewTutorialButton({
     setError("");
   }
 
-  async function prepareTutorial() {
+  async function prepareDocument() {
     if (!pendingFile || !pendingFileIsValid) {
       return;
     }
@@ -121,10 +121,10 @@ export function NewTutorialButton({
 
       if (!response.ok) {
         const data = (await response.json()) as { message?: string };
-        throw new Error(data.message ?? "The tutorial could not be prepared.");
+        throw new Error(data.message ?? "The document could not be prepared.");
       }
 
-      const tutorial = await readPreparedTutorial(
+      const tutorial = await readPreparedDocument(
         response,
         setPreparationStage,
       );
@@ -133,7 +133,7 @@ export function NewTutorialButton({
       setError(
         reason instanceof Error
           ? reason.message
-          : "The tutorial could not be prepared.",
+          : "The document could not be prepared.",
       );
     } finally {
       setPreparationStage(null);
@@ -152,7 +152,7 @@ export function NewTutorialButton({
         className="icon-button small"
         type="button"
         onClick={() => inputRef.current?.click()}
-        aria-label="Create a new tutorial"
+        aria-label="Add a new document"
       >
         <Upload size={21} />
       </button>
@@ -163,7 +163,7 @@ export function NewTutorialButton({
         onClick={() => inputRef.current?.click()}
       >
         <Upload size={19} />
-        Create tutorial
+        Add document
       </button>
     );
 
@@ -199,9 +199,9 @@ export function NewTutorialButton({
             <div className="modal-icon">
               {preparing ? <Sparkles size={23} /> : <Upload size={23} />}
             </div>
-            <p className="modal-eyebrow">New tutorial</p>
+            <p className="modal-eyebrow">New document</p>
             <h2 id="new-tutorial-title">
-              {preparing ? "Creating your tutorial" : "Prepare this PDF?"}
+              {preparing ? "Preparing your document" : "Prepare this PDF?"}
             </h2>
             <div className="pending-file">
               <FileText size={23} aria-hidden="true" />
@@ -218,7 +218,7 @@ export function NewTutorialButton({
                 <div
                   className="document-preparation-track"
                   role="progressbar"
-                  aria-label="Tutorial preparation progress"
+                  aria-label="Document preparation progress"
                 />
                 <h3>{preparationStatus.label}</h3>
                 <p>{preparationStatus.description}</p>
@@ -226,8 +226,8 @@ export function NewTutorialButton({
               </div>
             ) : (
               <p className="modal-copy">
-                We’ll turn this PDF into a structured tutorial with key
-                concepts, guided lessons, and source highlights.
+                We’ll map its concepts and page context so you can select any
+                region and ask questions by voice.
               </p>
             )}
             {error && (
@@ -247,11 +247,11 @@ export function NewTutorialButton({
                 <button
                   className="primary-button"
                   type="button"
-                  onClick={prepareTutorial}
+                  onClick={prepareDocument}
                   disabled={!pendingFileIsValid}
                 >
                   <Sparkles size={19} />
-                  Prepare Tutorial
+                  Prepare Document
                 </button>
               </div>
             )}
@@ -262,12 +262,12 @@ export function NewTutorialButton({
   );
 }
 
-async function readPreparedTutorial(
+async function readPreparedDocument(
   response: Response,
   onProgress: (stage: PreparationStage) => void,
 ) {
   if (!response.body) {
-    throw new Error("The tutorial could not be prepared.");
+    throw new Error("The document could not be prepared.");
   }
 
   const reader = response.body.getReader();
@@ -303,7 +303,7 @@ async function readPreparedTutorial(
   }
 
   if (!tutorial) {
-    throw new Error("The tutorial could not be prepared.");
+    throw new Error("The document could not be prepared.");
   }
 
   return tutorial;

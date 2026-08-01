@@ -5,15 +5,13 @@ import {
   MAX_DOCUMENT_SIZE,
   saveTutorial,
 } from "@/lib/document-storage";
-import { createLearningProgress } from "@/lib/learning-progress";
 import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
   listPreparedTutorials,
-  type TutorialResponse,
   toTutorialResponse,
+  type TutorialResponse,
 } from "@/lib/tutorial";
-import { prioritizeTutorialGeneration } from "@/lib/tutorial-background-generation";
-import { generateTutorial } from "@/lib/tutorial-generation";
+import { generateDocumentModel } from "@/lib/tutorial-generation";
 
 export const runtime = "nodejs";
 
@@ -89,7 +87,7 @@ export async function POST(request: Request) {
 
       try {
         send({ type: "progress", stage: "analyzing" });
-        const { model, plan, firstUnitDetails } = await generateTutorial(
+        const model = await generateDocumentModel(
           fileData,
           file.name,
           tutorialId,
@@ -102,20 +100,12 @@ export async function POST(request: Request) {
           fileData,
           tutorialId,
           model,
-          plan,
-          firstUnitDetails,
         );
 
         send({
           type: "complete",
-          tutorial: toTutorialResponse({
-            tutorial,
-            model,
-            plan,
-            progress: createLearningProgress(tutorialId, tutorial.createdAt),
-          }),
+          tutorial: toTutorialResponse({ tutorial, model }),
         });
-        prioritizeTutorialGeneration(tutorialId);
       } catch (error) {
         console.error("Document preparation failed:", error);
         send({

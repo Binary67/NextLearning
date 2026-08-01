@@ -20,7 +20,7 @@ export async function GET(
     : null;
 
   if (!tutorial) {
-    return new Response("That tutorial is not available.", { status: 404 });
+    return new Response("That document is not available.", { status: 404 });
   }
 
   const file = await readDocumentFile(tutorialId);

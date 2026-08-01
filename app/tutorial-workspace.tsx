@@ -1,21 +1,15 @@
 "use client";
 
 import {
-  ArrowDown,
   Check,
   ChevronLeft,
   ChevronRight,
   Download,
   FileText,
   Hand,
-  Keyboard,
   LogOut,
   MessageSquareText,
-  PanelRight,
-  Pause,
   Play,
-  Route,
-  RotateCcw,
   ScanText,
   Sparkles,
   Trash2,
@@ -28,7 +22,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -38,54 +31,29 @@ import {
   useLearningSettings,
 } from "@/app/learning-settings";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
-import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
+import {
+  PdfDocumentViewer,
+} from "@/app/pdf-document-viewer";
 import {
   buildPageLearningContext,
   type DocumentModel,
 } from "@/lib/document-model";
-import {
-  findActiveTeachingUnit,
-  type LearningProgress,
-} from "@/lib/learning-progress";
-import {
-  assembleTeachingUnit,
-  findTeachingSourceChunk,
-  getTeachingUnitConceptIds,
-  getTeachingUnitSourceChunks,
-  type TeachingPlan,
-  type TeachingUnitDetails,
-  type TeachingUnitDetailsById,
-  type TeachingUnitOutline,
-} from "@/lib/teaching-plan";
+import type { DocumentSelection } from "@/lib/document-selection";
 import type { TutorialResponse } from "@/lib/tutorial";
-import {
-  hasPendingTeachingUnits,
-  type TeachingUnitGenerationState,
-  type TutorialGenerationStatus,
-} from "@/lib/tutorial-generation-status";
 import { useRealtimeTutor } from "@/lib/use-realtime-tutor";
 
 type Modal =
-  | "analysis"
   | "transcript"
-  | "shortcuts"
   | "settings"
   | "end-session"
-  | "reset-progress"
   | "delete-tutorial"
   | null;
 
 type TutorialDataResponse = {
   tutorial?: TutorialResponse;
-  plan?: TeachingPlan;
   model?: DocumentModel;
-  unitDetails?: TeachingUnitDetailsById;
-  generationStatus?: TutorialGenerationStatus;
-  progress?: LearningProgress;
   message?: string;
 };
-
-const TUTORIAL_GENERATION_POLL_INTERVAL = 3000;
 
 export function TutorialWorkspace({
   tutorialId,
@@ -94,48 +62,24 @@ export function TutorialWorkspace({
 }) {
   const router = useRouter();
   const [modal, setModal] = useState<Modal>(null);
-  const [insightsVisible, setInsightsVisible] = useState(true);
-  const [documentPreparationExpanded, setDocumentPreparationExpanded] =
-    useState(true);
-  const [pageContextExpanded, setPageContextExpanded] = useState(true);
-  const [learningPathExpanded, setLearningPathExpanded] = useState(false);
-  const [tutorTranscriptExpanded, setTutorTranscriptExpanded] =
-    useState(false);
   const [toast, setToast] = useState("");
   const [activeTutorial, setActiveTutorial] =
     useState<TutorialResponse | null>(null);
+  const [documentModel, setDocumentModel] =
+    useState<DocumentModel | null>(null);
   const [documentLoading, setDocumentLoading] = useState(true);
   const [documentError, setDocumentError] = useState("");
   const [deletingTutorial, setDeletingTutorial] = useState(false);
-  const [resettingProgress, setResettingProgress] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selection, setSelection] = useState<DocumentSelection | null>(
+    null,
+  );
   const {
     raiseHandShortcut,
     raiseHandShortcutLabel,
     audioInputDeviceId,
     audioOutputDeviceId,
   } = useLearningSettings();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [teachingPlan, setTeachingPlan] =
-    useState<TeachingPlan | null>(null);
-  const [unitDetails, setUnitDetails] =
-    useState<TeachingUnitDetailsById>({});
-  const [generationStatus, setGenerationStatus] =
-    useState<TutorialGenerationStatus | null>(null);
-  const [documentModel, setDocumentModel] =
-    useState<DocumentModel | null>(null);
-  const [learningProgress, setLearningProgress] =
-    useState<LearningProgress | null>(null);
-  const activeUnitOutline =
-    teachingPlan && learningProgress
-      ? findActiveTeachingUnit(teachingPlan, learningProgress)
-      : null;
-  const activeUnitDetails = activeUnitOutline
-    ? unitDetails[activeUnitOutline.id]
-    : null;
-  const activeUnit =
-    activeUnitOutline && activeUnitDetails
-      ? assembleTeachingUnit(activeUnitOutline, activeUnitDetails)
-      : null;
   const pageContext = useMemo(
     () =>
       documentModel
@@ -143,86 +87,21 @@ export function TutorialWorkspace({
         : null,
     [currentPage, documentModel],
   );
-  const pageContextLoading = activeTutorial !== null && documentLoading;
-  const pageContextError = documentModel ? "" : documentError;
   const realtimeTutor = useRealtimeTutor({
     documentId: activeTutorial?.id ?? null,
-    documentUrl: activeTutorial?.url ?? null,
     documentModel,
-    teachingPlan,
-    unitDetails,
-    activeUnit,
+    selection,
     audioInputDeviceId,
     audioOutputDeviceId,
-    onPageChange: setCurrentPage,
-    onProgressChange: setLearningProgress,
   });
-  const sessionEnded = realtimeTutor.status === "ended";
-  const tutorSessionActive =
+  const sessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
-  const isTutorTranscriptExpanded =
-    tutorSessionActive && tutorTranscriptExpanded;
-  const modalBusy =
-    (modal === "reset-progress" && resettingProgress) ||
-    (modal === "delete-tutorial" && deletingTutorial);
-  const isUserTurn = realtimeTutor.isUserTurn;
-  const isQuestionTurn =
-    realtimeTutor.learnerTurnPurpose === "interruption" ||
-    realtimeTutor.learnerTurnPurpose === "follow-up";
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.isUserTurn ||
     realtimeTutor.isSubmittingUserTurn;
-  let userTurnActionLabel = realtimeTutor.isAwaitingLearnerAnswer
-    ? "Answer tutor question"
-    : "Raise hand to ask a question";
-
-  if (realtimeTutor.isSubmittingUserTurn) {
-    userTurnActionLabel = isQuestionTurn
-      ? "Sending question"
-      : "Sending answer";
-  } else if (isUserTurn) {
-    userTurnActionLabel = isQuestionTurn
-      ? "Done asking"
-      : "Done answering";
-  }
-
-  const completedLessonStepIds = new Set(
-    realtimeTutor.completedLessonStepIds,
-  );
-  const currentLessonStep =
-    activeUnit?.lesson_steps.find(
-      (step) => !completedLessonStepIds.has(step.id),
-    ) ?? null;
-  const currentLessonStepReady =
-    currentLessonStep?.id === realtimeTutor.readyLessonStepId;
-  const isLastLessonStep =
-    currentLessonStep !== null &&
-    activeUnit?.lesson_steps.at(-1)?.id === currentLessonStep.id;
-  const tutorQuestion =
-    realtimeTutor.status === "connected" &&
-    realtimeTutor.isAwaitingLearnerAnswer &&
-    !realtimeTutor.isSubmittingUserTurn &&
-    !realtimeTutor.isTutorResponding &&
-    !realtimeTutor.isTutorSpeaking
-      ? getLatestTutorQuestion(realtimeTutor.tutorTranscripts.at(-1) ?? "")
-      : "";
-  const masteredUnitCount = learningProgress
-    ? Object.keys(learningProgress.unit_progress).length
-    : 0;
-  const readyUnitCount = generationStatus
-    ? Object.values(generationStatus.unit_status).filter(
-        (state) => state === "ready",
-      ).length
-    : 0;
-  const tutorialPreparationPending = generationStatus
-    ? hasPendingTeachingUnits(generationStatus)
-    : false;
-  const tutorialComplete =
-    teachingPlan !== null &&
-    learningProgress !== null &&
-    activeUnitOutline === null;
+  const pageCount = documentModel?.page_count ?? 0;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -231,30 +110,13 @@ export function TutorialWorkspace({
       setDocumentLoading(true);
       setDocumentError("");
       setActiveTutorial(null);
-      setTeachingPlan(null);
-      setUnitDetails({});
-      setGenerationStatus(null);
       setDocumentModel(null);
-      setLearningProgress(null);
+      setSelection(null);
 
       try {
         const data = await readTutorialData(tutorialId, controller.signal);
-
         setActiveTutorial(data.tutorial);
-        setDocumentPreparationExpanded(false);
-        setTeachingPlan(data.plan);
-        setUnitDetails(data.unitDetails);
-        setGenerationStatus(data.generationStatus);
         setDocumentModel(data.model);
-        setLearningProgress(data.progress);
-        const initialUnit = findActiveTeachingUnit(
-          data.plan,
-          data.progress,
-        );
-
-        if (initialUnit) {
-          setCurrentPage(getInitialUnitPageIndex(data.plan, initialUnit));
-        }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
           setDocumentError(error.message);
@@ -266,43 +128,9 @@ export function TutorialWorkspace({
       }
     }
 
-    loadTutorialData();
+    void loadTutorialData();
     return () => controller.abort();
   }, [tutorialId]);
-
-  useEffect(() => {
-    if (!tutorialPreparationPending) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let refreshing = false;
-    const interval = window.setInterval(async () => {
-      if (refreshing) {
-        return;
-      }
-
-      refreshing = true;
-
-      try {
-        const data = await readTutorialData(tutorialId, controller.signal);
-
-        setUnitDetails(data.unitDetails);
-        setGenerationStatus(data.generationStatus);
-      } catch (error) {
-        if (!(error instanceof Error && error.name === "AbortError")) {
-          console.error("Teaching unit refresh failed:", error);
-        }
-      } finally {
-        refreshing = false;
-      }
-    }, TUTORIAL_GENERATION_POLL_INTERVAL);
-
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-    };
-  }, [tutorialId, tutorialPreparationPending]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -310,40 +138,19 @@ export function TutorialWorkspace({
   }, []);
 
   const toggleUserTurn = useCallback(async () => {
+    const wasListening = realtimeTutor.isUserTurn;
     const actionSucceeded = await realtimeTutor.toggleUserTurn();
 
     if (!actionSucceeded) {
       return;
     }
 
-    let toastMessage = `Listening. Press ${raiseHandShortcutLabel} or tap the check when you finish.`;
-
-    if (isUserTurn) {
-      toastMessage = isQuestionTurn
+    showToast(
+      wasListening
         ? "Question sent. Waiting for the tutor."
-        : "Answer sent. Waiting for the tutor.";
-    }
-
-    showToast(toastMessage);
-  }, [
-    isQuestionTurn,
-    isUserTurn,
-    raiseHandShortcutLabel,
-    realtimeTutor,
-    showToast,
-  ]);
-
-  const advanceLessonStep = useCallback(async () => {
-    const advanced = await realtimeTutor.advanceLessonStep();
-
-    if (advanced) {
-      showToast(
-        isLastLessonStep
-          ? "Finishing this learning unit."
-          : "Moving to the next step.",
-      );
-    }
-  }, [isLastLessonStep, realtimeTutor, showToast]);
+        : `Listening. Press ${raiseHandShortcutLabel} or tap the check when you finish.`,
+    );
+  }, [raiseHandShortcutLabel, realtimeTutor, showToast]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -368,25 +175,20 @@ export function TutorialWorkspace({
 
       const key = event.key.toLowerCase();
 
-      if (modalBusy) {
-        return;
-      }
-
       if (key === "escape") {
         setModal(null);
-      } else if (key === "a") {
-        setModal("analysis");
       } else if (
         key === "t" &&
         realtimeTutor.tutorTranscripts.length > 0
       ) {
         setModal("transcript");
-      } else if (key === "e" && !sessionEnded) {
+      } else if (key === "e" && sessionActive) {
         setModal("end-session");
       } else if (
         key === raiseHandShortcut &&
         realtimeTutor.status === "connected" &&
-        modal === null
+        modal === null &&
+        selection
       ) {
         event.preventDefault();
         void toggleUserTurn();
@@ -397,13 +199,22 @@ export function TutorialWorkspace({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     modal,
-    modalBusy,
     raiseHandShortcut,
     realtimeTutor.status,
     realtimeTutor.tutorTranscripts.length,
-    sessionEnded,
+    selection,
+    sessionActive,
     toggleUserTurn,
   ]);
+
+  function changePage(pageIndex: number) {
+    if (pageIndex < 1 || pageIndex > pageCount) {
+      return;
+    }
+
+    setCurrentPage(pageIndex);
+    setSelection(null);
+  }
 
   function downloadDocument() {
     if (!activeTutorial) {
@@ -416,59 +227,6 @@ export function TutorialWorkspace({
     showToast("Document download started.");
   }
 
-  function closeModal() {
-    if (modalBusy) {
-      return;
-    }
-
-    setModal(null);
-  }
-
-  async function resetProgress() {
-    setResettingProgress(true);
-
-    try {
-      const response = await fetch(
-        `/api/tutorials/${tutorialId}/progress`,
-        {
-          method: "PUT",
-        },
-      );
-      const data = (await response.json()) as {
-        progress?: LearningProgress;
-        message?: string;
-      };
-
-      if (!response.ok || !data.progress) {
-        throw new Error(
-          data.message ?? "Learning progress could not be reset.",
-        );
-      }
-
-      realtimeTutor.reset();
-      setLearningProgress(data.progress);
-
-      const firstUnit = teachingPlan
-        ? findActiveTeachingUnit(teachingPlan, data.progress)
-        : null;
-
-      if (teachingPlan && firstUnit) {
-        setCurrentPage(getInitialUnitPageIndex(teachingPlan, firstUnit));
-      }
-
-      setModal(null);
-      showToast("Learning progress reset.");
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "Learning progress could not be reset.",
-      );
-    } finally {
-      setResettingProgress(false);
-    }
-  }
-
   async function deleteTutorial() {
     setDeletingTutorial(true);
 
@@ -478,7 +236,7 @@ export function TutorialWorkspace({
       });
 
       if (!response.ok) {
-        throw new Error("The tutorial could not be deleted.");
+        throw new Error("The document could not be deleted.");
       }
 
       realtimeTutor.reset();
@@ -487,68 +245,51 @@ export function TutorialWorkspace({
       showToast(
         error instanceof Error
           ? error.message
-          : "The tutorial could not be deleted.",
+          : "The document could not be deleted.",
       );
     } finally {
       setDeletingTutorial(false);
     }
   }
 
-  function confirmEndSession() {
+  function startTutor() {
+    void realtimeTutor.start();
+  }
+
+  function endSession() {
     realtimeTutor.end();
     setModal(null);
     showToast("Session ended.");
   }
 
-  function startTutor() {
-    setTutorTranscriptExpanded(true);
-    void realtimeTutor.start();
-  }
-
   function renderTutorStatus() {
-    if (sessionEnded) {
-      return <span>Session complete</span>;
-    }
-
     if (realtimeTutor.status === "connecting") {
-      return <strong>Connecting…</strong>;
+      return (
+        <span className="turn-state-copy">
+          <small>Tutor</small>
+          <strong>Connecting…</strong>
+        </span>
+      );
     }
 
     if (realtimeTutor.status === "connected") {
-      if (realtimeTutor.error) {
-        return (
-          <span className="turn-state-copy error">
-            <small>Tutor issue</small>
-            <strong>{realtimeTutor.error}</strong>
-          </span>
-        );
-      }
-
-      if (isUserTurn) {
-        const listeningPrompt = isQuestionTurn
-          ? "Ask your question, then tap the check"
-          : "Speak your answer, then tap the check";
-
+      if (realtimeTutor.isUserTurn) {
         return (
           <span className="turn-state-copy">
             <small className="listening-label">
               <span className="listening-dot" aria-hidden="true" />
               Listening
             </small>
-            <strong>{listeningPrompt}</strong>
+            <strong>Ask about the selected region</strong>
           </span>
         );
       }
 
       if (realtimeTutor.isSubmittingUserTurn) {
-        const submissionLabel = isQuestionTurn
-          ? "Sending your question…"
-          : "Sending your answer…";
-
         return (
           <span className="turn-state-copy">
             <small>Your turn</small>
-            <strong>{submissionLabel}</strong>
+            <strong>Sending your question…</strong>
           </span>
         );
       }
@@ -557,23 +298,12 @@ export function TutorialWorkspace({
         realtimeTutor.isTutorResponding ||
         realtimeTutor.isTutorSpeaking
       ) {
-        const tutorTurnLabel = realtimeTutor.isTutorSpeaking
-          ? "Tutor speaking"
-          : "Tutor thinking";
-
         return (
           <span className="turn-state-copy">
-            <small>{tutorTurnLabel}</small>
-            <strong>{tutorTurnLabel}…</strong>
-          </span>
-        );
-      }
-
-      if (currentLessonStepReady) {
-        return (
-          <span className="turn-state-copy">
-            <small>Step ready</small>
-            <strong>Ask a question or continue when ready</strong>
+            <small>Tutor</small>
+            <strong>
+              {realtimeTutor.isTutorSpeaking ? "Speaking…" : "Thinking…"}
+            </strong>
           </span>
         );
       }
@@ -582,73 +312,45 @@ export function TutorialWorkspace({
         <span className="turn-state-copy">
           <small>Your turn</small>
           <strong>
-            {realtimeTutor.isAwaitingLearnerAnswer
-              ? "Answer when you’re ready"
-              : "Raise your hand to ask a question"}
+            {selection
+              ? `Press ${raiseHandShortcutLabel} to ask`
+              : "Draw a rectangle on the PDF"}
           </strong>
         </span>
       );
-    }
-
-    if (tutorialComplete) {
-      return <strong>Blueprint mastered</strong>;
     }
 
     if (realtimeTutor.status === "error") {
       return (
         <span className="turn-state-copy error">
           <small>Tutor unavailable</small>
-          <strong>
-            {realtimeTutor.error || "The tutor connection failed."}
-          </strong>
+          <strong>{realtimeTutor.error}</strong>
         </span>
       );
     }
 
-    if (activeUnitOutline && !activeUnit) {
-      return <strong>Preparing this learning unit…</strong>;
-    }
-
-    return <strong>Ready to start</strong>;
+    return (
+      <span className="turn-state-copy">
+        <small>Read and ask</small>
+        <strong>
+          {selection ? "Ready to start" : "Select something to discuss"}
+        </strong>
+      </span>
+    );
   }
 
   function renderSessionAction() {
-    if (sessionEnded) {
-      return (
-        <button
-          className="primary-button end-button"
-          type="button"
-          onClick={startTutor}
-          disabled={!activeUnit}
-        >
-          <Play size={20} />
-          {activeUnit ? "New Session" : "Preparing Unit"}
-        </button>
-      );
-    }
-
-    if (
-      realtimeTutor.status === "connected" ||
-      realtimeTutor.status === "connecting"
-    ) {
+    if (sessionActive) {
       return (
         <button
           className="primary-button end-button"
           type="button"
           onClick={() => setModal("end-session")}
         >
-          <LogOut size={21} />
+          <LogOut size={20} />
           End Session
         </button>
       );
-    }
-
-    let actionLabel = "Preparing Unit";
-
-    if (tutorialComplete) {
-      actionLabel = "Complete";
-    } else if (activeUnit) {
-      actionLabel = "Start Tutor";
     }
 
     return (
@@ -656,781 +358,288 @@ export function TutorialWorkspace({
         className="primary-button end-button"
         type="button"
         onClick={startTutor}
-        disabled={!activeUnit}
+        disabled={!documentModel}
       >
         <Play size={20} />
-        {actionLabel}
+        {realtimeTutor.status === "ended" ? "New Session" : "Start Tutor"}
       </button>
     );
   }
 
-  const insightsToggleLabel = insightsVisible
-    ? "Hide insights"
-    : "Show insights";
-  const documentPreparationSummary = activeTutorial
-    ? `${readyUnitCount} of ${activeTutorial.plan.unit_count} units ready · ${activeTutorial.map.concept_count} concepts`
-    : "Waiting for a document";
-  let pageContextSummary = "Waiting for a document";
-
-  if (activeTutorial) {
-    pageContextSummary = `Page ${currentPage}`;
-
-    if (pageContextLoading) {
-      pageContextSummary += " · Loading context";
-    } else if (pageContextError) {
-      pageContextSummary += " · Context unavailable";
-    } else if (pageContext) {
-      const conceptCount = pageContext.current_concepts.length;
-      const conceptLabel = conceptCount === 1 ? "concept" : "concepts";
-      const futureConnectionCount =
-        pageContext.future_connections.length;
-      pageContextSummary +=
-        ` · ${conceptCount} ${conceptLabel} · ${futureConnectionCount} later`;
-    }
-  }
-
-  let learningPathSummary = "Waiting for a document";
-
-  if (activeTutorial) {
-    learningPathSummary =
-      teachingPlan && learningProgress
-        ? `${masteredUnitCount} of ${teachingPlan.units.length} units mastered`
-        : "Learning progress is loading";
-  }
-
-  function renderCurrentConcepts() {
-    if (pageContextLoading) {
-      return <li className="waiting">Loading mapped concepts…</li>;
-    }
-
-    if (pageContextError) {
-      return <li className="context-error">{pageContextError}</li>;
-    }
-
-    if (!pageContext?.current_concepts.length) {
-      return (
-        <li className="waiting">No mapped concept on this page.</li>
-      );
-    }
-
-    return pageContext.current_concepts.map((concept) => (
-      <li key={`${concept.concept_id}:${concept.role}`}>
-        <strong>{concept.name}</strong>
-        <span>
-          {concept.role.replaceAll("_", " ")}
-          {concept.explicitness === "implicit" ? " · implicit" : ""}
-        </span>
-      </li>
-    ));
-  }
-
-  function renderFutureConnections() {
-    if (pageContextLoading) {
-      return <li className="waiting">Loading future connections…</li>;
-    }
-
-    if (pageContextError) {
-      return (
-        <li className="waiting">Future connections are unavailable.</li>
-      );
-    }
-
-    if (!pageContext?.future_connections.length) {
-      return (
-        <li className="waiting">No future connection needed here.</li>
-      );
-    }
-
-    return pageContext.future_connections.map((connection) => (
-      <li
-        key={`${connection.to_concept_id}:${connection.page_index}`}
-      >
-        <strong>{connection.name}</strong>
-        <span>
-          Page {connection.page_label} · {connection.reason}
-        </span>
-      </li>
-    ));
-  }
-
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell">
       <AppHeader
         activeSection="dashboard"
         dashboardHref={`/tutorials/${tutorialId}`}
         onCoursesClick={() =>
-          showToast("Courses are ready for future learning paths.")
+          showToast("Courses are not part of read-and-ask mode.")
         }
         settingsOpen={modal === "settings"}
         onOpenSettings={() => setModal("settings")}
         onShowMessage={showToast}
       />
 
-      <div
-        className={`dashboard-layout${insightsVisible ? "" : " insights-hidden"}`}
-      >
-        <section className="lesson-card" id="lesson" aria-labelledby="lesson-title">
-          <div className="lesson-toolbar">
+      <div className="dashboard-layout">
+        <section className="lesson-card">
+          <header className="lesson-toolbar">
             <div>
-              <FileText size={25} aria-hidden="true" />
-              <h2 id="lesson-title">
-                {activeTutorial?.title ?? "Your tutorial"}
-              </h2>
+              <FileText size={20} aria-hidden="true" />
+              <h2>{activeTutorial?.title ?? "Document reader"}</h2>
             </div>
             <div className="lesson-toolbar-controls">
-              {activeTutorial && (
-                <div className="lesson-actions">
+              <div className="lesson-actions">
+                <button
+                  className="icon-button small"
+                  type="button"
+                  onClick={downloadDocument}
+                  disabled={!activeTutorial}
+                  aria-label="Download PDF"
+                >
+                  <Download size={18} />
+                </button>
+                <button
+                  className="icon-button small"
+                  type="button"
+                  onClick={() => setModal("delete-tutorial")}
+                  disabled={!activeTutorial}
+                  aria-label="Delete document"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+              <NewTutorialButton variant="icon" />
+            </div>
+          </header>
+
+          {documentLoading ? (
+            <DocumentState
+              icon={<Sparkles size={34} />}
+              eyebrow="Preparing reader"
+              title="Loading the document"
+              message="Getting its concepts and page context ready."
+            />
+          ) : documentError ? (
+            <DocumentState
+              icon={<FileText size={34} />}
+              eyebrow="Document unavailable"
+              title="The PDF could not be opened"
+              message={documentError}
+              error
+            />
+          ) : activeTutorial && documentModel ? (
+            <div className="pdf-content">
+              <div className="pdf-page-bar">
+                <div className="pdf-page-controls">
                   <button
                     className="icon-button small"
                     type="button"
-                    onClick={downloadDocument}
-                    aria-label="Download document"
+                    onClick={() => changePage(currentPage - 1)}
+                    disabled={currentPage <= 1}
+                    aria-label="Previous page"
                   >
-                    <Download size={21} />
+                    <ChevronLeft size={17} />
                   </button>
-                  <NewTutorialButton variant="icon" />
+                  <span>
+                    <strong>{currentPage}</strong>
+                    <i>/</i>
+                    {pageCount}
+                  </span>
                   <button
-                    className="icon-button small danger-icon-button"
+                    className="icon-button small"
                     type="button"
-                    onClick={() => setModal("delete-tutorial")}
-                    aria-label="Delete tutorial"
-                    disabled={deletingTutorial}
+                    onClick={() => changePage(currentPage + 1)}
+                    disabled={currentPage >= pageCount}
+                    aria-label="Next page"
                   >
-                    <Trash2 size={20} />
+                    <ChevronRight size={17} />
                   </button>
                 </div>
-              )}
-              <button
-                className="icon-button small insights-toolbar-toggle"
-                type="button"
-                onClick={() => setInsightsVisible((visible) => !visible)}
-                aria-label={insightsToggleLabel}
-                aria-controls="learning-insights"
-                aria-expanded={insightsVisible}
-                title={insightsToggleLabel}
-              >
-                <PanelRight size={19} aria-hidden="true" />
-              </button>
+                <div className="pdf-selection-context">
+                  <ScanText size={15} aria-hidden="true" />
+                  <strong>
+                    {selection
+                      ? "Selection ready—ask your question"
+                      : "Draw a rectangle around anything you want explained"}
+                  </strong>
+                </div>
+              </div>
+              <div className="pdf-stage">
+                <PdfDocumentViewer
+                  documentId={activeTutorial.id}
+                  documentUrl={activeTutorial.url}
+                  documentName={activeTutorial.documentName}
+                  pageIndex={currentPage}
+                  selection={selection}
+                  onSelectionChange={setSelection}
+                />
+              </div>
             </div>
-          </div>
-
-          <div className="document-viewport">
-            {documentLoading ? (
-              <div className="document-state" aria-live="polite">
-                <FileText size={38} aria-hidden="true" />
-                <h1>Loading your document…</h1>
-              </div>
-            ) : activeTutorial ? (
-              <div className="pdf-content">
-                <div className="pdf-page-bar">
-                  <div className="pdf-page-controls">
-                    <button
-                      className="icon-button small"
-                      type="button"
-                      onClick={() =>
-                        setCurrentPage((page) => Math.max(1, page - 1))
-                      }
-                      disabled={currentPage === 1}
-                      aria-label="Previous PDF page"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <span>
-                      <strong>{currentPage}</strong>
-                      <i aria-hidden="true">/</i>
-                      {activeTutorial.map.page_count}
-                    </span>
-                    <button
-                      className="icon-button small"
-                      type="button"
-                      onClick={() =>
-                        setCurrentPage((page) =>
-                          Math.min(
-                            activeTutorial.map.page_count,
-                            page + 1,
-                          ),
-                        )
-                      }
-                      disabled={
-                        currentPage === activeTutorial.map.page_count
-                      }
-                      aria-label="Next PDF page"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </div>
-                  {realtimeTutor.activeVisualGuide?.page_index ===
-                    currentPage && (
-                    <div
-                      className="pdf-visual-guide-context"
-                      aria-live="polite"
-                    >
-                      <small>Now looking at</small>
-                      <strong>
-                        {realtimeTutor.activeVisualGuide.label}
-                      </strong>
-                    </div>
-                  )}
-                </div>
-                <div className="pdf-stage">
-                  <PdfDocumentViewer
-                    documentId={activeTutorial.id}
-                    documentUrl={activeTutorial.url}
-                    documentName={activeTutorial.documentName}
-                    pageIndex={currentPage}
-                    visualGuide={
-                      realtimeTutor.activeVisualGuide?.page_index ===
-                      currentPage
-                        ? realtimeTutor.activeVisualGuide
-                        : null
-                    }
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="document-state">
-                <FileText size={38} aria-hidden="true" />
-                <h1>Tutorial unavailable</h1>
-                <p>
-                  {documentError ||
-                    "This tutorial could not be found or is not fully prepared."}
-                </p>
-                <Link
-                  className="primary-button upload-button"
-                  href="/library"
-                >
-                  Back to Library
-                </Link>
-              </div>
-            )}
-          </div>
-
-          <div className="session-controls">
-            {currentLessonStepReady && currentLessonStep && (
-              <div className="lesson-step-ready" aria-live="polite">
-                <div>
-                  <small>Ready when you are</small>
-                  <p>
-                    Stay here for questions, or continue to{" "}
-                    {isLastLessonStep
-                      ? "finish this learning unit"
-                      : "the next step"}.
-                  </p>
-                </div>
-                <button
-                  className="primary-button lesson-step-next-button"
-                  type="button"
-                  onClick={() => void advanceLessonStep()}
-                  disabled={
-                    isUserTurn ||
-                    realtimeTutor.isSubmittingUserTurn ||
-                    realtimeTutor.isTutorResponding ||
-                    realtimeTutor.isTutorSpeaking
-                  }
-                >
-                  {isLastLessonStep ? "Finish unit" : "Next step"}
-                  <ChevronRight size={18} aria-hidden="true" />
-                </button>
-              </div>
-            )}
-            {tutorQuestion && (
-              <div
-                className="tutor-question"
-                aria-label="Tutor question"
-                aria-live="polite"
-              >
-                <small>Quick check</small>
-                <p>{tutorQuestion}</p>
-              </div>
-            )}
-            <div className={`session-dock${sessionEnded ? " ended" : ""}`}>
-              <button
-                className={`dock-icon${isUserTurn ? " user-turn" : ""}`}
-                type="button"
-                onClick={() => void toggleUserTurn()}
-                aria-label={userTurnActionLabel}
-                aria-pressed={isUserTurn}
-                title={`${userTurnActionLabel} (${raiseHandShortcutLabel})`}
-                disabled={
-                  realtimeTutor.status !== "connected" ||
-                  realtimeTutor.isSubmittingUserTurn
-                }
-              >
-                {isUserTurn ? <Check size={23} /> : <Hand size={23} />}
-              </button>
-              <div className="listening-status" aria-live="polite">
-                {renderTutorStatus()}
-              </div>
-              <button
-                className="dock-icon"
-                type="button"
-                onClick={() => setModal("transcript")}
-                aria-label="View tutor transcript"
-                title="View tutor transcript"
-                disabled={realtimeTutor.tutorTranscripts.length === 0}
-              >
-                <MessageSquareText size={23} />
-              </button>
-              <button
-                className="dock-icon"
-                type="button"
-                onClick={() => setModal("shortcuts")}
-                aria-label="View keyboard shortcuts"
-              >
-                <Keyboard size={24} />
-              </button>
-              {renderSessionAction()}
-            </div>
-          </div>
+          ) : (
+            <DocumentState
+              icon={<FileText size={34} />}
+              eyebrow="No document"
+              title="Choose a PDF to begin"
+              message="Upload a PDF, select a region, and ask questions by voice."
+            />
+          )}
         </section>
 
-        <div className="insights-panel">
-          <aside
-            className="insights-column"
-            id="learning-insights"
-            aria-label="Learning insights"
-          >
-            <TutorTranscriptCard
-              transcript={realtimeTutor.currentTutorTranscript}
-              isActive={tutorSessionActive}
-              isStreaming={
-                realtimeTutor.isTutorResponding ||
-                realtimeTutor.isTutorSpeaking
-              }
-              expanded={isTutorTranscriptExpanded}
-              onToggle={() =>
-                setTutorTranscriptExpanded((expanded) => !expanded)
-              }
-            />
-            <section
-              className={`insight-card understanding-card${
-                documentPreparationExpanded ? "" : " collapsed"
-              }`}
-            >
-              <InsightCardHeader
-                title="Document preparation"
-                icon={
-                  <FileText
-                    size={19}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                  />
-                }
-                expanded={documentPreparationExpanded}
-                contentId="document-preparation-content"
-                onToggle={() =>
-                  setDocumentPreparationExpanded((expanded) => !expanded)
-                }
-                status={
-                  activeTutorial ? (
-                    <span
-                      className="preparation-indicator"
-                      aria-hidden="true"
-                    >
-                      <Check size={15} strokeWidth={2.5} />
-                    </span>
-                  ) : undefined
-                }
-              />
-              <div
-                className="insight-card-content"
-                id="document-preparation-content"
-                hidden={!documentPreparationExpanded}
-              >
-                {activeTutorial ? (
-                  <>
-                    <div className="preparation-status" role="status">
-                      <h3>First unit ready</h3>
-                      <p>
-                        Remaining unit details are being prepared in the
-                        background.
-                      </p>
-                    </div>
-                    <dl className="preparation-metrics">
-                      <div>
-                        <dt>Concepts</dt>
-                        <dd>{activeTutorial.map.concept_count}</dd>
-                      </div>
-                      <div>
-                        <dt>Connections</dt>
-                        <dd>{activeTutorial.map.connection_count}</dd>
-                      </div>
-                      <div>
-                        <dt>Units ready</dt>
-                        <dd>
-                          {readyUnitCount} / {activeTutorial.plan.unit_count}
-                        </dd>
-                      </div>
-                    </dl>
-                  </>
-                ) : (
-                  <div className="preparation-status empty">
-                    <h3>Waiting for a document</h3>
-                    <p>
-                      Upload a PDF to prepare its teaching plan and visual
-                      guidance.
-                    </p>
-                  </div>
-                )}
-              </div>
-              {!documentPreparationExpanded && (
-                <p className="insight-card-summary">
-                  {documentPreparationSummary}
-                </p>
-              )}
-            </section>
-
-            <section
-              className={`insight-card takeaways-card${
-                pageContextExpanded ? "" : " collapsed"
-              }`}
-              id="key-takeaways"
-            >
-              <InsightCardHeader
-                title="Page Context"
-                icon={
-                  <ScanText
-                    size={19}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                  />
-                }
-                expanded={pageContextExpanded}
-                contentId="page-context-content"
-                onToggle={() =>
-                  setPageContextExpanded((expanded) => !expanded)
-                }
-              />
-              <div
-                className="insight-card-content"
-                id="page-context-content"
-                hidden={!pageContextExpanded}
-              >
-                <p className="context-section-label">
-                  Current page · {currentPage}
-                </p>
-                <ul>{renderCurrentConcepts()}</ul>
-                <p className="context-section-label">Useful later</p>
-                <ul className="future-context-list">
-                  {renderFutureConnections()}
-                </ul>
-                <button
-                  className="primary-button analysis-button"
-                  type="button"
-                  onClick={() => setModal("analysis")}
-                  disabled={!activeTutorial}
-                >
-                  View Teaching Blueprint
-                </button>
-              </div>
-              {!pageContextExpanded && (
-                <p className="insight-card-summary">{pageContextSummary}</p>
-              )}
-            </section>
-
-            <section
-              className={`insight-card session-card${
-                learningPathExpanded ? "" : " collapsed"
-              }`}
-              id="session-log"
-            >
-              <InsightCardHeader
-                title="Learning path"
-                icon={
-                  <Route size={19} strokeWidth={2} aria-hidden="true" />
-                }
-                expanded={learningPathExpanded}
-                contentId="learning-path-content"
-                onToggle={() =>
-                  setLearningPathExpanded((expanded) => !expanded)
-                }
-              />
-              <div
-                className="insight-card-content"
-                id="learning-path-content"
-                hidden={!learningPathExpanded}
-              >
-                <LearningPath
-                  key={teachingPlan?.document_id ?? "learning-path"}
-                  plan={teachingPlan}
-                  unitDetails={unitDetails}
-                  generationStatus={generationStatus}
-                  progress={learningProgress}
-                  activeUnitId={activeUnit?.id ?? null}
-                  completedLessonStepIds={
-                    realtimeTutor.completedLessonStepIds
-                  }
-                  readyLessonStepId={realtimeTutor.readyLessonStepId}
-                  tutorSessionActive={tutorSessionActive}
-                />
-                {realtimeTutor.error && (
-                  <p className="tutor-error" role="alert">
-                    {realtimeTutor.error}
-                  </p>
-                )}
-                {activeTutorial && learningProgress && (
-                  <button
-                    className="secondary-button reset-progress-button"
-                    type="button"
-                    onClick={() => setModal("reset-progress")}
-                    disabled={
-                      masteredUnitCount === 0 || tutorSessionActive
-                    }
-                    title={
-                      tutorSessionActive
-                        ? "End the current tutor session before resetting progress."
-                        : undefined
-                    }
-                  >
-                    <RotateCcw size={17} />
-                    Reset progress
-                  </button>
-                )}
-              </div>
-              {!learningPathExpanded && (
-                <p className="insight-card-summary">{learningPathSummary}</p>
-              )}
-            </section>
-          </aside>
-        </div>
-      </div>
-
-      {modal && modal !== "settings" && (
-        <div className="modal-backdrop" role="presentation">
-          <section
-            className={`modal${modal === "analysis" ? " teaching-plan-modal" : ""}${modal === "transcript" ? " transcript-modal" : ""}`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="modal-title"
-          >
-            <button
-              className="modal-close"
-              type="button"
-              onClick={closeModal}
-              aria-label="Close dialog"
-              disabled={modalBusy}
-            >
-              <X size={21} />
-            </button>
-
-            {modal === "analysis" && (
+        <aside className="insights-column" aria-label="Reading context">
+          <section className="insight-card selection-card">
+            <h2>
+              <span className="insight-card-icon">
+                <ScanText size={18} aria-hidden="true" />
+              </span>
+              Active selection
+            </h2>
+            {selection ? (
               <>
-                <div className="modal-icon">
-                  <Sparkles size={23} />
-                </div>
-                <p className="modal-eyebrow">Teaching blueprint</p>
-                <h2 id="modal-title">
-                  {activeTutorial?.map.title ?? "Teaching plan"}
-                </h2>
-                <p className="modal-copy">
-                  A single preparation pass accounted for every PDF page,
-                  mapped its substantial source material, and ordered the
-                  lessons by learning dependency.
+                <strong>Page {pageContext?.current_page.page_label}</strong>
+                <p>
+                  {selection.text ||
+                    "This region has no native PDF text. The tutor will use the image."}
                 </p>
-                <div className="analysis-grid">
-                  <div>
-                    <span>PDF pages</span>
-                    <strong>{activeTutorial?.map.page_count ?? "—"}</strong>
-                  </div>
-                  <div>
-                    <span>Concepts</span>
-                    <strong>{activeTutorial?.map.concept_count ?? "—"}</strong>
-                  </div>
-                  <div>
-                    <span>Teaching units</span>
-                    <strong>
-                      {activeTutorial?.plan.unit_count ?? "—"}
-                    </strong>
-                  </div>
-                </div>
-                <div className="teaching-plan-content">
-                  <TeachingPlanContent
-                    plan={teachingPlan}
-                    unitDetails={unitDetails}
-                    generationStatus={generationStatus}
-                    loading={documentLoading}
-                    error={documentError}
-                  />
-                </div>
                 <button
-                  className="primary-button modal-button"
+                  className="secondary-button clear-selection-button"
                   type="button"
-                  onClick={() => setModal(null)}
+                  onClick={() => setSelection(null)}
                 >
-                  Continue Learning
+                  <X size={16} />
+                  Clear selection
                 </button>
               </>
-            )}
-
-            {modal === "shortcuts" && (
-              <>
-                <div className="modal-icon">
-                  <Keyboard size={23} />
-                </div>
-                <p className="modal-eyebrow">Quick controls</p>
-                <h2 id="modal-title">Keyboard shortcuts</h2>
-                <div className="shortcut-list">
-                  <p>
-                    <span>Raise hand or finish speaking</span>
-                    <kbd>{raiseHandShortcutLabel}</kbd>
-                  </p>
-                  <p>
-                    <span>Open teaching blueprint</span>
-                    <kbd>A</kbd>
-                  </p>
-                  <p>
-                    <span>Open tutor transcript</span>
-                    <kbd>T</kbd>
-                  </p>
-                  <p>
-                    <span>End learning session</span>
-                    <kbd>E</kbd>
-                  </p>
-                </div>
-                <button
-                  className="primary-button modal-button"
-                  type="button"
-                  onClick={() => setModal(null)}
-                >
-                  Got It
-                </button>
-              </>
-            )}
-
-            {modal === "transcript" && (
-              <>
-                <div className="modal-icon">
-                  <MessageSquareText size={23} />
-                </div>
-                <p className="modal-eyebrow">Session transcript</p>
-                <h2 id="modal-title">What the tutor has said</h2>
-                <div className="transcript-content" role="log">
-                  {realtimeTutor.tutorTranscripts.length > 0 ? (
-                    realtimeTutor.tutorTranscripts.map(
-                      (transcript, index) => (
-                        <article key={`${index}:${transcript}`}>
-                          <small>Tutor · turn {index + 1}</small>
-                          <p>{transcript}</p>
-                        </article>
-                      ),
-                    )
-                  ) : (
-                    <p className="transcript-empty">
-                      The tutor has not spoken yet.
-                    </p>
-                  )}
-                </div>
-                <button
-                  className="primary-button modal-button"
-                  type="button"
-                  onClick={() => setModal(null)}
-                >
-                  Continue Learning
-                </button>
-              </>
-            )}
-
-            {modal === "end-session" && (
-              <>
-                <div className="modal-icon danger">
-                  <Pause size={23} />
-                </div>
-                <p className="modal-eyebrow">Session control</p>
-                <h2 id="modal-title">End this learning session?</h2>
-                <p className="modal-copy">
-                  Your learning progress is already saved.
-                </p>
-                <div className="modal-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => setModal(null)}
-                  >
-                    Keep Learning
-                  </button>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={confirmEndSession}
-                  >
-                    <Check size={19} />
-                    End Session
-                  </button>
-                </div>
-              </>
-            )}
-
-            {modal === "delete-tutorial" && (
-              <>
-                <div className="modal-icon danger">
-                  <Trash2 size={23} />
-                </div>
-                <p className="modal-eyebrow">Tutorial management</p>
-                <h2 id="modal-title">Delete this tutorial?</h2>
-                <p className="modal-copy">
-                  <strong>{activeTutorial?.title}</strong> and its source PDF,
-                  teaching materials, and learning progress will be permanently
-                  deleted from this machine.
-                </p>
-                <div className="modal-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => setModal(null)}
-                    disabled={deletingTutorial}
-                  >
-                    Keep Tutorial
-                  </button>
-                  <button
-                    className="primary-button danger-button"
-                    type="button"
-                    onClick={deleteTutorial}
-                    disabled={deletingTutorial}
-                  >
-                    <Trash2 size={19} />
-                    {deletingTutorial ? "Deleting…" : "Delete Tutorial"}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {modal === "reset-progress" && (
-              <>
-                <div className="modal-icon danger">
-                  <RotateCcw size={23} />
-                </div>
-                <p className="modal-eyebrow">Tutorial progress</p>
-                <h2 id="modal-title">Reset learning progress?</h2>
-                <p className="modal-copy">
-                  This resets the entire learning path, clearing{" "}
-                  {masteredUnitCount} mastered{" "}
-                  {masteredUnitCount === 1 ? "unit" : "units"} and all
-                  mastery evidence. The PDF and its prepared teaching
-                  materials will remain available.
-                </p>
-                <div className="modal-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={closeModal}
-                    disabled={resettingProgress}
-                  >
-                    Keep Progress
-                  </button>
-                  <button
-                    className="primary-button danger-button"
-                    type="button"
-                    onClick={resetProgress}
-                    disabled={resettingProgress}
-                  >
-                    <RotateCcw size={19} />
-                    {resettingProgress ? "Resetting…" : "Reset Progress"}
-                  </button>
-                </div>
-              </>
+            ) : (
+              <p className="selection-placeholder">
+                Draw a rectangle over a paragraph, formula, table, or diagram.
+              </p>
             )}
           </section>
+
+          <section className="insight-card context-card">
+            <h2>
+              <span className="insight-card-icon">
+                <Sparkles size={18} aria-hidden="true" />
+              </span>
+              Page context
+            </h2>
+            <p className="context-section-label">Concepts on this page</p>
+            <ul>
+              {pageContext?.current_concepts.length ? (
+                pageContext.current_concepts.map((concept) => (
+                  <li key={concept.concept_id}>
+                    <strong>{concept.name}</strong>
+                    <span>{concept.role.replaceAll("_", " ")}</span>
+                  </li>
+                ))
+              ) : (
+                <li className="waiting">No mapped concepts on this page.</li>
+              )}
+            </ul>
+            <p className="context-section-label">Related pages</p>
+            <ul>
+              {pageContext?.related_pages.length ? (
+                pageContext.related_pages.map((relatedPage) => (
+                  <li
+                    key={`${relatedPage.page_index}:${relatedPage.concept_name}`}
+                  >
+                    <strong>
+                      Page {relatedPage.page_label} ·{" "}
+                      {relatedPage.concept_name}
+                    </strong>
+                    <span>{relatedPage.reason}</span>
+                  </li>
+                ))
+              ) : (
+                <li className="waiting">No related page is needed here.</li>
+              )}
+            </ul>
+          </section>
+
+          <TutorTranscriptCard
+            transcript={realtimeTutor.currentTutorTranscript}
+            history={realtimeTutor.tutorTranscripts}
+            isStreaming={
+              realtimeTutor.isTutorResponding ||
+              realtimeTutor.isTutorSpeaking
+            }
+            onOpen={() => setModal("transcript")}
+          />
+        </aside>
+      </div>
+
+      {activeTutorial && (
+        <div className="session-controls">
+          <div className="session-dock">
+            <button
+              className={`icon-button dock-icon${
+                realtimeTutor.isUserTurn ? " user-turn" : ""
+              }`}
+              type="button"
+              onClick={() => void toggleUserTurn()}
+              disabled={
+                realtimeTutor.status !== "connected" ||
+                realtimeTutor.isSubmittingUserTurn ||
+                !selection
+              }
+              aria-label={
+                realtimeTutor.isUserTurn
+                  ? "Finish asking"
+                  : "Ask about the selection"
+              }
+            >
+              {realtimeTutor.isUserTurn ? (
+                <Check size={22} />
+              ) : (
+                <Hand size={22} />
+              )}
+            </button>
+            <div className="listening-status">{renderTutorStatus()}</div>
+            <button
+              className="icon-button dock-icon"
+              type="button"
+              onClick={() => setModal("transcript")}
+              disabled={realtimeTutor.tutorTranscripts.length === 0}
+              aria-label="Open transcript"
+            >
+              <MessageSquareText size={21} />
+            </button>
+            <span className="session-dock-spacer" aria-hidden="true" />
+            {renderSessionAction()}
+          </div>
         </div>
+      )}
+
+      {modal === "transcript" && (
+        <TranscriptModal
+          transcripts={realtimeTutor.tutorTranscripts}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {modal === "end-session" && (
+        <ConfirmationModal
+          eyebrow="Read-and-ask session"
+          title="End this tutor session?"
+          message="Your PDF will remain available. The current voice conversation will end."
+          confirmLabel="End Session"
+          icon={<LogOut size={23} />}
+          onCancel={() => setModal(null)}
+          onConfirm={endSession}
+        />
+      )}
+
+      {modal === "delete-tutorial" && (
+        <ConfirmationModal
+          eyebrow="Document management"
+          title="Delete this document?"
+          message="The source PDF and its prepared document model will be permanently deleted from this machine."
+          confirmLabel={deletingTutorial ? "Deleting…" : "Delete Document"}
+          icon={<Trash2 size={23} />}
+          destructive
+          busy={deletingTutorial}
+          onCancel={() => setModal(null)}
+          onConfirm={() => void deleteTutorial()}
+        />
       )}
 
       {modal === "settings" && (
@@ -1457,543 +666,183 @@ export function TutorialWorkspace({
   );
 }
 
+function DocumentState({
+  icon,
+  eyebrow,
+  title,
+  message,
+  error = false,
+}: {
+  icon: ReactNode;
+  eyebrow: string;
+  title: string;
+  message: string;
+  error?: boolean;
+}) {
+  return (
+    <div className="document-state">
+      <span className="document-state-icon">{icon}</span>
+      <p className="document-state-eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p className={error ? "document-error" : undefined}>{message}</p>
+      <Link className="secondary-button upload-button" href="/library">
+        Back to library
+      </Link>
+    </div>
+  );
+}
+
 function TutorTranscriptCard({
   transcript,
-  isActive,
+  history,
   isStreaming,
-  expanded,
-  onToggle,
+  onOpen,
 }: {
   transcript: string;
-  isActive: boolean;
+  history: string[];
   isStreaming: boolean;
-  expanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const [hasNewTextBelow, setHasNewTextBelow] = useState(false);
-  let status = "Inactive";
-
-  if (isActive) {
-    status = isStreaming ? "Live" : "Current turn";
-  }
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-
-    if (!viewport) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      if (!transcript) {
-        viewport.scrollTop = 0;
-      }
-
-      setHasNewTextBelow(
-        Boolean(transcript) && hasScrollableContentBelow(viewport),
-      );
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [transcript]);
-
-  function handleScroll() {
-    const viewport = viewportRef.current;
-
-    if (viewport) {
-      setHasNewTextBelow(hasScrollableContentBelow(viewport));
-    }
-  }
-
-  function showNewestText() {
-    const viewport = viewportRef.current;
-
-    if (!viewport) {
-      return;
-    }
-
-    viewport.scrollTo({
-      top: viewport.scrollHeight,
-      behavior: "smooth",
-    });
-  }
+  const latestTranscript = transcript || history.at(-1) || "";
 
   return (
-    <section
-      className={`insight-card live-transcript-card${
-        expanded ? "" : " collapsed"
-      }`}
-      aria-label="Tutor transcript"
-    >
-      <InsightCardHeader
-        title="Tutor transcript"
-        icon={<MessageSquareText size={18} aria-hidden="true" />}
-        status={
-          <span
-            className={`live-transcript-status${
-              isStreaming ? " streaming" : ""
-            }`}
-          >
-            {status}
-          </span>
-        }
-        expanded={expanded}
-        contentId="live-transcript-content"
-        onToggle={onToggle}
-        disabled={!isActive}
-      />
-      <div
-        className="live-transcript-canvas"
-        id="live-transcript-content"
-        hidden={!expanded}
+    <section className="insight-card compact-transcript-card">
+      <h2>
+        <span className="insight-card-icon">
+          <MessageSquareText size={18} aria-hidden="true" />
+        </span>
+        Tutor response
+      </h2>
+      <p className={latestTranscript ? undefined : "selection-placeholder"}>
+        {latestTranscript ||
+          (isStreaming
+            ? "The tutor is preparing a response…"
+            : "The tutor’s response will appear here.")}
+      </p>
+      <button
+        className="secondary-button transcript-open-button"
+        type="button"
+        onClick={onOpen}
+        disabled={history.length === 0}
       >
-        <div
-          ref={viewportRef}
-          className="live-transcript-viewport"
-          onScroll={handleScroll}
-          aria-label="Current tutor response"
-          role="region"
-          tabIndex={0}
-        >
-          {transcript ? (
-            <p>{transcript}</p>
-          ) : (
-            <p className="live-transcript-placeholder">
-              {isStreaming
-                ? "The tutor is preparing a response…"
-                : "The tutor’s next response will appear here."}
-            </p>
-          )}
-        </div>
-        {hasNewTextBelow && (
-          <button
-            className="new-transcript-text-button"
-            type="button"
-            onClick={showNewestText}
-          >
-            New text below
-            <ArrowDown size={14} aria-hidden="true" />
-          </button>
-        )}
-      </div>
+        Open transcript
+      </button>
     </section>
   );
 }
 
-function hasScrollableContentBelow(element: HTMLElement) {
-  return (
-    element.scrollHeight - element.scrollTop - element.clientHeight > 1
-  );
-}
-
-function InsightCardHeader({
-  title,
-  icon,
-  status,
-  expanded,
-  contentId,
-  onToggle,
-  disabled = false,
+function TranscriptModal({
+  transcripts,
+  onClose,
 }: {
-  title: string;
-  icon?: ReactNode;
-  status?: ReactNode;
-  expanded: boolean;
-  contentId: string;
-  onToggle: () => void;
-  disabled?: boolean;
+  transcripts: string[];
+  onClose: () => void;
 }) {
   return (
-    <h2 className="insight-card-header">
-      <button
-        className="insight-card-toggle"
-        type="button"
-        onClick={onToggle}
-        aria-controls={contentId}
-        aria-expanded={expanded}
-        disabled={disabled}
+    <div className="modal-backdrop">
+      <section
+        className="modal transcript-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transcript-title"
       >
-        <span className="insight-card-title">
-          {icon && <span className="insight-card-icon">{icon}</span>}
-          <span>{title}</span>
-        </span>
-        <span className="insight-card-controls">
-          {status}
-          <ChevronRight
-            className="insight-card-chevron"
-            size={17}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-    </h2>
-  );
-}
-
-function LearningPath({
-  plan,
-  unitDetails,
-  generationStatus,
-  progress,
-  activeUnitId,
-  completedLessonStepIds,
-  readyLessonStepId,
-  tutorSessionActive,
-}: {
-  plan: TeachingPlan | null;
-  unitDetails: TeachingUnitDetailsById;
-  generationStatus: TutorialGenerationStatus | null;
-  progress: LearningProgress | null;
-  activeUnitId: string | null;
-  completedLessonStepIds: string[];
-  readyLessonStepId: string | null;
-  tutorSessionActive: boolean;
-}) {
-  const [expandedUnitIds, setExpandedUnitIds] = useState(
-    () => new Set(activeUnitId ? [activeUnitId] : []),
-  );
-  const previousActiveUnitIdRef = useRef(activeUnitId);
-
-  useEffect(() => {
-    const previousActiveUnitId = previousActiveUnitIdRef.current;
-
-    if (previousActiveUnitId === activeUnitId) {
-      return;
-    }
-
-    setExpandedUnitIds((expandedIds) => {
-      const nextExpandedIds = new Set(expandedIds);
-
-      if (previousActiveUnitId) {
-        nextExpandedIds.delete(previousActiveUnitId);
-      }
-
-      if (activeUnitId) {
-        nextExpandedIds.add(activeUnitId);
-      }
-
-      return nextExpandedIds;
-    });
-    previousActiveUnitIdRef.current = activeUnitId;
-  }, [activeUnitId]);
-
-  if (!plan || !progress) {
-    return <p className="learning-path-status">Learning progress is loading.</p>;
-  }
-
-  const masteredUnitIds = new Set(
-    Object.keys(progress.unit_progress),
-  );
-  const completedStepIds = new Set(completedLessonStepIds);
-  const masteredCount = masteredUnitIds.size;
-  const activeUnit = plan.units.find(
-    (unit) => unit.id === activeUnitId,
-  );
-
-  function toggleUnit(unitId: string) {
-    setExpandedUnitIds((expandedIds) => {
-      const nextExpandedIds = new Set(expandedIds);
-
-      if (nextExpandedIds.has(unitId)) {
-        nextExpandedIds.delete(unitId);
-      } else {
-        nextExpandedIds.add(unitId);
-      }
-
-      return nextExpandedIds;
-    });
-  }
-
-  return (
-    <>
-      <div className="learning-path-summary">
-        <strong>
-          {activeUnit?.title ?? "Teaching blueprint mastered"}
-        </strong>
-        <span>
-          {masteredCount} of {plan.units.length} units mastered
-        </span>
-      </div>
-      <ol className="learning-path-list">
-        {plan.units.map((unit, unitIndex) => {
-          const isMastered = masteredUnitIds.has(unit.id);
-          const isActive = unit.id === activeUnitId;
-          const isInProgress = isActive && tutorSessionActive;
-          const unitReady = Boolean(unitDetails[unit.id]);
-          const generationState =
-            generationStatus?.unit_status[unit.id];
-          let unitStatus = "upcoming";
-          let unitStatusLabel = "Preparing";
-
-          if (generationState === "failed") {
-            unitStatusLabel = "Preparation failed";
-          } else if (unitReady) {
-            unitStatusLabel = "Upcoming";
-          }
-
-          if (isMastered) {
-            unitStatus = "mastered";
-            unitStatusLabel = "Mastered";
-          } else if (isActive) {
-            unitStatus = "active";
-
-            if (isInProgress) {
-              unitStatusLabel = "In progress";
-            } else if (unitReady) {
-              unitStatusLabel = "Ready";
-            }
-          }
-
-          const isExpanded = expandedUnitIds.has(unit.id);
-          const stepListId = `learning-path-unit-${unitIndex}`;
-          const currentStepId = isInProgress
-            ? unit.lesson_steps.find(
-                (step) => !completedStepIds.has(step.id),
-              )?.id
-            : null;
-
-          return (
-            <li
-              className={`learning-path-unit ${unitStatus}`}
-              key={unit.id}
-            >
-              <button
-                className="learning-path-unit-toggle"
-                type="button"
-                onClick={() => toggleUnit(unit.id)}
-                aria-controls={stepListId}
-                aria-expanded={isExpanded}
-              >
-                <span
-                  className="learning-path-unit-marker"
-                  aria-hidden="true"
-                >
-                  {isMastered ? (
-                    <Check size={15} strokeWidth={2.7} />
-                  ) : (
-                    unitIndex + 1
-                  )}
-                </span>
-                <span className="learning-path-unit-copy">
-                  <strong>{unit.title}</strong>
-                  <small>
-                    {unitStatusLabel} · {unit.lesson_steps.length} steps
-                  </small>
-                </span>
-                <ChevronRight
-                  className="learning-path-chevron"
-                  size={17}
-                  aria-hidden="true"
-                />
-              </button>
-              {isExpanded && (
-                <div className="learning-path-unit-steps" id={stepListId}>
-                  <ol>
-                    {unit.lesson_steps.map((step) => {
-                      let stepStatus = "upcoming";
-                      let stepStatusLabel = "Upcoming";
-
-                      if (isMastered || completedStepIds.has(step.id)) {
-                        stepStatus = "covered";
-                        stepStatusLabel = "Covered";
-                      } else if (step.id === currentStepId) {
-                        stepStatus = "current";
-                        stepStatusLabel =
-                          step.id === readyLessonStepId
-                            ? "Ready"
-                            : "Current";
-                      }
-
-                      return (
-                        <li
-                          className={`learning-path-step ${stepStatus}`}
-                          key={step.id}
-                          aria-current={
-                            stepStatus === "current"
-                              ? "step"
-                              : undefined
-                          }
-                        >
-                          <span
-                            className="learning-path-step-marker"
-                            aria-hidden="true"
-                          >
-                            {stepStatus === "covered" && (
-                              <Check size={12} strokeWidth={2.8} />
-                            )}
-                          </span>
-                          <span className="learning-path-step-copy">
-                            <small>
-                              {formatLessonStepKind(step.kind)}
-                            </small>
-                            <strong>{step.title}</strong>
-                          </span>
-                          <small className="learning-path-step-status">
-                            {stepStatusLabel}
-                          </small>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </>
-  );
-}
-
-function TeachingPlanContent({
-  plan,
-  unitDetails,
-  generationStatus,
-  loading,
-  error,
-}: {
-  plan: TeachingPlan | null;
-  unitDetails: TeachingUnitDetailsById;
-  generationStatus: TutorialGenerationStatus | null;
-  loading: boolean;
-  error: string;
-}) {
-  if (loading) {
-    return <p className="teaching-plan-status">Loading teaching units…</p>;
-  }
-
-  if (error) {
-    return (
-      <p className="modal-error" role="alert">
-        {error}
-      </p>
-    );
-  }
-
-  if (!plan) {
-    return (
-      <p className="teaching-plan-status">
-        No teaching blueprint is available.
-      </p>
-    );
-  }
-
-  const unitTitlesById = new Map(
-    plan.units.map((unit) => [unit.id, unit.title]),
-  );
-
-  return (
-    <ol className="teaching-plan-list">
-      {plan.units.map((unit, index) => (
-        <TeachingUnitCard
-          key={unit.id}
-          plan={plan}
-          unit={unit}
-          details={unitDetails[unit.id] ?? null}
-          generationState={generationStatus?.unit_status[unit.id] ?? null}
-          index={index}
-          unitTitlesById={unitTitlesById}
-        />
-      ))}
-    </ol>
-  );
-}
-
-function TeachingUnitCard({
-  plan,
-  unit,
-  details,
-  generationState,
-  index,
-  unitTitlesById,
-}: {
-  plan: TeachingPlan;
-  unit: TeachingUnitOutline;
-  details: TeachingUnitDetails | null;
-  generationState: TeachingUnitGenerationState | null;
-  index: number;
-  unitTitlesById: ReadonlyMap<string, string>;
-}) {
-  const sourceChunks = getTeachingUnitSourceChunks(plan, unit);
-  const sourcePageLabels = Array.from(
-    new Set(sourceChunks.map((chunk) => chunk.page_label)),
-  ).join(", ");
-  const conceptIds = getTeachingUnitConceptIds(plan, unit);
-  const prerequisiteTitles = unit.prerequisite_unit_ids.length
-    ? unit.prerequisite_unit_ids
-        .map((id) => unitTitlesById.get(id) ?? id)
-        .join(", ")
-    : "None";
-  const lessonStepDetails = new Map(
-    details?.lesson_steps.map((step) => [step.id, step]) ?? [],
-  );
-
-  return (
-    <li className="teaching-unit">
-      <div className="teaching-unit-heading">
-        <span>{index + 1}</span>
-        <div>
-          <h3>{unit.title}</h3>
-          <small>
-            {conceptIds.map(formatConceptId).join(" · ")}
-          </small>
+        <button
+          className="modal-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Close transcript"
+        >
+          <X size={22} />
+        </button>
+        <div className="modal-icon">
+          <MessageSquareText size={23} />
         </div>
-      </div>
-      <p className="teaching-unit-objective">{unit.objective}</p>
-      <dl className="teaching-unit-meta">
-        <div>
-          <dt>Pages</dt>
-          <dd>{sourcePageLabels}</dd>
-        </div>
-        <div>
-          <dt>Prerequisites</dt>
-          <dd>{prerequisiteTitles}</dd>
-        </div>
-      </dl>
-      <div className="teaching-unit-details">
-        <section>
-          <h4>Lesson outline</h4>
-          {!details && (
-            <p>
-              {generationState === "failed"
-                ? "Detailed lesson preparation failed."
-                : "Detailed lesson content is being prepared."}
-            </p>
+        <p className="modal-eyebrow">Tutor conversation</p>
+        <h2 id="transcript-title">Transcript</h2>
+        <div className="transcript-content">
+          {transcripts.length ? (
+            transcripts.map((transcript, index) => (
+              <article key={`${index}:${transcript.slice(0, 24)}`}>
+                <small>Tutor response {index + 1}</small>
+                <p>{transcript}</p>
+              </article>
+            ))
+          ) : (
+            <p className="transcript-empty">No tutor response yet.</p>
           )}
-          <ol className="teaching-unit-steps">
-            {unit.lesson_steps.map((step) => {
-              const stepDetails = lessonStepDetails.get(step.id);
+        </div>
+      </section>
+    </div>
+  );
+}
 
-              return (
-                <li key={step.id}>
-                  <strong>
-                    {formatLessonStepKind(step.kind)} · {step.title}
-                  </strong>
-                  {stepDetails && <p>{stepDetails.content}</p>}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-        {details && (
-          <section>
-            <h4>Mastery criteria</h4>
-            <ul>
-              {details.mastery_criteria.map((criterion) => (
-                <li key={criterion}>{criterion}</li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
-      {details && details.common_difficulties.length > 0 && (
-        <p className="teaching-unit-difficulties">
-          <strong>Common difficulties:</strong>{" "}
-          {details.common_difficulties.join(" ")}
-        </p>
-      )}
-    </li>
+function ConfirmationModal({
+  eyebrow,
+  title,
+  message,
+  confirmLabel,
+  icon,
+  destructive = false,
+  busy = false,
+  onCancel,
+  onConfirm,
+}: {
+  eyebrow: string;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  icon: ReactNode;
+  destructive?: boolean;
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <section
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-title"
+      >
+        <button
+          className="modal-close"
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          aria-label="Close dialog"
+        >
+          <X size={22} />
+        </button>
+        <div className={`modal-icon${destructive ? " danger" : ""}`}>
+          {icon}
+        </div>
+        <p className="modal-eyebrow">{eyebrow}</p>
+        <h2 id="confirmation-title">{title}</h2>
+        <p className="modal-copy">{message}</p>
+        <div className="modal-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            className={`primary-button${
+              destructive ? " danger-button" : ""
+            }`}
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {icon}
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -2004,68 +853,12 @@ async function readTutorialData(
   const response = await fetch(`/api/tutorials/${tutorialId}`, { signal });
   const data = (await response.json()) as TutorialDataResponse;
 
-  if (
-    !response.ok ||
-    !data.tutorial ||
-    !data.plan ||
-    !data.model ||
-    !data.unitDetails ||
-    !data.generationStatus ||
-    !data.progress
-  ) {
-    throw new Error(data.message ?? "The tutorial could not be loaded.");
+  if (!response.ok || !data.tutorial || !data.model) {
+    throw new Error(data.message ?? "The document could not be loaded.");
   }
 
   return {
     tutorial: data.tutorial,
-    plan: data.plan,
     model: data.model,
-    unitDetails: data.unitDetails,
-    generationStatus: data.generationStatus,
-    progress: data.progress,
   };
-}
-
-function formatConceptId(conceptId: string) {
-  return conceptId.replace("concept:", "").replaceAll("-", " ");
-}
-
-function formatLessonStepKind(kind: string) {
-  return kind.charAt(0).toUpperCase() + kind.slice(1);
-}
-
-function getInitialUnitPageIndex(
-  plan: TeachingPlan,
-  unit: TeachingUnitOutline,
-) {
-  const firstVisualChunkId = unit.lesson_steps.find(
-    (step) => step.visual_source_chunk_id !== null,
-  )?.visual_source_chunk_id;
-  const firstVisualChunk = firstVisualChunkId
-    ? findTeachingSourceChunk(plan, firstVisualChunkId)
-    : null;
-  const firstSourceChunk = getTeachingUnitSourceChunks(plan, unit)[0];
-
-  return (
-    firstVisualChunk?.page_index ??
-    firstSourceChunk?.page_index ??
-    plan.page_coverage.find((page) => page.disposition === "teach")
-      ?.page_index ??
-    1
-  );
-}
-
-function getLatestTutorQuestion(transcript: string) {
-  const sentences =
-    transcript
-      .replace(/\s+/g, " ")
-      .trim()
-      .match(/[^.!?]+(?:[.!?]+["'’”)\]]*|$)/g) ?? [];
-
-  return (
-    sentences
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => /\?["'’”)\]]*$/.test(sentence))
-      .at(-1) ?? ""
-  );
 }

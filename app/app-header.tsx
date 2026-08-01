@@ -75,7 +75,7 @@ export function AppHeader({
             className="nav-link"
             type="button"
             disabled
-            title="Choose or create a tutorial to open the dashboard"
+            title="Choose or add a document to open the reader"
           >
             Dashboard
           </button>

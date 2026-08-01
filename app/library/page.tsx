@@ -49,7 +49,7 @@ export default function LibraryPage() {
         };
 
         if (!response.ok || !data.tutorials) {
-          throw new Error(data.message ?? "Your tutorials could not be loaded.");
+          throw new Error(data.message ?? "Your documents could not be loaded.");
         }
 
         setTutorials(data.tutorials);
@@ -88,7 +88,7 @@ export default function LibraryPage() {
       );
 
       if (!response.ok) {
-        throw new Error("The tutorial could not be deleted.");
+        throw new Error("The document could not be deleted.");
       }
 
       setTutorials((currentTutorials) =>
@@ -97,12 +97,12 @@ export default function LibraryPage() {
         ),
       );
       setTutorialToDelete(null);
-      showToast("Tutorial deleted.");
+      showToast("Document deleted.");
     } catch (reason) {
       showToast(
         reason instanceof Error
           ? reason.message
-          : "The tutorial could not be deleted.",
+          : "The document could not be deleted.",
       );
     } finally {
       setDeleting(false);
@@ -127,7 +127,7 @@ export default function LibraryPage() {
           <header className="library-heading">
             <div>
               <h1 id="library-title">Library</h1>
-              <p>Your guided tutorials and learning progress.</p>
+              <p>Your documents, ready to read and discuss.</p>
             </div>
             {tutorials.length > 0 && <NewTutorialButton />}
           </header>
@@ -135,7 +135,7 @@ export default function LibraryPage() {
           {loading ? (
             <div className="library-state" aria-live="polite">
               <LibraryBig size={34} aria-hidden="true" />
-              <h2>Loading your tutorials…</h2>
+              <h2>Loading your documents…</h2>
             </div>
           ) : error ? (
             <div className="library-state">
@@ -148,80 +148,62 @@ export default function LibraryPage() {
               <span className="library-state-icon">
                 <BookOpen size={28} aria-hidden="true" />
               </span>
-              <h2>No tutorials yet</h2>
-              <p>Choose a PDF and we’ll turn it into a guided tutorial.</p>
+              <h2>No documents yet</h2>
+              <p>Choose a PDF, select any region, and ask questions by voice.</p>
               <NewTutorialButton />
             </div>
           ) : (
             <div className="tutorial-grid">
-              {tutorials.map((tutorial) => {
-                const progress =
-                  tutorial.masteredUnitCount / tutorial.plan.unit_count;
-
-                return (
-                  <article className="tutorial-card" key={tutorial.id}>
-                    <Link
-                      className="tutorial-card-content"
-                      href={`/tutorials/${tutorial.id}`}
-                    >
-                      <div className="tutorial-card-heading">
-                        <span className="tutorial-file-icon">
-                          <FileText size={22} aria-hidden="true" />
-                        </span>
-                        <span className="tutorial-card-status">
-                          {tutorial.masteredUnitCount ===
-                          tutorial.plan.unit_count
-                            ? "Complete"
-                            : "In progress"}
-                        </span>
+              {tutorials.map((tutorial) => (
+                <article className="tutorial-card" key={tutorial.id}>
+                  <Link
+                    className="tutorial-card-content"
+                    href={`/tutorials/${tutorial.id}`}
+                  >
+                    <div className="tutorial-card-heading">
+                      <span className="tutorial-file-icon">
+                        <FileText size={22} aria-hidden="true" />
+                      </span>
+                      <span className="tutorial-card-status">
+                        Ready to read
+                      </span>
+                    </div>
+                    <h2>{tutorial.title}</h2>
+                    <p className="tutorial-document-name">
+                      {tutorial.documentName}
+                    </p>
+                    <dl className="tutorial-metrics">
+                      <div>
+                        <dt>Pages</dt>
+                        <dd>{tutorial.map.page_count}</dd>
                       </div>
-                      <h2>{tutorial.title}</h2>
-                      <p className="tutorial-document-name">
-                        {tutorial.documentName}
-                      </p>
-                      <dl className="tutorial-metrics">
-                        <div>
-                          <dt>Pages</dt>
-                          <dd>{tutorial.map.page_count}</dd>
-                        </div>
-                        <div>
-                          <dt>Concepts</dt>
-                          <dd>{tutorial.map.concept_count}</dd>
-                        </div>
-                        <div>
-                          <dt>Progress</dt>
-                          <dd>
-                            {tutorial.masteredUnitCount}/
-                            {tutorial.plan.unit_count}
-                          </dd>
-                        </div>
-                      </dl>
-                      <div className="tutorial-progress">
-                        <span
-                          style={{
-                            width: `${Math.round(progress * 100)}%`,
-                          }}
-                        />
+                      <div>
+                        <dt>Concepts</dt>
+                        <dd>{tutorial.map.concept_count}</dd>
                       </div>
-                      <div className="tutorial-card-footer">
-                        <span>{formatUpdatedAt(tutorial.updatedAt)}</span>
-                        <strong>
-                          Continue
-                          <ArrowRight size={15} aria-hidden="true" />
-                        </strong>
+                      <div>
+                        <dt>Connections</dt>
+                        <dd>{tutorial.map.connection_count}</dd>
                       </div>
-                    </Link>
-                    <button
-                      className="tutorial-delete-button"
-                      type="button"
-                      onClick={() => setTutorialToDelete(tutorial)}
-                      aria-label={`Delete ${tutorial.title}`}
-                    >
-                      <Trash2 size={17} />
-                    </button>
-                  </article>
-                );
-              })}
+                    </dl>
+                    <div className="tutorial-card-footer">
+                      <span>{formatUpdatedAt(tutorial.createdAt)}</span>
+                      <strong>
+                        Open
+                        <ArrowRight size={15} aria-hidden="true" />
+                      </strong>
+                    </div>
+                  </Link>
+                  <button
+                    className="tutorial-delete-button"
+                    type="button"
+                    onClick={() => setTutorialToDelete(tutorial)}
+                    aria-label={`Delete ${tutorial.title}`}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </article>
+              ))}
             </div>
           )}
         </section>
@@ -254,12 +236,12 @@ export default function LibraryPage() {
             <div className="modal-icon danger">
               <Trash2 size={23} />
             </div>
-            <p className="modal-eyebrow">Tutorial management</p>
-            <h2 id="delete-tutorial-title">Delete this tutorial?</h2>
+            <p className="modal-eyebrow">Document management</p>
+            <h2 id="delete-tutorial-title">Delete this document?</h2>
             <p className="modal-copy">
               <strong>{tutorialToDelete.title}</strong> and its source PDF,
-              teaching materials, and learning progress will be permanently
-              deleted from this machine.
+              document model, and reading context will be permanently deleted
+              from this machine.
             </p>
             <div className="modal-actions">
               <button
@@ -268,7 +250,7 @@ export default function LibraryPage() {
                 onClick={() => setTutorialToDelete(null)}
                 disabled={deleting}
               >
-                Keep Tutorial
+                Keep Document
               </button>
               <button
                 className="primary-button danger-button"
@@ -277,7 +259,7 @@ export default function LibraryPage() {
                 disabled={deleting}
               >
                 <Trash2 size={19} />
-                {deleting ? "Deleting…" : "Delete Tutorial"}
+                {deleting ? "Deleting…" : "Delete Document"}
               </button>
             </div>
           </section>
