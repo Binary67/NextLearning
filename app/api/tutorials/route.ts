@@ -7,6 +7,7 @@ import {
   saveTutorial,
 } from "@/lib/document-storage";
 import { createLearningProgress } from "@/lib/learning-progress";
+import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
   listPreparedTutorials,
   type TutorialResponse,
@@ -66,6 +67,18 @@ export async function POST(request: Request) {
 
   const tutorialId = randomUUID();
   const fileData = Buffer.from(await file.arrayBuffer());
+  let sourcePageCount: number;
+
+  try {
+    sourcePageCount = await readPdfPageCount(fileData);
+  } catch (error) {
+    console.error("PDF validation failed:", error);
+    return Response.json(
+      { message: "The PDF could not be read." },
+      { status: 400 },
+    );
+  }
+
   const encoder = new TextEncoder();
   let finishInitialPreparation!: (prepared: boolean) => void;
   const initialPreparation = new Promise<boolean>((resolve) => {
@@ -86,6 +99,7 @@ export async function POST(request: Request) {
           fileData,
           file.name,
           tutorialId,
+          sourcePageCount,
         );
 
         send({ type: "progress", stage: "saving" });
