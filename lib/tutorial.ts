@@ -27,17 +27,30 @@ export type TutorialResponse = {
 
 export async function listPreparedTutorials() {
   const tutorialIds = await listStoredTutorialIds();
-  const tutorials = await Promise.all(
+  const tutorialResults = await Promise.allSettled(
     tutorialIds.map((tutorialId) => readPreparedTutorial(tutorialId)),
   );
+  const tutorials: PreparedTutorial[] = [];
 
-  return tutorials
-    .filter((tutorial): tutorial is PreparedTutorial => tutorial !== null)
-    .sort(
-      (left, right) =>
-        Date.parse(right.tutorial.createdAt) -
-        Date.parse(left.tutorial.createdAt),
-    );
+  for (const [index, result] of tutorialResults.entries()) {
+    if (result.status === "rejected") {
+      console.error(
+        `Stored tutorial ${tutorialIds[index]} could not be loaded:`,
+        result.reason,
+      );
+      continue;
+    }
+
+    if (result.value) {
+      tutorials.push(result.value);
+    }
+  }
+
+  return tutorials.sort(
+    (left, right) =>
+      Date.parse(right.tutorial.createdAt) -
+      Date.parse(left.tutorial.createdAt),
+  );
 }
 
 export async function readPreparedTutorial(
