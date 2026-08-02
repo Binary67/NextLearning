@@ -1,7 +1,6 @@
 "use client";
 
 import { FileText, Sparkles, Upload, X } from "lucide-react";
-import { useRouter } from "next/navigation";
 import {
   type ChangeEvent,
   useEffect,
@@ -13,100 +12,36 @@ import type { TutorialResponse } from "@/lib/tutorial";
 
 type NewTutorialButtonProps = {
   variant?: "primary" | "icon";
+  onQueued: (tutorial: TutorialResponse) => void;
 };
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
-const ANALYSIS_LABEL_INTERVAL_MS = 6000;
-const ANALYSIS_LABELS = [
-  "Reviewing page content",
-  "Organizing document sections",
-  "Identifying key concepts",
-  "Mapping concept references",
-  "Connecting related ideas",
-  "Preparing selection context",
-  "Finalizing the document map",
-] as const;
-const PREPARATION_STATUS = {
-  uploading: {
-    label: "Uploading PDF",
-    description: "Sending your document for preparation.",
-  },
-  analyzing: {
-    label: ANALYSIS_LABELS[0],
-    description: "Preparing the document for selection-based questions.",
-  },
-  saving: {
-    label: "Finalizing and saving",
-    description: "Saving the PDF and its document model.",
-  },
-} as const;
-
-type PreparationStage = keyof typeof PREPARATION_STATUS;
-
-type PreparationEvent =
-  | {
-      type: "progress";
-      stage: Exclude<PreparationStage, "uploading">;
-    }
-  | {
-      type: "complete";
-      tutorial: TutorialResponse;
-    }
-  | {
-      type: "error";
-      message: string;
-    };
 
 export function NewTutorialButton({
   variant = "primary",
+  onQueued,
 }: NewTutorialButtonProps) {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [preparationStage, setPreparationStage] =
-    useState<PreparationStage | null>(null);
-  const [analysisLabelIndex, setAnalysisLabelIndex] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const preparing = preparationStage !== null;
   const pendingFileIsValid =
     pendingFile !== null &&
     isPdf(pendingFile) &&
     pendingFile.size <= MAX_PDF_SIZE;
-  const preparationStatus = preparationStage
-    ? PREPARATION_STATUS[preparationStage]
-    : null;
-  const preparationLabel =
-    preparationStage === "analyzing"
-      ? ANALYSIS_LABELS[analysisLabelIndex]
-      : preparationStatus?.label;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && pendingFile && !preparing) {
+      if (event.key === "Escape" && pendingFile && !uploading) {
         setPendingFile(null);
-        setPreparationStage(null);
         setError("");
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pendingFile, preparing]);
-
-  useEffect(() => {
-    if (preparationStage !== "analyzing") {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setAnalysisLabelIndex(
-        (currentIndex) => (currentIndex + 1) % ANALYSIS_LABELS.length,
-      );
-    }, ANALYSIS_LABEL_INTERVAL_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [preparationStage]);
+  }, [pendingFile, uploading]);
 
   function selectDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -117,7 +52,6 @@ export function NewTutorialButton({
     }
 
     setPendingFile(file);
-    setPreparationStage(null);
 
     if (!isPdf(file)) {
       setError("Only PDF files are supported.");
@@ -137,8 +71,7 @@ export function NewTutorialButton({
       return;
     }
 
-    setAnalysisLabelIndex(0);
-    setPreparationStage("uploading");
+    setUploading(true);
     setError("");
 
     try {
@@ -149,16 +82,17 @@ export function NewTutorialButton({
         body: formData,
       });
 
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
+      const data = (await response.json()) as {
+        tutorial?: TutorialResponse;
+        message?: string;
+      };
+
+      if (!response.ok || !data.tutorial) {
         throw new Error(data.message ?? "The document could not be prepared.");
       }
 
-      const tutorial = await readPreparedDocument(
-        response,
-        setPreparationStage,
-      );
-      router.push(`/tutorials/${tutorial.id}`);
+      onQueued(data.tutorial);
+      closeModal();
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -166,13 +100,12 @@ export function NewTutorialButton({
           : "The document could not be prepared.",
       );
     } finally {
-      setPreparationStage(null);
+      setUploading(false);
     }
   }
 
   function closeModal() {
     setPendingFile(null);
-    setPreparationStage(null);
     setError("");
   }
 
@@ -216,7 +149,7 @@ export function NewTutorialButton({
             aria-modal="true"
             aria-labelledby="new-tutorial-title"
           >
-            {!preparing && (
+            {!uploading && (
               <button
                 className="modal-close"
                 type="button"
@@ -227,11 +160,11 @@ export function NewTutorialButton({
               </button>
             )}
             <div className="modal-icon">
-              {preparing ? <Sparkles size={23} /> : <Upload size={23} />}
+              {uploading ? <Sparkles size={23} /> : <Upload size={23} />}
             </div>
             <p className="modal-eyebrow">New document</p>
             <h2 id="new-tutorial-title">
-              {preparing ? "Preparing your document" : "Prepare this PDF?"}
+              {uploading ? "Adding your document" : "Prepare this PDF?"}
             </h2>
             <div className="pending-file">
               <FileText size={23} aria-hidden="true" />
@@ -240,7 +173,7 @@ export function NewTutorialButton({
                 <small>{formatFileSize(pendingFile.size)}</small>
               </span>
             </div>
-            {preparationStatus ? (
+            {uploading ? (
               <div
                 className="document-preparation-progress"
                 aria-live="polite"
@@ -248,11 +181,10 @@ export function NewTutorialButton({
                 <div
                   className="document-preparation-track"
                   role="progressbar"
-                  aria-label="Document preparation progress"
+                  aria-label="Document upload progress"
                 />
-                <h3>{preparationLabel}</h3>
-                <p>{preparationStatus.description}</p>
-                <small>Preparation can take a few minutes.</small>
+                <h3>Uploading PDF</h3>
+                <p>Saving your document and adding it to the queue.</p>
               </div>
             ) : (
               <p className="modal-copy">
@@ -265,7 +197,7 @@ export function NewTutorialButton({
                 {error}
               </p>
             )}
-            {!preparing && (
+            {!uploading && (
               <div className="modal-actions">
                 <button
                   className="secondary-button"
@@ -290,53 +222,6 @@ export function NewTutorialButton({
       )}
     </>
   );
-}
-
-async function readPreparedDocument(
-  response: Response,
-  onProgress: (stage: PreparationStage) => void,
-) {
-  if (!response.body) {
-    throw new Error("The document could not be prepared.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let tutorial: TutorialResponse | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line) {
-        continue;
-      }
-
-      const event = JSON.parse(line) as PreparationEvent;
-
-      if (event.type === "progress") {
-        onProgress(event.stage);
-      } else if (event.type === "error") {
-        throw new Error(event.message);
-      } else {
-        tutorial = event.tutorial;
-      }
-    }
-
-    if (done) {
-      break;
-    }
-  }
-
-  if (!tutorial) {
-    throw new Error("The document could not be prepared.");
-  }
-
-  return tutorial;
 }
 
 function formatFileSize(bytes: number) {

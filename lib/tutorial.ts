@@ -6,10 +6,11 @@ import {
 } from "@/lib/document-model";
 import {
   hasDocumentEmbeddings,
-  listStoredTutorialIds,
+  listStoredTutorials,
   readDocumentModel,
   readStoredTutorial,
   type StoredTutorial,
+  type TutorialStatus,
 } from "@/lib/document-storage";
 
 export type PreparedTutorial = {
@@ -23,34 +24,45 @@ export type TutorialResponse = {
   documentName: string;
   url: string;
   createdAt: string;
-  map: DocumentMapSummary;
+  status: TutorialStatus;
+  error: string | null;
+  map: DocumentMapSummary | null;
 };
 
-export async function listPreparedTutorials() {
-  const tutorialIds = await listStoredTutorialIds();
+export async function listTutorials() {
+  const storedTutorials = await listStoredTutorials();
   const tutorialResults = await Promise.allSettled(
-    tutorialIds.map((tutorialId) => readPreparedTutorial(tutorialId)),
+    storedTutorials.map(async (tutorial) => {
+      if (tutorial.status !== "ready") {
+        return toTutorialResponse(tutorial);
+      }
+
+      const prepared = await readPreparedTutorial(tutorial.id);
+
+      if (!prepared) {
+        throw new Error("The prepared tutorial data is incomplete.");
+      }
+
+      return toTutorialResponse(prepared.tutorial, prepared.model);
+    }),
   );
-  const tutorials: PreparedTutorial[] = [];
+  const tutorials: TutorialResponse[] = [];
 
   for (const [index, result] of tutorialResults.entries()) {
     if (result.status === "rejected") {
       console.error(
-        `Stored tutorial ${tutorialIds[index]} could not be loaded:`,
+        `Stored tutorial ${storedTutorials[index].id} could not be loaded:`,
         result.reason,
       );
       continue;
     }
 
-    if (result.value) {
-      tutorials.push(result.value);
-    }
+    tutorials.push(result.value);
   }
 
   return tutorials.sort(
     (left, right) =>
-      Date.parse(right.tutorial.createdAt) -
-      Date.parse(left.tutorial.createdAt),
+      Date.parse(right.createdAt) - Date.parse(left.createdAt),
   );
 }
 
@@ -63,7 +75,12 @@ export async function readPreparedTutorial(
     hasDocumentEmbeddings(tutorialId),
   ]);
 
-  if (!tutorial || !storedModel || !embeddingsAvailable) {
+  if (
+    !tutorial ||
+    tutorial.status !== "ready" ||
+    !storedModel ||
+    !embeddingsAvailable
+  ) {
     return null;
   }
 
@@ -78,16 +95,17 @@ export async function readPreparedTutorial(
 }
 
 export function toTutorialResponse(
-  prepared: PreparedTutorial,
+  tutorial: StoredTutorial,
+  model?: DocumentModel,
 ): TutorialResponse {
-  const { tutorial, model } = prepared;
-
   return {
     id: tutorial.id,
     title: tutorial.title,
     documentName: tutorial.documentName,
     url: `/api/tutorials/${tutorial.id}/file`,
     createdAt: tutorial.createdAt,
-    map: summarizeDocumentModel(model),
+    status: tutorial.status,
+    error: tutorial.error,
+    map: model ? summarizeDocumentModel(model) : null,
   };
 }

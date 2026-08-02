@@ -1,41 +1,33 @@
 import { randomUUID } from "node:crypto";
+import { after } from "next/server";
 
-import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
-import { generateDocumentEmbeddings } from "@/lib/document-embeddings";
 import {
+  createQueuedTutorial,
   MAX_DOCUMENT_SIZE,
-  saveTutorial,
 } from "@/lib/document-storage";
 import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
-  listPreparedTutorials,
+  listTutorials,
   toTutorialResponse,
-  type TutorialResponse,
 } from "@/lib/tutorial";
-import { generateDocumentModel } from "@/lib/tutorial-generation";
+import { runTutorialQueue } from "@/lib/tutorial-queue";
 
 export const runtime = "nodejs";
 
-type TutorialPreparationEvent =
-  | {
-      type: "progress";
-      stage: "analyzing" | "saving";
-    }
-  | {
-      type: "complete";
-      tutorial: TutorialResponse;
-    }
-  | {
-      type: "error";
-      message: string;
-    };
-
 export async function GET() {
-  const tutorials = await listPreparedTutorials();
+  const tutorials = await listTutorials();
 
-  return Response.json({
-    tutorials: tutorials.map(toTutorialResponse),
-  });
+  if (
+    tutorials.some(
+      (tutorial) =>
+        tutorial.status === "queued" ||
+        tutorial.status === "processing",
+    )
+  ) {
+    after(runTutorialQueue);
+  }
+
+  return Response.json({ tutorials });
 }
 
 export async function POST(request: Request) {
@@ -77,59 +69,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (event: TutorialPreparationEvent) => {
-        controller.enqueue(
-          encoder.encode(`${JSON.stringify(event)}\n`),
-        );
-      };
+  const tutorial = await createQueuedTutorial(
+    file.name,
+    fileData,
+    tutorialId,
+    sourcePageCount,
+  );
+  after(runTutorialQueue);
 
-      try {
-        send({ type: "progress", stage: "analyzing" });
-        const model = await generateDocumentModel(
-          fileData,
-          file.name,
-          tutorialId,
-          sourcePageCount,
-        );
-        const embeddings = await generateDocumentEmbeddings(model);
-
-        send({ type: "progress", stage: "saving" });
-        const tutorial = await saveTutorial(
-          file.name,
-          fileData,
-          tutorialId,
-          model,
-          embeddings,
-        );
-
-        send({
-          type: "complete",
-          tutorial: toTutorialResponse({ tutorial, model }),
-        });
-      } catch (error) {
-        console.error("Document preparation failed:", error);
-        send({
-          type: "error",
-          message:
-            error instanceof MissingAzureOpenAIConfigurationError
-              ? "Document preparation is not configured. Check the server settings."
-              : "The document could not be prepared. Try again.",
-        });
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Cache-Control": "no-cache, no-transform",
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-    },
-  });
+  return Response.json(
+    { tutorial: toTutorialResponse(tutorial) },
+    { status: 202 },
+  );
 }
 
 function isPdf(file: File) {

@@ -34,6 +34,7 @@ export async function readAzureOpenAIResponseStream<
       response.status,
       result.error,
       fallbackMessage,
+      response.headers,
     );
   }
 

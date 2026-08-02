@@ -277,6 +277,7 @@ async function requestEmbeddingBatch(
       response.status,
       result.error,
       fallbackMessage,
+      response.headers,
     );
   }
 

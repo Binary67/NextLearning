@@ -423,7 +423,12 @@ export function TutorialWorkspace({
                   <Trash2 size={18} />
                 </button>
               </div>
-              <NewTutorialButton variant="icon" />
+              <NewTutorialButton
+                variant="icon"
+                onQueued={() =>
+                  showToast("Document added to the preparation queue.")
+                }
+              />
             </div>
           </header>
 

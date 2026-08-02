@@ -151,6 +151,23 @@ a:focus-visible {
   gap: 10px;
 }
 
+.queue-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+  font-size: 0.7rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.queue-indicator svg {
+  animation: queue-indicator-spin 1s linear infinite;
+}
+
 .icon-button,
 .dock-icon,
 .modal-close {
@@ -1397,6 +1414,21 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.tutorial-card-status.queued {
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--blue-deep);
+}
+
+.tutorial-card-status.processing {
+  background: rgba(175, 104, 0, 0.11);
+  color: #945d08;
+}
+
+.tutorial-card-status.failed {
+  background: rgba(192, 57, 43, 0.1);
+  color: #a6342a;
+}
+
 .tutorial-card h2 {
   display: -webkit-box;
   overflow: hidden;
@@ -1449,6 +1481,22 @@ a:focus-visible {
   font-weight: 650;
 }
 
+.tutorial-preparation-state {
+  display: flex;
+  min-height: 63px;
+  align-items: center;
+  padding: 18px 0;
+  margin-top: 22px;
+  border-top: 1px solid var(--hairline);
+}
+
+.tutorial-preparation-state p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .tutorial-card-footer {
   margin-top: 18px;
   color: var(--muted);
@@ -1459,6 +1507,19 @@ a:focus-visible {
   gap: 5px;
   color: var(--blue-deep);
   font-size: 0.78rem;
+}
+
+.tutorial-retry-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue-deep);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .tutorial-delete-button {
@@ -1539,6 +1600,12 @@ a:focus-visible {
 
   to {
     transform: translateX(240%);
+  }
+}
+
+@keyframes queue-indicator-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1689,6 +1756,10 @@ a:focus-visible {
 
   .header-actions {
     gap: 1px;
+  }
+
+  .queue-indicator > span {
+    display: none;
   }
 
   .nav-link {

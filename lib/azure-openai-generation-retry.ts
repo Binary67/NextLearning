@@ -8,6 +8,15 @@ export class MissingAzureOpenAIConfigurationError extends Error {}
 
 export class RetryableAzureOpenAIError extends Error {}
 
+export class RateLimitedAzureOpenAIError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterMilliseconds: number | null,
+  ) {
+    super(message);
+  }
+}
+
 export class InvalidAzureOpenAIContentError extends Error {
   constructor(message: string, cause: unknown) {
     super(message, { cause });
@@ -29,6 +38,34 @@ export async function retryAzureOpenAIGeneration<T>(
   }
 
   return generate();
+}
+
+const MAX_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_RATE_LIMIT_DELAY_MS = 1000;
+
+export async function retryAzureOpenAIRateLimits<T>(
+  generate: () => Promise<T>,
+): Promise<T> {
+  let retryCount = 0;
+
+  while (true) {
+    try {
+      return await generate();
+    } catch (error) {
+      if (
+        !(error instanceof RateLimitedAzureOpenAIError) ||
+        retryCount === MAX_RATE_LIMIT_RETRIES
+      ) {
+        throw error;
+      }
+
+      const delay =
+        error.retryAfterMilliseconds ??
+        DEFAULT_RATE_LIMIT_DELAY_MS * 2 ** retryCount;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      retryCount += 1;
+    }
+  }
 }
 
 export function readAzureOpenAIGenerationConfiguration() {
@@ -71,8 +108,16 @@ export function createAzureOpenAIResponseError(
   status: number,
   error: AzureOpenAIErrorDetails | undefined,
   fallbackMessage: string,
+  headers?: Headers,
 ) {
   const message = error?.message ?? fallbackMessage;
+
+  if (status === 429) {
+    return new RateLimitedAzureOpenAIError(
+      message,
+      readRetryAfterMilliseconds(headers),
+    );
+  }
 
   if (
     status >= 500 ||
@@ -84,4 +129,35 @@ export function createAzureOpenAIResponseError(
   }
 
   return new Error(message);
+}
+
+function readRetryAfterMilliseconds(headers?: Headers) {
+  if (!headers) {
+    return null;
+  }
+
+  const millisecondsHeader = headers.get("retry-after-ms");
+
+  if (millisecondsHeader !== null) {
+    const milliseconds = Number(millisecondsHeader);
+
+    if (Number.isFinite(milliseconds) && milliseconds >= 0) {
+      return milliseconds;
+    }
+  }
+
+  const retryAfter = headers.get("retry-after");
+
+  if (!retryAfter) {
+    return null;
+  }
+
+  const seconds = Number(retryAfter);
+
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const retryAt = Date.parse(retryAfter);
+  return Number.isNaN(retryAt) ? null : Math.max(0, retryAt - Date.now());
 }

@@ -7,11 +7,21 @@ import type { DocumentModel } from "@/lib/document-model";
 
 export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
 
+export type TutorialStatus =
+  | "queued"
+  | "processing"
+  | "ready"
+  | "failed";
+
 export type StoredTutorial = {
   id: string;
   title: string;
   documentName: string;
   createdAt: string;
+  updatedAt: string;
+  sourcePageCount: number;
+  status: TutorialStatus;
+  error: string | null;
 };
 
 const tutorialsDirectory = path.join(process.cwd(), "data", "tutorials");
@@ -42,6 +52,20 @@ export async function listStoredTutorialIds() {
 
     throw error;
   }
+}
+
+export async function listStoredTutorials() {
+  const tutorialIds = await listStoredTutorialIds();
+  const tutorials = await Promise.all(
+    tutorialIds.map((tutorialId) => readStoredTutorial(tutorialId)),
+  );
+
+  return tutorials
+    .filter((tutorial): tutorial is StoredTutorial => tutorial !== null)
+    .sort(
+      (left, right) =>
+        Date.parse(left.createdAt) - Date.parse(right.createdAt),
+    );
 }
 
 export async function readStoredTutorial(
@@ -106,38 +130,71 @@ export async function deleteStoredTutorial(tutorialId: string) {
   return true;
 }
 
-export async function saveTutorial(
+export async function createQueuedTutorial(
   documentName: string,
   fileData: Buffer,
   tutorialId: string,
-  model: DocumentModel,
-  embeddings: DocumentEmbeddings,
+  sourcePageCount: number,
 ): Promise<StoredTutorial> {
+  const createdAt = new Date().toISOString();
   const tutorial: StoredTutorial = {
     id: tutorialId,
-    title: model.title,
+    title: documentName.replace(/\.pdf$/i, ""),
     documentName,
-    createdAt: new Date().toISOString(),
+    createdAt,
+    updatedAt: createdAt,
+    sourcePageCount,
+    status: "queued",
+    error: null,
   };
 
   await fs.mkdir(tutorialDirectory(tutorialId), { recursive: true });
+  await fs.writeFile(
+    tutorialFilePath(tutorialId, documentFileName),
+    fileData,
+  );
+  await writeStoredTutorial(tutorial);
+
+  return tutorial;
+}
+
+export async function updateStoredTutorial(
+  tutorial: StoredTutorial,
+  updates: Partial<
+    Pick<StoredTutorial, "error" | "status" | "title">
+  >,
+) {
+  const updatedTutorial: StoredTutorial = {
+    ...tutorial,
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writeStoredTutorial(updatedTutorial);
+  return updatedTutorial;
+}
+
+export async function savePreparedTutorial(
+  tutorial: StoredTutorial,
+  model: DocumentModel,
+  embeddings: DocumentEmbeddings,
+): Promise<StoredTutorial> {
   await Promise.all([
-    fs.writeFile(tutorialFilePath(tutorialId, documentFileName), fileData),
     writeJsonFileAtomically(
-      tutorialFilePath(tutorialId, documentModelFileName),
+      tutorialFilePath(tutorial.id, documentModelFileName),
       model,
     ),
     writeJsonFileAtomically(
-      tutorialFilePath(tutorialId, documentEmbeddingsFileName),
+      tutorialFilePath(tutorial.id, documentEmbeddingsFileName),
       embeddings,
-    ),
-    writeJsonFileAtomically(
-      tutorialFilePath(tutorialId, tutorialMetadataFileName),
-      tutorial,
     ),
   ]);
 
-  return tutorial;
+  return updateStoredTutorial(tutorial, {
+    title: model.title,
+    status: "ready",
+    error: null,
+  });
 }
 
 function tutorialDirectory(tutorialId: string) {
@@ -146,6 +203,13 @@ function tutorialDirectory(tutorialId: string) {
 
 function tutorialFilePath(tutorialId: string, fileName: string) {
   return path.join(tutorialDirectory(tutorialId), fileName);
+}
+
+function writeStoredTutorial(tutorial: StoredTutorial) {
+  return writeJsonFileAtomically(
+    tutorialFilePath(tutorial.id, tutorialMetadataFileName),
+    tutorial,
+  );
 }
 
 async function writeJsonFileAtomically(
