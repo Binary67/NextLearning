@@ -9,7 +9,11 @@ import {
   useState,
 } from "react";
 
-import type { TutorialResponse } from "@/lib/tutorial";
+import {
+  countActiveTutorials,
+  getTutorialTransitionMessage,
+  type TutorialStatusItem,
+} from "@/lib/tutorial-status";
 
 type AppSection = "library" | "dashboard";
 const QUEUE_REFRESH_INTERVAL_MS = 3000;
@@ -20,12 +24,14 @@ export function AppHeader({
   settingsOpen,
   onOpenSettings,
   onShowMessage,
+  tutorialStatuses,
 }: {
   activeSection: AppSection;
   dashboardHref: string | null;
   settingsOpen: boolean;
   onOpenSettings: () => void;
   onShowMessage: (message: string) => void;
+  tutorialStatuses?: readonly TutorialStatusItem[];
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -89,7 +95,10 @@ export function AppHeader({
       </nav>
 
       <div className="header-actions">
-        <TutorialQueueIndicator onShowMessage={onShowMessage} />
+        <TutorialQueueIndicator
+          onShowMessage={onShowMessage}
+          tutorialStatuses={tutorialStatuses}
+        />
         <button
           className="icon-button"
           type="button"
@@ -143,45 +152,63 @@ export function AppHeader({
 
 function TutorialQueueIndicator({
   onShowMessage,
+  tutorialStatuses,
 }: {
   onShowMessage: (message: string) => void;
+  tutorialStatuses?: readonly TutorialStatusItem[];
 }) {
-  const [queuedCount, setQueuedCount] = useState(0);
-  const [processingCount, setProcessingCount] = useState(0);
+  const [fetchedStatuses, setFetchedStatuses] = useState<
+    TutorialStatusItem[]
+  >([]);
   const previousStatusesRef = useRef<Map<
     string,
-    TutorialResponse["status"]
+    TutorialStatusItem["status"]
   > | null>(null);
-  const showMessage = useEffectEvent(onShowMessage);
+  const statusesProvided = tutorialStatuses !== undefined;
+  const statuses = tutorialStatuses ?? fetchedStatuses;
+  const counts = countActiveTutorials(statuses);
+  const updateNotificationHistory = useEffectEvent(
+    (tutorials: readonly TutorialStatusItem[]) => {
+      const message = getTutorialTransitionMessage(
+        previousStatusesRef.current,
+        tutorials,
+      );
+      previousStatusesRef.current = new Map(
+        tutorials.map((tutorial) => [
+          tutorial.id,
+          tutorial.status,
+        ]),
+      );
+
+      if (message) {
+        onShowMessage(message);
+      }
+    },
+  );
 
   useEffect(() => {
+    updateNotificationHistory(statuses);
+  }, [statuses]);
+
+  useEffect(() => {
+    if (statusesProvided) {
+      return;
+    }
+
     const controller = new AbortController();
     let refreshTimeout: number | undefined;
 
     async function loadQueueStatus() {
       try {
-        const response = await fetch("/api/tutorials", {
+        const response = await fetch("/api/tutorials/status", {
           signal: controller.signal,
         });
         const data = (await response.json()) as {
-          tutorials?: TutorialResponse[];
+          tutorials?: TutorialStatusItem[];
         };
 
         if (response.ok && data.tutorials) {
-          showCompletedTutorialMessage(
-            previousStatusesRef.current,
-            data.tutorials,
-            showMessage,
-          );
-          previousStatusesRef.current = new Map(
-            data.tutorials.map((tutorial) => [
-              tutorial.id,
-              tutorial.status,
-            ]),
-          );
-          const counts = countActiveTutorials(data.tutorials);
-          setQueuedCount(counts.queued);
-          setProcessingCount(counts.processing);
+          setFetchedStatuses(data.tutorials);
         }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
@@ -202,13 +229,13 @@ function TutorialQueueIndicator({
       controller.abort();
       window.clearTimeout(refreshTimeout);
     };
-  }, []);
+  }, [statusesProvided]);
 
-  if (queuedCount === 0 && processingCount === 0) {
+  if (counts.queued === 0 && counts.processing === 0) {
     return null;
   }
 
-  const label = formatQueueStatus(queuedCount, processingCount);
+  const label = formatQueueStatus(counts.queued, counts.processing);
 
   return (
     <span
@@ -219,53 +246,6 @@ function TutorialQueueIndicator({
       <LoaderCircle size={15} aria-hidden="true" />
       <span>{label}</span>
     </span>
-  );
-}
-
-function countActiveTutorials(tutorials: TutorialResponse[]) {
-  let queued = 0;
-  let processing = 0;
-
-  for (const tutorial of tutorials) {
-    if (tutorial.status === "queued") {
-      queued += 1;
-    } else if (tutorial.status === "processing") {
-      processing += 1;
-    }
-  }
-
-  return { queued, processing };
-}
-
-function showCompletedTutorialMessage(
-  previousStatuses: Map<string, TutorialResponse["status"]> | null,
-  tutorials: TutorialResponse[],
-  showMessage: (message: string) => void,
-) {
-  if (!previousStatuses) {
-    return;
-  }
-
-  const completedTutorials = tutorials.filter((tutorial) => {
-    const previousStatus = previousStatuses.get(tutorial.id);
-
-    return (
-      (previousStatus === "queued" || previousStatus === "processing") &&
-      (tutorial.status === "ready" || tutorial.status === "failed")
-    );
-  });
-
-  if (completedTutorials.length === 0) {
-    return;
-  }
-
-  const failed = completedTutorials.some(
-    (tutorial) => tutorial.status === "failed",
-  );
-  showMessage(
-    failed
-      ? "A document could not be prepared. Open the library to retry."
-      : "Your document is ready to open.",
   );
 }
 

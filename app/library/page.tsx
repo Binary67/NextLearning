@@ -10,12 +10,18 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { AppHeader } from "@/app/app-header";
 import { LearningSettingsDialog } from "@/app/learning-settings";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import type { TutorialResponse } from "@/lib/tutorial";
+import { hasActiveTutorials } from "@/lib/tutorial-status";
 
 const updatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
@@ -33,19 +39,25 @@ export default function LibraryPage() {
   const [tutorialToDelete, setTutorialToDelete] =
     useState<TutorialResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const refreshControllerRef = useRef<AbortController | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const latestReadyTutorial = tutorials.find(
     (tutorial) => tutorial.status === "ready",
   );
   const dashboardHref = latestReadyTutorial
     ? `/tutorials/${latestReadyTutorial.id}`
     : null;
+  const shouldPoll = hasActiveTutorials(tutorials);
 
-  useEffect(() => {
+  const loadTutorials = useCallback((initialLoad = false) => {
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
+
     const controller = new AbortController();
-    let refreshTimeout: number | undefined;
-    let initialLoad = true;
+    refreshControllerRef.current = controller;
 
-    async function loadTutorials() {
+    async function refresh() {
       try {
         const response = await fetch("/api/tutorials", {
           signal: controller.signal,
@@ -74,23 +86,60 @@ export default function LibraryPage() {
           setLoading(false);
         }
 
-        initialLoad = false;
-
-        if (!controller.signal.aborted) {
-          refreshTimeout = window.setTimeout(
-            loadTutorials,
-            LIBRARY_REFRESH_INTERVAL_MS,
-          );
+        if (refreshControllerRef.current === controller) {
+          refreshControllerRef.current = null;
+          refreshInFlightRef.current = null;
         }
       }
     }
 
-    loadTutorials();
+    const refreshPromise = refresh();
+    refreshInFlightRef.current = refreshPromise;
+
+    return refreshPromise;
+  }, []);
+
+  useEffect(() => {
+    function refreshOnFocus() {
+      void loadTutorials();
+    }
+
+    void loadTutorials(true);
+    window.addEventListener("focus", refreshOnFocus);
+
     return () => {
-      controller.abort();
+      window.removeEventListener("focus", refreshOnFocus);
+      refreshControllerRef.current?.abort();
+    };
+  }, [loadTutorials]);
+
+  useEffect(() => {
+    if (!shouldPoll) {
+      return;
+    }
+
+    let refreshTimeout = window.setTimeout(
+      pollTutorials,
+      LIBRARY_REFRESH_INTERVAL_MS,
+    );
+    let cancelled = false;
+
+    function pollTutorials() {
+      void loadTutorials().finally(() => {
+        if (!cancelled) {
+          refreshTimeout = window.setTimeout(
+            pollTutorials,
+            LIBRARY_REFRESH_INTERVAL_MS,
+          );
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
       window.clearTimeout(refreshTimeout);
     };
-  }, []);
+  }, [loadTutorials, shouldPoll]);
 
   function showToast(message: string) {
     setToast(message);
@@ -183,6 +232,7 @@ export default function LibraryPage() {
         settingsOpen={settingsOpen}
         onOpenSettings={() => setSettingsOpen(true)}
         onShowMessage={showToast}
+        tutorialStatuses={tutorials}
       />
 
       <main className="library-main">

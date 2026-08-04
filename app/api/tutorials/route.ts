@@ -14,6 +14,7 @@ import {
   listTutorials,
   toTutorialResponse,
 } from "@/lib/tutorial";
+import { hasActiveTutorials } from "@/lib/tutorial-status";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
 
 export const runtime = "nodejs";
@@ -23,13 +24,7 @@ const MAX_MULTIPART_REQUEST_SIZE = 11 * 1024 * 1024;
 export async function GET() {
   const tutorials = await listTutorials();
 
-  if (
-    tutorials.some(
-      (tutorial) =>
-        tutorial.status === "queued" ||
-        tutorial.status === "processing",
-    )
-  ) {
+  if (hasActiveTutorials(tutorials)) {
     after(runTutorialQueue);
   }
 
