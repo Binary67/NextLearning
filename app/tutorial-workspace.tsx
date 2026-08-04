@@ -138,7 +138,8 @@ export function TutorialWorkspace({
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.isUserTurn ||
-    realtimeTutor.isSubmittingUserTurn;
+    realtimeTutor.isSubmittingUserTurn ||
+    realtimeTutor.isReplayingTutorAudio;
   const pageCount = documentModel?.page_count ?? 0;
   const guidedProgress =
     realtimeTutor.guidedSegmentProgress?.pageIndex === currentPage
@@ -148,7 +149,8 @@ export function TutorialWorkspace({
     realtimeTutor.isTutorResponding ||
     realtimeTutor.isTutorSpeaking ||
     realtimeTutor.isUserTurn ||
-    realtimeTutor.isSubmittingUserTurn;
+    realtimeTutor.isSubmittingUserTurn ||
+    realtimeTutor.isReplayingTutorAudio;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -380,6 +382,15 @@ export function TutorialWorkspace({
         );
       }
 
+      if (realtimeTutor.isReplayingTutorAudio) {
+        return (
+          <span className="turn-state-copy">
+            <small>{modeLabel} · Replay</small>
+            <strong>Replaying tutor audio…</strong>
+          </span>
+        );
+      }
+
       if (
         realtimeTutor.isTutorResponding ||
         realtimeTutor.isTutorSpeaking
@@ -588,8 +599,15 @@ export function TutorialWorkspace({
                   }
                   connected={realtimeTutor.status === "connected"}
                   busy={guidedTurnBusy}
+                  canReplayAudio={realtimeTutor.canReplayTutorAudio}
+                  isReplayingAudio={
+                    realtimeTutor.isReplayingTutorAudio
+                  }
                   hasNextPage={currentPage < pageCount}
                   onContinue={continueGuided}
+                  onReplayAudio={() => {
+                    void realtimeTutor.replayTutorAudio();
+                  }}
                   onOpenTranscript={() => setModal("transcript")}
                 />
               ) : (
@@ -878,8 +896,11 @@ function GuidedLessonView({
   isStreaming,
   connected,
   busy,
+  canReplayAudio,
+  isReplayingAudio,
   hasNextPage,
   onContinue,
+  onReplayAudio,
   onOpenTranscript,
 }: {
   progress: GuidedSegmentProgress | null;
@@ -888,8 +909,11 @@ function GuidedLessonView({
   isStreaming: boolean;
   connected: boolean;
   busy: boolean;
+  canReplayAudio: boolean;
+  isReplayingAudio: boolean;
   hasNextPage: boolean;
   onContinue: () => void;
+  onReplayAudio: () => void;
   onOpenTranscript: () => void;
 }) {
   const latestTranscript =
@@ -953,14 +977,27 @@ function GuidedLessonView({
                   : "The tutor’s explanation will appear here.")}
             </p>
           </div>
-          <button
-            className="secondary-button guided-transcript-button"
-            type="button"
-            onClick={onOpenTranscript}
-            disabled={history.length === 0}
-          >
-            Open full transcript
-          </button>
+          <div className="guided-explanation-actions">
+            <button
+              className="secondary-button guided-replay-button"
+              type="button"
+              onClick={onReplayAudio}
+              disabled={
+                !canReplayAudio || isStreaming || isReplayingAudio
+              }
+            >
+              <Play size={15} aria-hidden="true" />
+              {isReplayingAudio ? "Replaying…" : "Replay audio"}
+            </button>
+            <button
+              className="secondary-button guided-transcript-button"
+              type="button"
+              onClick={onOpenTranscript}
+              disabled={history.length === 0}
+            >
+              Open full transcript
+            </button>
+          </div>
         </section>
       </div>
 

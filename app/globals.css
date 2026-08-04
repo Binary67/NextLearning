@@ -808,11 +808,18 @@ a:focus-visible {
   font-style: italic;
 }
 
+.guided-explanation-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-top: 18px;
+}
+
+.guided-replay-button,
 .guided-transcript-button {
   width: 100%;
   min-height: 40px;
-  flex: 0 0 auto;
-  margin-top: 18px;
   font-size: 0.8rem;
 }
 

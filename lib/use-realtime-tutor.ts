@@ -95,6 +95,13 @@ type PageContextItem = {
   itemId: string;
 };
 
+type TutorAudioCapture = {
+  recorder: MediaRecorder;
+  chunks: Blob[];
+  discarded: boolean;
+  saveOnStop: boolean;
+};
+
 type TutorSessionMode = "read" | "guided";
 type TutorResponseKind = "guided_segment" | "learner_question";
 type GuidedSegmentState = {
@@ -111,6 +118,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const [isSubmittingUserTurn, setIsSubmittingUserTurn] = useState(false);
   const [isTutorResponding, setIsTutorResponding] = useState(false);
   const [isTutorSpeaking, setIsTutorSpeaking] = useState(false);
+  const [canReplayTutorAudio, setCanReplayTutorAudio] = useState(false);
+  const [isReplayingTutorAudio, setIsReplayingTutorAudio] =
+    useState(false);
   const [currentTutorTranscript, setCurrentTutorTranscript] =
     useState("");
   const [tutorTranscriptHistory, setTutorTranscriptHistory] = useState<
@@ -124,6 +134,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const tutorAudioCaptureRef = useRef<TutorAudioCapture | null>(null);
+  const tutorReplayAudioRef = useRef<HTMLAudioElement | null>(null);
+  const tutorReplayUrlRef = useRef<string | null>(null);
   const isUserTurnRef = useRef(false);
   const userTurnTransitionRef = useRef(false);
   const responseInProgressRef = useRef(false);
@@ -146,7 +159,54 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     new Map<string, PendingServerEvent>(),
   );
 
+  const stopTutorAudioReplay = useCallback(() => {
+    const replayAudio = tutorReplayAudioRef.current;
+
+    if (replayAudio) {
+      replayAudio.pause();
+      replayAudio.currentTime = 0;
+    }
+
+    setIsReplayingTutorAudio(false);
+  }, []);
+
+  const clearTutorReplayAudio = useCallback(() => {
+    stopTutorAudioReplay();
+
+    if (tutorReplayAudioRef.current) {
+      tutorReplayAudioRef.current.src = "";
+      tutorReplayAudioRef.current = null;
+    }
+
+    if (tutorReplayUrlRef.current) {
+      URL.revokeObjectURL(tutorReplayUrlRef.current);
+      tutorReplayUrlRef.current = null;
+    }
+
+    setCanReplayTutorAudio(false);
+  }, [stopTutorAudioReplay]);
+
+  const stopTutorAudioCapture = useCallback((saveOnStop: boolean) => {
+    const capture = tutorAudioCaptureRef.current;
+
+    if (!capture) {
+      return;
+    }
+
+    if (!saveOnStop) {
+      capture.discarded = true;
+    }
+
+    capture.saveOnStop = saveOnStop && !capture.discarded;
+
+    if (capture.recorder.state !== "inactive") {
+      capture.recorder.stop();
+    }
+  }, []);
+
   const closeConnection = useCallback(() => {
+    stopTutorAudioCapture(false);
+    clearTutorReplayAudio();
     rejectPendingServerEvents(
       pendingServerEventsRef.current,
       new Error("The Realtime tutor connection closed."),
@@ -177,7 +237,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     sessionModeRef.current = null;
     guidedSegmentStateRef.current = null;
     tutorResponseKindRef.current = null;
-  }, []);
+  }, [clearTutorReplayAudio, stopTutorAudioCapture]);
 
   useEffect(() => {
     optionsRef.current = options;
@@ -686,6 +746,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
 
     const remoteAudio = remoteAudioRef.current;
 
+    stopTutorAudioReplay();
+
     if (remoteAudio) {
       remoteAudio.muted = true;
     }
@@ -959,6 +1021,8 @@ Follow the session response policy and stop after the answer.`,
   }
 
   function cancelTutorOutput() {
+    stopTutorAudioCapture(false);
+    clearTutorReplayAudio();
     setAudioTracksEnabled(mediaStreamRef.current, false);
     isUserTurnRef.current = false;
     setIsUserTurn(false);
@@ -1014,6 +1078,102 @@ Follow the session response policy and stop after the answer.`,
     tutorTranscriptRef.current = "";
     setCurrentTutorTranscript("");
     setTutorTranscriptHistory([]);
+  }
+
+  function startTutorAudioCapture() {
+    stopTutorAudioCapture(false);
+    clearTutorReplayAudio();
+
+    const remoteStream = remoteAudioRef.current?.srcObject;
+
+    if (!(remoteStream instanceof MediaStream)) {
+      return;
+    }
+
+    try {
+      const recorder = new MediaRecorder(remoteStream);
+      const capture: TutorAudioCapture = {
+        recorder,
+        chunks: [],
+        discarded: false,
+        saveOnStop: false,
+      };
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          capture.chunks.push(event.data);
+        }
+      });
+      recorder.addEventListener("error", () => {
+        capture.discarded = true;
+      });
+      recorder.addEventListener("stop", () => {
+        if (tutorAudioCaptureRef.current === capture) {
+          tutorAudioCaptureRef.current = null;
+        }
+
+        if (
+          capture.discarded ||
+          !capture.saveOnStop ||
+          capture.chunks.length === 0
+        ) {
+          return;
+        }
+
+        const replayUrl = URL.createObjectURL(
+          new Blob(capture.chunks, { type: recorder.mimeType }),
+        );
+        const replayAudio = new Audio(replayUrl);
+
+        replayAudio.preload = "auto";
+        replayAudio.addEventListener("ended", () => {
+          if (tutorReplayAudioRef.current === replayAudio) {
+            setIsReplayingTutorAudio(false);
+          }
+        });
+        tutorReplayUrlRef.current = replayUrl;
+        tutorReplayAudioRef.current = replayAudio;
+        setCanReplayTutorAudio(true);
+      });
+      tutorAudioCaptureRef.current = capture;
+      recorder.start();
+    } catch {
+      tutorAudioCaptureRef.current = null;
+    }
+  }
+
+  async function replayTutorAudio() {
+    const replayAudio = tutorReplayAudioRef.current;
+
+    if (
+      !replayAudio ||
+      responseInProgressRef.current ||
+      outputAudioPlayingRef.current ||
+      isUserTurnRef.current
+    ) {
+      return false;
+    }
+
+    try {
+      stopTutorAudioReplay();
+
+      if (optionsRef.current.audioOutputDeviceId) {
+        await replayAudio.setSinkId(
+          optionsRef.current.audioOutputDeviceId,
+        );
+      }
+
+      setIsReplayingTutorAudio(true);
+      await replayAudio.play();
+      setError("");
+      return true;
+    } catch (reason) {
+      setIsReplayingTutorAudio(false);
+      setError(
+        getErrorMessage(reason, "The tutor audio could not be replayed."),
+      );
+      return false;
+    }
   }
 
   async function handleServerEvent(rawEvent: unknown) {
@@ -1081,6 +1241,7 @@ Follow the session response policy and stop after the answer.`,
           return;
         }
 
+        startTutorAudioCapture();
         setIsTutorResponding(true);
         setIsTutorSpeaking(true);
         void playRemoteAudio();
@@ -1098,7 +1259,13 @@ Follow the session response policy and stop after the answer.`,
         }
         return;
       case "output_audio_buffer.stopped":
+        stopTutorAudioCapture(true);
+        outputAudioPlayingRef.current = false;
+        outputAudioResponseKindRef.current = null;
+        setIsTutorSpeaking(false);
+        return;
       case "output_audio_buffer.cleared":
+        stopTutorAudioCapture(false);
         outputAudioPlayingRef.current = false;
         outputAudioResponseKindRef.current = null;
         setIsTutorSpeaking(false);
@@ -1340,6 +1507,8 @@ Follow the session response policy and stop after the answer.`,
     isSubmittingUserTurn,
     isTutorResponding,
     isTutorSpeaking,
+    canReplayTutorAudio,
+    isReplayingTutorAudio,
     currentTutorTranscript,
     tutorTranscripts,
     guidedSegmentProgress,
@@ -1349,6 +1518,7 @@ Follow the session response policy and stop after the answer.`,
     explainPage,
     continueGuided,
     toggleUserTurn,
+    replayTutorAudio,
     selectAudioInputDevice,
     selectAudioOutputDevice,
     end,
