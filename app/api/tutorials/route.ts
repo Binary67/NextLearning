@@ -7,12 +7,18 @@ import {
 } from "@/lib/document-storage";
 import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
+  isContentLengthOverLimit,
+  isMultipartFormDataContentType,
+} from "@/lib/request-body-size";
+import {
   listTutorials,
   toTutorialResponse,
 } from "@/lib/tutorial";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
 
 export const runtime = "nodejs";
+
+const MAX_MULTIPART_REQUEST_SIZE = 11 * 1024 * 1024;
 
 export async function GET() {
   const tutorials = await listTutorials();
@@ -31,6 +37,29 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (
+    !isMultipartFormDataContentType(
+      request.headers.get("content-type"),
+    )
+  ) {
+    return Response.json(
+      { message: "The upload must use multipart form data." },
+      { status: 415 },
+    );
+  }
+
+  if (
+    isContentLengthOverLimit(
+      request.headers.get("content-length"),
+      MAX_MULTIPART_REQUEST_SIZE,
+    )
+  ) {
+    return Response.json(
+      { message: "The document must be 10 MB or smaller." },
+      { status: 413 },
+    );
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
 

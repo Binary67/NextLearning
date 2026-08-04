@@ -1,7 +1,13 @@
 import { isTutorialId } from "@/lib/document-storage";
+import {
+  isContentLengthOverLimit,
+  isUtf8TextOverLimit,
+} from "@/lib/request-body-size";
 import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
+
+const MAX_SDP_REQUEST_SIZE = 64 * 1024;
 
 type TutorialRealtimeRouteContext = {
   params: Promise<{ tutorialId: string }>;
@@ -37,7 +43,26 @@ export async function POST(
     );
   }
 
+  if (
+    isContentLengthOverLimit(
+      request.headers.get("content-length"),
+      MAX_SDP_REQUEST_SIZE,
+    )
+  ) {
+    return Response.json(
+      { message: "The WebRTC session offer is too large." },
+      { status: 413 },
+    );
+  }
+
   const sdp = await request.text();
+
+  if (isUtf8TextOverLimit(sdp, MAX_SDP_REQUEST_SIZE)) {
+    return Response.json(
+      { message: "The WebRTC session offer is too large." },
+      { status: 413 },
+    );
+  }
 
   if (!sdp.trim()) {
     return Response.json(
