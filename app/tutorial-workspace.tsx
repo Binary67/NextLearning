@@ -56,6 +56,8 @@ type TutorialDataResponse = {
 
 type RelatedPagesStatus = "idle" | "loading" | "ready" | "error";
 
+type TutorMode = "read" | "guided";
+
 type RelatedPagesResult = {
   selectionKey: string;
   status: "ready" | "error";
@@ -82,6 +84,7 @@ export function TutorialWorkspace({
   const [documentLoading, setDocumentLoading] = useState(true);
   const [documentError, setDocumentError] = useState("");
   const [deletingTutorial, setDeletingTutorial] = useState(false);
+  const [tutorMode, setTutorMode] = useState<TutorMode>("read");
   const [currentPage, setCurrentPage] = useState(1);
   const [selection, setSelection] = useState<DocumentSelection | null>(
     null,
@@ -98,12 +101,17 @@ export function TutorialWorkspace({
     selection,
   );
   const relatedPagesLoading = relatedPagesStatus === "loading";
-  let learnerTurnPrompt = "Draw a rectangle on the PDF";
+  const guidedMode = tutorMode === "guided";
+  const learnerCanAsk =
+    guidedMode || Boolean(selection && !relatedPagesLoading);
+  let learnerTurnPrompt = guidedMode
+    ? `Press ${raiseHandShortcutLabel} to ask about this page`
+    : "Draw a rectangle on the PDF";
 
   if (selection) {
-    learnerTurnPrompt = relatedPagesLoading
+    learnerTurnPrompt = !guidedMode && relatedPagesLoading
       ? "Finding related pages…"
-      : `Press ${raiseHandShortcutLabel} to ask`;
+      : `Press ${raiseHandShortcutLabel} to ask about the selection`;
   }
 
   const realtimeTutor = useRealtimeTutor({
@@ -118,6 +126,7 @@ export function TutorialWorkspace({
   const sessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
+  const modeLabel = guidedMode ? "Guided tutor" : "Read and ask";
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.isUserTurn ||
@@ -209,8 +218,7 @@ export function TutorialWorkspace({
         key === raiseHandShortcut &&
         realtimeTutor.status === "connected" &&
         modal === null &&
-        selection &&
-        !relatedPagesLoading
+        learnerCanAsk
       ) {
         event.preventDefault();
         void toggleUserTurn();
@@ -221,22 +229,29 @@ export function TutorialWorkspace({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     modal,
+    learnerCanAsk,
     raiseHandShortcut,
     realtimeTutor.status,
     realtimeTutor.tutorTranscripts.length,
-    relatedPagesLoading,
-    selection,
     sessionActive,
     toggleUserTurn,
   ]);
 
   function changePage(pageIndex: number) {
-    if (pageIndex < 1 || pageIndex > pageCount) {
+    if (
+      pageIndex < 1 ||
+      pageIndex > pageCount ||
+      (guidedMode && realtimeTutor.status === "connecting")
+    ) {
       return;
     }
 
     setCurrentPage(pageIndex);
     setSelection(null);
+
+    if (guidedMode && realtimeTutor.status === "connected") {
+      void realtimeTutor.explainPage(pageIndex);
+    }
   }
 
   function downloadDocument() {
@@ -276,6 +291,11 @@ export function TutorialWorkspace({
   }
 
   function startTutor() {
+    if (guidedMode) {
+      void realtimeTutor.startGuided(currentPage);
+      return;
+    }
+
     void realtimeTutor.start();
   }
 
@@ -289,30 +309,38 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "connecting") {
       return (
         <span className="turn-state-copy">
-          <small>Tutor</small>
-          <strong>Connecting…</strong>
+          <small>{modeLabel}</small>
+          <strong>
+            {guidedMode
+              ? "Connecting and preparing this page…"
+              : "Connecting…"}
+          </strong>
         </span>
       );
     }
 
     if (realtimeTutor.status === "connected") {
+      if (realtimeTutor.isSubmittingUserTurn) {
+        return (
+          <span className="turn-state-copy">
+            <small>{modeLabel} · Your turn</small>
+            <strong>Sending your question…</strong>
+          </span>
+        );
+      }
+
       if (realtimeTutor.isUserTurn) {
         return (
           <span className="turn-state-copy">
             <small className="listening-label">
               <span className="listening-dot" aria-hidden="true" />
-              Listening
+              {modeLabel} · Listening
             </small>
-            <strong>Ask about the selected region</strong>
-          </span>
-        );
-      }
-
-      if (realtimeTutor.isSubmittingUserTurn) {
-        return (
-          <span className="turn-state-copy">
-            <small>Your turn</small>
-            <strong>Sending your question…</strong>
+            <strong>
+              {selection
+                ? "Ask about the selected region"
+                : "Ask about this page"}
+            </strong>
           </span>
         );
       }
@@ -323,9 +351,13 @@ export function TutorialWorkspace({
       ) {
         return (
           <span className="turn-state-copy">
-            <small>Tutor</small>
+            <small>{modeLabel} · Tutor</small>
             <strong>
-              {realtimeTutor.isTutorSpeaking ? "Speaking…" : "Thinking…"}
+              {realtimeTutor.isTutorSpeaking
+                ? "Speaking…"
+                : guidedMode
+                  ? "Explaining…"
+                  : "Thinking…"}
             </strong>
           </span>
         );
@@ -333,7 +365,7 @@ export function TutorialWorkspace({
 
       return (
         <span className="turn-state-copy">
-          <small>Your turn</small>
+          <small>{modeLabel} · Your turn</small>
           <strong>{learnerTurnPrompt}</strong>
         </span>
       );
@@ -342,17 +374,30 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "error") {
       return (
         <span className="turn-state-copy error">
-          <small>Tutor unavailable</small>
+          <small>{modeLabel} · Tutor unavailable</small>
           <strong>{realtimeTutor.error}</strong>
+        </span>
+      );
+    }
+
+    if (realtimeTutor.status === "ended") {
+      return (
+        <span className="turn-state-copy">
+          <small>{modeLabel}</small>
+          <strong>Session ended</strong>
         </span>
       );
     }
 
     return (
       <span className="turn-state-copy">
-        <small>Read and ask</small>
+        <small>{modeLabel}</small>
         <strong>
-          {selection ? "Ready to start" : "Select something to discuss"}
+          {guidedMode
+            ? "Ready to guide this page"
+            : selection
+              ? "Ready to start"
+              : "Select something to discuss"}
         </strong>
       </span>
     );
@@ -380,7 +425,13 @@ export function TutorialWorkspace({
         disabled={!documentModel}
       >
         <Play size={20} />
-        {realtimeTutor.status === "ended" ? "New Session" : "Start Tutor"}
+        {realtimeTutor.status === "ended"
+          ? guidedMode
+            ? "New Guided Session"
+            : "New Session"
+          : guidedMode
+            ? "Start Guided Tutor"
+            : "Start Tutor"}
       </button>
     );
   }
@@ -403,6 +454,30 @@ export function TutorialWorkspace({
               <h2>{activeTutorial?.title ?? "Document reader"}</h2>
             </div>
             <div className="lesson-toolbar-controls">
+              <div
+                className="tutor-mode-selector"
+                role="group"
+                aria-label="Tutor mode"
+              >
+                <button
+                  className={guidedMode ? undefined : "active"}
+                  type="button"
+                  onClick={() => setTutorMode("read")}
+                  disabled={sessionActive}
+                  aria-pressed={!guidedMode}
+                >
+                  Read and ask
+                </button>
+                <button
+                  className={guidedMode ? "active" : undefined}
+                  type="button"
+                  onClick={() => setTutorMode("guided")}
+                  disabled={sessionActive}
+                  aria-pressed={guidedMode}
+                >
+                  Guided tutor
+                </button>
+              </div>
               <div className="lesson-actions">
                 <button
                   className="icon-button small"
@@ -455,7 +530,11 @@ export function TutorialWorkspace({
                     className="icon-button small"
                     type="button"
                     onClick={() => changePage(currentPage - 1)}
-                    disabled={currentPage <= 1}
+                    disabled={
+                      currentPage <= 1 ||
+                      (guidedMode &&
+                        realtimeTutor.status === "connecting")
+                    }
                     aria-label="Previous page"
                   >
                     <ChevronLeft size={17} />
@@ -469,7 +548,11 @@ export function TutorialWorkspace({
                     className="icon-button small"
                     type="button"
                     onClick={() => changePage(currentPage + 1)}
-                    disabled={currentPage >= pageCount}
+                    disabled={
+                      currentPage >= pageCount ||
+                      (guidedMode &&
+                        realtimeTutor.status === "connecting")
+                    }
                     aria-label="Next page"
                   >
                     <ChevronRight size={17} />
@@ -480,7 +563,9 @@ export function TutorialWorkspace({
                   <strong>
                     {selection
                       ? "Selection ready—ask your question"
-                      : "Draw a rectangle around anything you want explained"}
+                      : guidedMode
+                        ? "Follow along, or select a region for a narrower question"
+                        : "Draw a rectangle around anything you want explained"}
                   </strong>
                   {selection && (
                     <button
@@ -569,13 +654,16 @@ export function TutorialWorkspace({
               disabled={
                 realtimeTutor.status !== "connected" ||
                 realtimeTutor.isSubmittingUserTurn ||
-                relatedPagesLoading ||
-                !selection
+                !learnerCanAsk
               }
               aria-label={
                 realtimeTutor.isUserTurn
                   ? "Finish asking"
-                  : "Ask about the selection"
+                  : selection
+                    ? "Ask about the selection"
+                    : guidedMode
+                      ? "Ask about this page"
+                      : "Ask about a selection"
               }
             >
               {realtimeTutor.isUserTurn ? (
@@ -609,7 +697,7 @@ export function TutorialWorkspace({
 
       {modal === "end-session" && (
         <ConfirmationModal
-          eyebrow="Read-and-ask session"
+          eyebrow={`${modeLabel} session`}
           title="End this tutor session?"
           message="Your PDF will remain available. The current voice conversation will end."
           confirmLabel="End Session"
