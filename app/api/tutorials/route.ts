@@ -10,6 +10,7 @@ import {
   listTutorials,
   toTutorialResponse,
 } from "@/lib/tutorial";
+import { hasActiveTutorials } from "@/lib/tutorial-status";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
 
 export const runtime = "nodejs";
@@ -17,13 +18,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const tutorials = await listTutorials();
 
-  if (
-    tutorials.some(
-      (tutorial) =>
-        tutorial.status === "queued" ||
-        tutorial.status === "processing",
-    )
-  ) {
+  if (hasActiveTutorials(tutorials)) {
     after(runTutorialQueue);
   }
 
