@@ -60,6 +60,7 @@ type TutorialDataResponse = {
 type RelatedPagesStatus = "idle" | "loading" | "ready" | "error";
 
 type TutorMode = "read" | "guided";
+type GuidedView = "document" | "lesson";
 
 type RelatedPagesResult = {
   selectionKey: string;
@@ -88,6 +89,7 @@ export function TutorialWorkspace({
   const [documentError, setDocumentError] = useState("");
   const [deletingTutorial, setDeletingTutorial] = useState(false);
   const [tutorMode, setTutorMode] = useState<TutorMode>("read");
+  const [guidedView, setGuidedView] = useState<GuidedView>("document");
   const [currentPage, setCurrentPage] = useState(1);
   const [selection, setSelection] = useState<DocumentSelection | null>(
     null,
@@ -105,6 +107,7 @@ export function TutorialWorkspace({
   );
   const relatedPagesLoading = relatedPagesStatus === "loading";
   const guidedMode = tutorMode === "guided";
+  const guidedLessonView = guidedMode && guidedView === "lesson";
   const learnerCanAsk =
     guidedMode || Boolean(selection && !relatedPagesLoading);
   let learnerTurnPrompt = guidedMode
@@ -154,6 +157,7 @@ export function TutorialWorkspace({
       setActiveTutorial(null);
       setDocumentModel(null);
       setSelection(null);
+      setGuidedView("document");
 
       try {
         const data = await readTutorialData(tutorialId, controller.signal);
@@ -304,6 +308,7 @@ export function TutorialWorkspace({
 
   function startTutor() {
     if (guidedMode) {
+      setGuidedView("lesson");
       void realtimeTutor.startGuided(currentPage);
       return;
     }
@@ -474,7 +479,11 @@ export function TutorialWorkspace({
         onShowMessage={showToast}
       />
 
-      <div className="dashboard-layout">
+      <div
+        className={`dashboard-layout${
+          guidedLessonView ? " guided-lesson-layout" : ""
+        }`}
+      >
         <section className="lesson-card">
           <header className="lesson-toolbar">
             <div>
@@ -490,7 +499,10 @@ export function TutorialWorkspace({
                 <button
                   className={guidedMode ? undefined : "active"}
                   type="button"
-                  onClick={() => setTutorMode("read")}
+                  onClick={() => {
+                    setTutorMode("read");
+                    setGuidedView("document");
+                  }}
                   disabled={sessionActive}
                   aria-pressed={!guidedMode}
                 >
@@ -551,73 +563,103 @@ export function TutorialWorkspace({
               error
             />
           ) : activeTutorial && documentModel ? (
-            <div className="pdf-content">
-              <div className="pdf-page-bar">
-                <div className="pdf-page-controls">
-                  <button
-                    className="icon-button small"
-                    type="button"
-                    onClick={() => changePage(currentPage - 1)}
-                    disabled={
-                      currentPage <= 1 ||
-                      (guidedMode &&
-                        realtimeTutor.status === "connecting")
-                    }
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft size={17} />
-                  </button>
-                  <span>
-                    <strong>{currentPage}</strong>
-                    <i>/</i>
-                    {pageCount}
-                  </span>
-                  <button
-                    className="icon-button small"
-                    type="button"
-                    onClick={() => changePage(currentPage + 1)}
-                    disabled={
-                      currentPage >= pageCount ||
-                      (guidedMode &&
-                        realtimeTutor.status === "connecting")
-                    }
-                    aria-label="Next page"
-                  >
-                    <ChevronRight size={17} />
-                  </button>
-                </div>
-                <div className="pdf-selection-context">
-                  <ScanText size={15} aria-hidden="true" />
-                  <strong>
-                    {selection
-                      ? "Selection ready—ask your question"
-                      : guidedMode
-                        ? "Follow along, or select a region for a narrower question"
-                        : "Draw a rectangle around anything you want explained"}
-                  </strong>
-                  {selection && (
-                    <button
-                      className="icon-button pdf-clear-selection-button"
-                      type="button"
-                      onClick={() => setSelection(null)}
-                      aria-label="Clear selection"
-                      title="Clear selection"
-                    >
-                      <X size={15} />
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="pdf-stage">
-                <PdfDocumentViewer
-                  documentId={activeTutorial.id}
-                  documentUrl={activeTutorial.url}
-                  documentName={activeTutorial.documentName}
-                  pageIndex={currentPage}
-                  selection={selection}
-                  onSelectionChange={setSelection}
+            <div
+              className={`workspace-content${
+                guidedMode ? " has-guided-view-switcher" : ""
+              }`}
+            >
+              {guidedMode ? (
+                <GuidedViewSwitcher
+                  view={guidedView}
+                  onChange={setGuidedView}
                 />
-              </div>
+              ) : null}
+
+              {guidedLessonView ? (
+                <GuidedLessonView
+                  progress={guidedProgress}
+                  transcript={realtimeTutor.currentTutorTranscript}
+                  history={realtimeTutor.tutorTranscripts}
+                  isStreaming={
+                    realtimeTutor.isTutorResponding ||
+                    realtimeTutor.isTutorSpeaking
+                  }
+                  connected={realtimeTutor.status === "connected"}
+                  busy={guidedTurnBusy}
+                  hasNextPage={currentPage < pageCount}
+                  onContinue={continueGuided}
+                  onOpenTranscript={() => setModal("transcript")}
+                />
+              ) : (
+                <div className="pdf-content">
+                  <div className="pdf-page-bar">
+                    <div className="pdf-page-controls">
+                      <button
+                        className="icon-button small"
+                        type="button"
+                        onClick={() => changePage(currentPage - 1)}
+                        disabled={
+                          currentPage <= 1 ||
+                          (guidedMode &&
+                            realtimeTutor.status === "connecting")
+                        }
+                        aria-label="Previous page"
+                      >
+                        <ChevronLeft size={17} />
+                      </button>
+                      <span>
+                        <strong>{currentPage}</strong>
+                        <i>/</i>
+                        {pageCount}
+                      </span>
+                      <button
+                        className="icon-button small"
+                        type="button"
+                        onClick={() => changePage(currentPage + 1)}
+                        disabled={
+                          currentPage >= pageCount ||
+                          (guidedMode &&
+                            realtimeTutor.status === "connecting")
+                        }
+                        aria-label="Next page"
+                      >
+                        <ChevronRight size={17} />
+                      </button>
+                    </div>
+                    <div className="pdf-selection-context">
+                      <ScanText size={15} aria-hidden="true" />
+                      <strong>
+                        {selection
+                          ? "Selection ready—ask your question"
+                          : guidedMode
+                            ? "Follow along, or select a region for a narrower question"
+                            : "Draw a rectangle around anything you want explained"}
+                      </strong>
+                      {selection && (
+                        <button
+                          className="icon-button pdf-clear-selection-button"
+                          type="button"
+                          onClick={() => setSelection(null)}
+                          aria-label="Clear selection"
+                          title="Clear selection"
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="pdf-stage">
+                    <PdfDocumentViewer
+                      documentId={activeTutorial.id}
+                      documentUrl={activeTutorial.url}
+                      documentName={activeTutorial.documentName}
+                      pageIndex={currentPage}
+                      selection={selection}
+                      onSelectionChange={setSelection}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <DocumentState
@@ -629,55 +671,61 @@ export function TutorialWorkspace({
           )}
         </section>
 
-        <aside className="insights-column" aria-label="Reading context">
-          {guidedMode ? (
-            <GuidedProgressCard
-              progress={guidedProgress}
-              connected={realtimeTutor.status === "connected"}
-              busy={guidedTurnBusy}
-              hasNextPage={currentPage < pageCount}
-              onContinue={continueGuided}
+        {!guidedLessonView ? (
+          <aside className="insights-column" aria-label="Reading context">
+            {guidedMode ? (
+              <GuidedProgressCard
+                progress={guidedProgress}
+                connected={realtimeTutor.status === "connected"}
+                busy={guidedTurnBusy}
+                hasNextPage={currentPage < pageCount}
+                onContinue={continueGuided}
+              />
+            ) : null}
+
+            <TutorTranscriptCard
+              transcript={realtimeTutor.currentTutorTranscript}
+              history={realtimeTutor.tutorTranscripts}
+              isStreaming={
+                realtimeTutor.isTutorResponding ||
+                realtimeTutor.isTutorSpeaking
+              }
+              onOpen={() => setModal("transcript")}
             />
-          ) : null}
 
-          <TutorTranscriptCard
-            transcript={realtimeTutor.currentTutorTranscript}
-            history={realtimeTutor.tutorTranscripts}
-            isStreaming={
-              realtimeTutor.isTutorResponding ||
-              realtimeTutor.isTutorSpeaking
-            }
-            onOpen={() => setModal("transcript")}
-          />
-
-          <section className="insight-card context-card">
-            <h2>
-              <span className="insight-card-icon">
-                <Sparkles size={18} aria-hidden="true" />
-              </span>
-              Related pages
-            </h2>
-            <ul>
-              {textSelectionContext?.related_pages.length ? (
-                textSelectionContext.related_pages.map((relatedPage) => (
-                  <li key={relatedPage.page_index}>
-                    <strong>Page {relatedPage.page_label}</strong>
-                    <span>{relatedPage.title}</span>
-                  </li>
-                ))
-              ) : (
-                <li className="waiting">
-                  {getRelatedPagesMessage(
-                    selection,
-                    documentModel,
-                    textSelectionContext,
-                    relatedPagesStatus,
+            {!guidedMode || selection ? (
+              <section className="insight-card context-card">
+                <h2>
+                  <span className="insight-card-icon">
+                    <Sparkles size={18} aria-hidden="true" />
+                  </span>
+                  Related pages
+                </h2>
+                <ul>
+                  {textSelectionContext?.related_pages.length ? (
+                    textSelectionContext.related_pages.map(
+                      (relatedPage) => (
+                        <li key={relatedPage.page_index}>
+                          <strong>Page {relatedPage.page_label}</strong>
+                          <span>{relatedPage.title}</span>
+                        </li>
+                      ),
+                    )
+                  ) : (
+                    <li className="waiting">
+                      {getRelatedPagesMessage(
+                        selection,
+                        documentModel,
+                        textSelectionContext,
+                        relatedPagesStatus,
+                      )}
+                    </li>
                   )}
-                </li>
-              )}
-            </ul>
-          </section>
-        </aside>
+                </ul>
+              </section>
+            ) : null}
+          </aside>
+        ) : null}
       </div>
 
       {activeTutorial && (
@@ -783,6 +831,159 @@ export function TutorialWorkspace({
   );
 }
 
+function GuidedViewSwitcher({
+  view,
+  onChange,
+}: {
+  view: GuidedView;
+  onChange: (view: GuidedView) => void;
+}) {
+  return (
+    <div className="guided-view-bar">
+      <div
+        className="guided-view-selector"
+        role="group"
+        aria-label="Guided tutor view"
+      >
+        <button
+          className={view === "document" ? "active" : undefined}
+          type="button"
+          onClick={() => onChange("document")}
+          aria-pressed={view === "document"}
+        >
+          <FileText size={15} aria-hidden="true" />
+          PDF
+        </button>
+        <button
+          className={view === "lesson" ? "active" : undefined}
+          type="button"
+          onClick={() => onChange("lesson")}
+          aria-pressed={view === "lesson"}
+        >
+          <Sparkles size={15} aria-hidden="true" />
+          Guided lesson
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GuidedLessonView({
+  progress,
+  transcript,
+  history,
+  isStreaming,
+  connected,
+  busy,
+  hasNextPage,
+  onContinue,
+  onOpenTranscript,
+}: {
+  progress: GuidedSegmentProgress | null;
+  transcript: string;
+  history: string[];
+  isStreaming: boolean;
+  connected: boolean;
+  busy: boolean;
+  hasNextPage: boolean;
+  onContinue: () => void;
+  onOpenTranscript: () => void;
+}) {
+  const latestTranscript =
+    transcript || (!isStreaming ? history.at(-1) : "") || "";
+  const heading =
+    progress?.sectionTitle || progress?.title || "Guided lesson";
+
+  return (
+    <div className="guided-lesson-view">
+      <header className="guided-lesson-heading">
+        <div>
+          <p>Guided tutor</p>
+          <h1>{heading}</h1>
+          {progress?.sectionTitle ? <span>{progress.title}</span> : null}
+        </div>
+        {progress?.segmentCount ? (
+          <strong>
+            Page {progress.pageIndex} · Part {progress.segmentNumber} of{" "}
+            {progress.segmentCount}
+          </strong>
+        ) : null}
+      </header>
+
+      <div className="guided-lesson-panels">
+        <section className="guided-lesson-panel">
+          <h2>
+            <span className="insight-card-icon">
+              <FileText size={18} aria-hidden="true" />
+            </span>
+            Current passage
+          </h2>
+          <div className="guided-passage-text">
+            {progress?.sourceText ? (
+              <p>{progress.sourceText}</p>
+            ) : (
+              <p className="guided-lesson-placeholder">
+                {progress
+                  ? "This page has no prepared instructional passage."
+                  : "Start the guided tutor to load the first passage."}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="guided-lesson-panel">
+          <h2>
+            <span className="insight-card-icon">
+              <MessageSquareText size={18} aria-hidden="true" />
+            </span>
+            Tutor explanation
+          </h2>
+          <div className="guided-explanation-text">
+            <p
+              className={
+                latestTranscript ? undefined : "guided-lesson-placeholder"
+              }
+            >
+              {latestTranscript ||
+                (isStreaming
+                  ? "The tutor is preparing the explanation…"
+                  : "The tutor’s explanation will appear here.")}
+            </p>
+          </div>
+          <button
+            className="secondary-button guided-transcript-button"
+            type="button"
+            onClick={onOpenTranscript}
+            disabled={history.length === 0}
+          >
+            Open full transcript
+          </button>
+        </section>
+      </div>
+
+      <footer className="guided-lesson-footer">
+        <p>{getGuidedLessonStatus(progress, connected, busy, hasNextPage)}</p>
+        <button
+          className="primary-button guided-lesson-continue-button"
+          type="button"
+          onClick={onContinue}
+          disabled={
+            !connected ||
+            !progress ||
+            busy ||
+            (progress.pageComplete && !hasNextPage)
+          }
+        >
+          {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
+          {progress?.pageComplete && hasNextPage ? (
+            <ChevronRight size={17} aria-hidden="true" />
+          ) : null}
+        </button>
+      </footer>
+    </div>
+  );
+}
+
 function DocumentState({
   icon,
   eyebrow,
@@ -861,20 +1062,6 @@ function GuidedProgressCard({
   hasNextPage: boolean;
   onContinue: () => void;
 }) {
-  let buttonLabel = "Start the tutor";
-
-  if (progress) {
-    if (progress.pageComplete) {
-      buttonLabel = hasNextPage ? "Next page" : "Document complete";
-    } else if (busy) {
-      buttonLabel = "Explaining…";
-    } else if (progress.segmentComplete) {
-      buttonLabel = "Continue";
-    } else {
-      buttonLabel = "Resume explanation";
-    }
-  }
-
   return (
     <section className="insight-card guided-progress-card">
       <h2>
@@ -915,13 +1102,62 @@ function GuidedProgressCard({
           (progress.pageComplete && !hasNextPage)
         }
       >
-        {buttonLabel}
+        {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
         {progress?.pageComplete && hasNextPage ? (
           <ChevronRight size={17} aria-hidden="true" />
         ) : null}
       </button>
     </section>
   );
+}
+
+function getGuidedContinueButtonLabel(
+  progress: GuidedSegmentProgress | null,
+  busy: boolean,
+  hasNextPage: boolean,
+) {
+  if (!progress) {
+    return "Start the tutor";
+  }
+
+  if (progress.pageComplete) {
+    return hasNextPage ? "Next page" : "Document complete";
+  }
+
+  if (busy) {
+    return "Explaining…";
+  }
+
+  return progress.segmentComplete ? "Continue" : "Resume explanation";
+}
+
+function getGuidedLessonStatus(
+  progress: GuidedSegmentProgress | null,
+  connected: boolean,
+  busy: boolean,
+  hasNextPage: boolean,
+) {
+  if (!connected) {
+    return "Start the guided tutor to begin.";
+  }
+
+  if (!progress) {
+    return "Preparing the first passage…";
+  }
+
+  if (busy) {
+    return "The tutor is working with this passage.";
+  }
+
+  if (progress.pageComplete) {
+    return hasNextPage
+      ? "This page is complete. Continue when you are ready."
+      : "You have reached the end of the document.";
+  }
+
+  return progress.segmentComplete
+    ? "This passage is complete. Continue when you are ready."
+    : "The explanation was paused. Resume when you are ready.";
 }
 
 function TranscriptModal({

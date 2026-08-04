@@ -318,6 +318,10 @@ a:focus-visible {
   margin: 20px auto 0;
 }
 
+.dashboard-layout.guided-lesson-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .lesson-card {
   min-width: 0;
   overflow: hidden;
@@ -405,6 +409,59 @@ a:focus-visible {
   opacity: 0.62;
 }
 
+.workspace-content {
+  display: grid;
+  height: 950px;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-content.has-guided-view-switcher {
+  grid-template-rows: 46px minmax(0, 1fr);
+}
+
+.guided-view-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--hairline);
+  background: #fafafc;
+}
+
+.guided-view-selector {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--control);
+}
+
+.guided-view-selector button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #515158;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.guided-view-selector button:hover {
+  color: var(--ink);
+}
+
+.guided-view-selector button.active {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  color: var(--ink);
+}
+
 .icon-button.small {
   width: 34px;
   height: 34px;
@@ -474,7 +531,8 @@ a:focus-visible {
 .pdf-content {
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr);
-  height: 950px;
+  height: 100%;
+  min-height: 0;
   padding: 8px 12px 12px;
   gap: 6px;
   background: #e5e5e9;
@@ -614,6 +672,171 @@ a:focus-visible {
   background: #fff;
   color: #a22424;
   font-weight: 700;
+}
+
+.guided-lesson-view {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 20px;
+  padding: 28px;
+  background:
+    radial-gradient(
+      circle at 100% 0%,
+      rgba(0, 122, 255, 0.07),
+      transparent 30%
+    ),
+    #f6f7f9;
+}
+
+.guided-lesson-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.guided-lesson-heading > div {
+  min-width: 0;
+}
+
+.guided-lesson-heading p {
+  margin: 0 0 7px;
+  color: var(--blue-deep);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.guided-lesson-heading h1 {
+  overflow: hidden;
+  margin: 0;
+  font-size: clamp(1.55rem, 2.2vw, 2.2rem);
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guided-lesson-heading span {
+  display: block;
+  overflow: hidden;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guided-lesson-heading > strong {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid rgba(0, 122, 255, 0.14);
+  border-radius: 999px;
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+  font-size: 0.74rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.guided-lesson-panels {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 18px;
+}
+
+.guided-lesson-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.025),
+    0 8px 24px rgba(0, 0, 0, 0.035);
+}
+
+.guided-lesson-panel h2 {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 18px;
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.guided-passage-text,
+.guided-explanation-text {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 8px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.guided-passage-text p,
+.guided-explanation-text p {
+  margin: 0;
+  color: #3a3a3c;
+  font-size: 0.94rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.guided-passage-text p {
+  white-space: pre-wrap;
+}
+
+.guided-lesson-placeholder {
+  color: var(--muted) !important;
+  font-family: inherit !important;
+  font-size: 0.88rem !important;
+  font-style: italic;
+}
+
+.guided-transcript-button {
+  width: 100%;
+  min-height: 40px;
+  flex: 0 0 auto;
+  margin-top: 18px;
+  font-size: 0.8rem;
+}
+
+.guided-lesson-footer {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 2px;
+}
+
+.guided-lesson-footer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.guided-lesson-continue-button {
+  min-width: 190px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding: 0 20px;
 }
 
 .insights-column {
@@ -1719,6 +1942,7 @@ a:focus-visible {
     min-height: 100%;
   }
 
+  .workspace-content,
   .pdf-content {
     height: 100%;
   }
@@ -1771,6 +1995,11 @@ a:focus-visible {
 
   .dashboard-layout {
     display: block;
+  }
+
+  .guided-lesson-panels {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .insights-column {
@@ -1890,9 +2119,39 @@ a:focus-visible {
     font-size: 1.65rem;
   }
 
-  .pdf-content {
+  .workspace-content {
     height: 720px;
+  }
+
+  .pdf-content {
     padding: 8px;
+  }
+
+  .guided-lesson-view {
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .guided-lesson-heading {
+    align-items: flex-start;
+  }
+
+  .guided-lesson-heading h1 {
+    font-size: 1.42rem;
+  }
+
+  .guided-lesson-panel {
+    padding: 17px;
+  }
+
+  .guided-lesson-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .guided-lesson-continue-button {
+    width: 100%;
   }
 
   .pdf-selection-context {

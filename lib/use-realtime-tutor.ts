@@ -24,6 +24,7 @@ export type GuidedSegmentProgress = {
   pageIndex: number;
   sectionTitle: string;
   title: string;
+  sourceText: string;
   segmentNumber: number;
   segmentCount: number;
   segmentComplete: boolean;
@@ -518,6 +519,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       pageIndex,
       sectionTitle: segment.section_title,
       title: segment.title,
+      sourceText: segment.source_text,
       segmentNumber: segmentIndex + 1,
       segmentCount: page.chunks.length,
       segmentComplete: false,
@@ -535,6 +537,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       pageIndex,
       sectionTitle: "",
       title: "No instructional content on this page",
+      sourceText: "",
       segmentNumber: 0,
       segmentCount: 0,
       segmentComplete: true,
