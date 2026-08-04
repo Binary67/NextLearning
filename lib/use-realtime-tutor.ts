@@ -9,6 +9,17 @@ import type {
 import type { DocumentSelection } from "@/lib/document-selection";
 import { renderPdfPageImage } from "@/lib/pdf-page-renderer";
 import {
+  activateRealtimeResponse,
+  createRealtimeResponseState,
+  finishRealtimeResponse,
+  finishRealtimeResponseAudio,
+  isActiveLogicalResponse,
+  ownsRealtimeContinuation,
+  requestRealtimeContinuation,
+  startRealtimeResponseAudio,
+  supersedeRealtimeResponse,
+} from "@/lib/realtime-response-state";
+import {
   executeRealtimeTutorTool,
   realtimeTutorTools,
 } from "@/lib/realtime-tutor/tools";
@@ -48,12 +59,14 @@ type RealtimeServerEvent = {
   type?: string;
   delta?: string;
   transcript?: string;
+  response_id?: string;
   item?: { id?: string };
   error?: {
     event_id?: string;
     message?: string;
   };
   response?: {
+    id?: string;
     status?: string;
     status_details?: {
       error?: {
@@ -103,7 +116,6 @@ type TutorAudioCapture = {
 };
 
 type TutorSessionMode = "read" | "guided";
-type TutorResponseKind = "guided_segment" | "learner_question";
 type GuidedSegmentState = {
   pageIndex: number;
   segmentIndex: number | null;
@@ -139,11 +151,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   const tutorReplayUrlRef = useRef<string | null>(null);
   const isUserTurnRef = useRef(false);
   const userTurnTransitionRef = useRef(false);
-  const responseInProgressRef = useRef(false);
-  const outputAudioPlayingRef = useRef(false);
-  const outputAudioResponseKindRef = useRef<TutorResponseKind | null>(
-    null,
-  );
+  const responseStateRef = useRef(createRealtimeResponseState());
   const tutorTranscriptRef = useRef("");
   const selectionContextItemRef = useRef<SelectionContextItem | null>(
     null,
@@ -154,7 +162,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   );
   const sessionModeRef = useRef<TutorSessionMode | null>(null);
   const guidedSegmentStateRef = useRef<GuidedSegmentState | null>(null);
-  const tutorResponseKindRef = useRef<TutorResponseKind | null>(null);
   const pendingServerEventsRef = useRef(
     new Map<string, PendingServerEvent>(),
   );
@@ -228,15 +235,12 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     remoteAudioRef.current = null;
     isUserTurnRef.current = false;
     userTurnTransitionRef.current = false;
-    responseInProgressRef.current = false;
-    outputAudioPlayingRef.current = false;
-    outputAudioResponseKindRef.current = null;
+    responseStateRef.current = createRealtimeResponseState();
     selectionContextItemRef.current = null;
     activePageContextItemRef.current = null;
     auxiliaryPageContextItemRef.current = null;
     sessionModeRef.current = null;
     guidedSegmentStateRef.current = null;
-    tutorResponseKindRef.current = null;
   }, [clearTutorReplayAudio, stopTutorAudioCapture]);
 
   useEffect(() => {
@@ -295,7 +299,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     setError("");
     sessionModeRef.current = mode;
     guidedSegmentStateRef.current = null;
-    tutorResponseKindRef.current = null;
+    responseStateRef.current = createRealtimeResponseState();
     setGuidedSegmentProgress(null);
 
     try {
@@ -503,8 +507,8 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
 
     if (
-      responseInProgressRef.current ||
-      outputAudioPlayingRef.current ||
+      responseStateRef.current.logical ||
+      responseStateRef.current.audio ||
       isUserTurnRef.current ||
       isSubmittingUserTurn
     ) {
@@ -548,11 +552,13 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
   ) {
     cancelTutorOutput();
     selectGuidedSegment(model, pageIndex, segmentIndex);
-    tutorResponseKindRef.current = "guided_segment";
+    responseStateRef.current = supersedeRealtimeResponse(
+      "guided_segment",
+    );
     const activePageContext = activePageContextItemRef.current;
 
     if (activePageContext?.pageIndex !== pageIndex) {
-      tutorResponseKindRef.current = null;
+      responseStateRef.current = createRealtimeResponseState();
       throw new Error("The active PDF page context is unavailable.");
     }
 
@@ -588,7 +594,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         "response.created",
       );
     } catch (reason) {
-      tutorResponseKindRef.current = null;
+      responseStateRef.current = createRealtimeResponseState();
       throw reason;
     }
   }
@@ -760,21 +766,23 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         "input_audio_buffer.cleared",
       );
 
-      if (responseInProgressRef.current) {
+      const activeLogicalResponse = responseStateRef.current.logical;
+      const activeAudioResponse = responseStateRef.current.audio;
+
+      if (activeLogicalResponse) {
         sendEvent({ type: "response.cancel" });
-        responseInProgressRef.current = false;
-        tutorResponseKindRef.current = null;
       }
 
-      if (outputAudioPlayingRef.current) {
-        if (outputAudioResponseKindRef.current === "guided_segment") {
+      if (activeAudioResponse) {
+        if (activeAudioResponse.kind === "guided_segment") {
           setGuidedSegmentCompletion(false);
         }
 
         sendEvent({ type: "output_audio_buffer.clear" });
-        outputAudioPlayingRef.current = false;
-        outputAudioResponseKindRef.current = null;
+        stopTutorAudioCapture(false);
       }
+
+      responseStateRef.current = createRealtimeResponseState();
 
       if (selection) {
         await syncSelectionContext(documentModel, selection);
@@ -828,7 +836,9 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
         { type: "input_audio_buffer.commit" },
         "input_audio_buffer.committed",
       );
-      tutorResponseKindRef.current = "learner_question";
+      responseStateRef.current = supersedeRealtimeResponse(
+        "learner_question",
+      );
       const guidedSegment = guidedSegmentStateRef.current;
       await sendEventAndWait(
         {
@@ -853,7 +863,7 @@ Follow the session response policy and stop after the answer.`,
       setError("");
       return true;
     } catch (reason) {
-      tutorResponseKindRef.current = null;
+      responseStateRef.current = createRealtimeResponseState();
       setIsTutorResponding(false);
       setError(
         getErrorMessage(reason, "The learner turn could not be submitted."),
@@ -1032,18 +1042,15 @@ Follow the session response policy and stop after the answer.`,
       remoteAudioRef.current.muted = false;
     }
 
-    if (responseInProgressRef.current) {
+    if (responseStateRef.current.logical) {
       sendEvent({ type: "response.cancel" });
-      responseInProgressRef.current = false;
-      tutorResponseKindRef.current = null;
     }
 
-    if (outputAudioPlayingRef.current) {
+    if (responseStateRef.current.audio) {
       sendEvent({ type: "output_audio_buffer.clear" });
-      outputAudioPlayingRef.current = false;
-      outputAudioResponseKindRef.current = null;
     }
 
+    responseStateRef.current = createRealtimeResponseState();
     setIsTutorResponding(false);
     setIsTutorSpeaking(false);
   }
@@ -1147,8 +1154,8 @@ Follow the session response policy and stop after the answer.`,
 
     if (
       !replayAudio ||
-      responseInProgressRef.current ||
-      outputAudioPlayingRef.current ||
+      responseStateRef.current.logical ||
+      responseStateRef.current.audio ||
       isUserTurnRef.current
     ) {
       return false;
@@ -1201,7 +1208,9 @@ Follow the session response policy and stop after the answer.`,
       );
       setIsSubmittingUserTurn(false);
       setIsTutorResponding(false);
-      tutorResponseKindRef.current = null;
+      responseStateRef.current = createRealtimeResponseState();
+      stopTutorAudioCapture(false);
+      setIsTutorSpeaking(false);
       setError(realtimeError.message);
       return;
     }
@@ -1215,13 +1224,28 @@ Follow the session response policy and stop after the answer.`,
     }
 
     switch (event.type) {
-      case "response.created":
-        responseInProgressRef.current = true;
+      case "response.created": {
+        const responseId = event.response?.id;
+
+        if (!responseId) {
+          return;
+        }
+
+        const transition = activateRealtimeResponse(
+          responseStateRef.current,
+          responseId,
+        );
+
+        if (!transition.accepted) {
+          return;
+        }
+
+        responseStateRef.current = transition.state;
         commitTutorTranscript();
 
         if (isUserTurnRef.current) {
           sendEvent({ type: "response.cancel" });
-          responseInProgressRef.current = false;
+          responseStateRef.current = createRealtimeResponseState();
           setIsTutorResponding(false);
           return;
         }
@@ -1229,15 +1253,29 @@ Follow the session response policy and stop after the answer.`,
         setIsTutorResponding(true);
         setError("");
         return;
-      case "output_audio_buffer.started":
-        outputAudioPlayingRef.current = true;
-        outputAudioResponseKindRef.current =
-          tutorResponseKindRef.current;
+      }
+      case "output_audio_buffer.started": {
+        if (!event.response_id) {
+          return;
+        }
+
+        const transition = startRealtimeResponseAudio(
+          responseStateRef.current,
+          event.response_id,
+        );
+
+        if (!transition.accepted) {
+          return;
+        }
+
+        responseStateRef.current = transition.state;
 
         if (isUserTurnRef.current) {
           sendEvent({ type: "output_audio_buffer.clear" });
-          outputAudioPlayingRef.current = false;
-          outputAudioResponseKindRef.current = null;
+          responseStateRef.current = finishRealtimeResponseAudio(
+            responseStateRef.current,
+            event.response_id,
+          ).state;
           return;
         }
 
@@ -1246,36 +1284,89 @@ Follow the session response policy and stop after the answer.`,
         setIsTutorSpeaking(true);
         void playRemoteAudio();
         return;
+      }
       case "response.output_audio_transcript.delta":
-        if (event.delta) {
+        if (
+          event.response_id &&
+          isActiveLogicalResponse(
+            responseStateRef.current,
+            event.response_id,
+          ) &&
+          event.delta
+        ) {
           tutorTranscriptRef.current += event.delta;
           setCurrentTutorTranscript(tutorTranscriptRef.current);
         }
         return;
       case "response.output_audio_transcript.done":
-        if (event.transcript) {
+        if (
+          event.response_id &&
+          isActiveLogicalResponse(
+            responseStateRef.current,
+            event.response_id,
+          ) &&
+          event.transcript
+        ) {
           tutorTranscriptRef.current = event.transcript;
           setCurrentTutorTranscript(event.transcript);
         }
         return;
-      case "output_audio_buffer.stopped":
+      case "output_audio_buffer.stopped": {
+        if (!event.response_id) {
+          return;
+        }
+
+        const transition = finishRealtimeResponseAudio(
+          responseStateRef.current,
+          event.response_id,
+        );
+
+        if (!transition.accepted) {
+          return;
+        }
+
+        responseStateRef.current = transition.state;
         stopTutorAudioCapture(true);
-        outputAudioPlayingRef.current = false;
-        outputAudioResponseKindRef.current = null;
         setIsTutorSpeaking(false);
         return;
-      case "output_audio_buffer.cleared":
+      }
+      case "output_audio_buffer.cleared": {
+        if (!event.response_id) {
+          return;
+        }
+
+        const transition = finishRealtimeResponseAudio(
+          responseStateRef.current,
+          event.response_id,
+        );
+
+        if (!transition.accepted) {
+          return;
+        }
+
+        responseStateRef.current = transition.state;
         stopTutorAudioCapture(false);
-        outputAudioPlayingRef.current = false;
-        outputAudioResponseKindRef.current = null;
         setIsTutorSpeaking(false);
         return;
-      case "response.done":
-        responseInProgressRef.current = false;
+      }
+      case "response.done": {
+        const responseId = event.response?.id;
+
+        if (
+          !responseId ||
+          !isActiveLogicalResponse(
+            responseStateRef.current,
+            responseId,
+          )
+        ) {
+          return;
+        }
 
         if (event.response?.status === "cancelled") {
-          tutorResponseKindRef.current = null;
+          responseStateRef.current = createRealtimeResponseState();
+          stopTutorAudioCapture(false);
           setIsTutorResponding(false);
+          setIsTutorSpeaking(false);
           return;
         }
 
@@ -1283,8 +1374,10 @@ Follow the session response policy and stop after the answer.`,
           event.response?.status &&
           event.response.status !== "completed"
         ) {
-          tutorResponseKindRef.current = null;
+          responseStateRef.current = createRealtimeResponseState();
+          stopTutorAudioCapture(false);
           setIsTutorResponding(false);
+          setIsTutorSpeaking(false);
           setError(
             event.response.status_details?.error?.message ??
               "The tutor response did not complete.",
@@ -1293,13 +1386,45 @@ Follow the session response policy and stop after the answer.`,
         }
 
         const functionCalls = readFunctionCalls(event.response?.output);
+        const completion = finishRealtimeResponse(
+          responseStateRef.current,
+          responseId,
+          functionCalls.length > 0,
+        );
+
+        responseStateRef.current = completion.state;
 
         if (functionCalls.length > 0) {
           try {
             await sendToolOutputs(functionCalls);
+            const continuation = requestRealtimeContinuation(
+              responseStateRef.current,
+              responseId,
+            );
+
+            if (!continuation.accepted) {
+              return;
+            }
+
+            responseStateRef.current = continuation.state;
+            await sendEventAndWait(
+              { type: "response.create" },
+              "response.created",
+            );
           } catch (reason) {
-            tutorResponseKindRef.current = null;
+            if (
+              !ownsRealtimeContinuation(
+                responseStateRef.current,
+                responseId,
+              )
+            ) {
+              return;
+            }
+
+            responseStateRef.current = createRealtimeResponseState();
+            stopTutorAudioCapture(false);
             setIsTutorResponding(false);
+            setIsTutorSpeaking(false);
             setError(
               getErrorMessage(
                 reason,
@@ -1310,13 +1435,13 @@ Follow the session response policy and stop after the answer.`,
           return;
         }
 
-        if (tutorResponseKindRef.current === "guided_segment") {
+        if (completion.kind === "guided_segment") {
           setGuidedSegmentCompletion(true);
         }
 
-        tutorResponseKindRef.current = null;
         setIsTutorResponding(false);
         return;
+      }
       default:
         return;
     }
@@ -1397,11 +1522,6 @@ Follow the session response policy and stop after the answer.`,
         "conversation.item.added",
       );
     }
-
-    await sendEventAndWait(
-      { type: "response.create" },
-      "response.created",
-    );
   }
 
   function sendEventAndWait(event: object, expectedEventType: string) {
