@@ -1,10 +1,12 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-const pdfDocumentPromises = new Map<string, Promise<PDFDocumentProxy>>();
-const pdfPageImagePromises = new Map<
+import { LruPromiseCache } from "@/lib/lru-promise-cache";
+
+const pdfDocumentPromises = new LruPromiseCache<string, PDFDocumentProxy>(2);
+const pdfPageImagePromises = new LruPromiseCache<
   string,
-  Promise<RenderedPdfPageImage>
->();
+  RenderedPdfPageImage
+>(6);
 
 const TARGET_PAGE_WIDTHS = [2000, 1700, 1400, 1150, 950, 768];
 const JPEG_QUALITIES = [0.86, 0.72, 0.58, 0.44, 0.32];
@@ -19,23 +21,11 @@ export async function loadPdfDocument(
   documentId: string,
   documentUrl: string,
 ) {
-  const existingDocument = pdfDocumentPromises.get(documentId);
-
-  if (existingDocument) {
-    return existingDocument;
-  }
-
-  const documentPromise = import("pdfjs-dist/webpack.mjs").then(
-    ({ getDocument }) => getDocument({ url: documentUrl }).promise,
+  return pdfDocumentPromises.getOrCreate(documentId, () =>
+    import("pdfjs-dist/webpack.mjs").then(
+      ({ getDocument }) => getDocument({ url: documentUrl }).promise,
+    ),
   );
-  pdfDocumentPromises.set(documentId, documentPromise);
-
-  try {
-    return await documentPromise;
-  } catch (reason) {
-    pdfDocumentPromises.delete(documentId);
-    throw reason;
-  }
 }
 
 export async function renderPdfPageImage(
@@ -49,25 +39,18 @@ export async function renderPdfPageImage(
     pageIndex,
     Math.floor(maximumDataUrlBytes),
   ].join(":");
-  const existingImage = pdfPageImagePromises.get(cacheKey);
-
-  if (existingImage) {
-    return existingImage;
-  }
-
-  const imagePromise = renderPage(
-    documentId,
-    documentUrl,
-    pageIndex,
-    maximumDataUrlBytes,
+  const imagePromise = pdfPageImagePromises.getOrCreate(cacheKey, () =>
+    renderPage(
+      documentId,
+      documentUrl,
+      pageIndex,
+      maximumDataUrlBytes,
+    ),
   );
-  pdfPageImagePromises.set(cacheKey, imagePromise);
 
   try {
     return await imagePromise;
   } catch (reason) {
-    pdfPageImagePromises.delete(cacheKey);
-
     if (
       reason instanceof Error &&
       (reason.message === "That PDF page is not available." ||
