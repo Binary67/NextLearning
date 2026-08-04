@@ -103,18 +103,22 @@ function buildDocumentModelPrompt(
   documentId: string,
   sourcePageCount: number,
 ) {
-  return `Review the complete PDF once, then create a compact document model for a selection-driven interactive tutor.
+  return `Review the complete PDF once, then create a compact document model for an interactive reading tutor.
 
 Document rules:
-- Set schema_version to 2.
+- Set schema_version to 3.
 - Set document_id to "${documentId}" exactly.
 - Set page_count to ${sourcePageCount} exactly.
 - Use 1-based PDF order for page_index.
 - Use the printed page number for page_label when visible; otherwise use page_index as a string.
 - Create exactly one pages record for every PDF page in PDF order.
-- Give substantive pages between one and 20 chunks. Use an empty chunks array only for non-instructional pages such as bibliography-only pages or boilerplate.
-- Make each chunk one substantial piece of information grounded on that page.
-- Give chunks globally unique lowercase kebab-case IDs beginning with "chunk:", concise titles, one-to-three-sentence summaries, and between one and 12 concept_ids.
+- Give substantive pages between one and 20 chunks in the document's reading order. Use an empty chunks array only when a page contains no instructional content.
+- Make each chunk one teaching segment: normally one paragraph, or a few consecutive sentences when a long paragraph contains clearly separable claims. Do not combine independent paragraphs.
+- Give each chunk the exact section heading in section_title. Use "Abstract" for an abstract and the nearest enclosing heading when a section continues across pages.
+- Copy the segment's source wording from the PDF into source_text. Do not summarize, rewrite, complete, or combine non-consecutive source text. Keep source_text at or below 8000 characters.
+- Give chunks globally unique lowercase kebab-case IDs beginning with "chunk:", concise teaching-focus titles, one-to-three-sentence summaries, and between one and 12 concept_ids.
+- Create a separate chunk for an instructional figure, table, or equation when it needs its own explanation. Use its exact caption and nearby introducing text as source_text.
+- Do not create chunks for document titles, author lists, affiliations, email addresses, page numbers, running headers, or other publication layout unless that material itself has instructional value.
 - Return no more than 400 chunks across the document.
 
 Concept rules:
@@ -134,5 +138,5 @@ Connection rules:
 - Use reason to state briefly why the connection helps explain the document.
 - Keep every occurrence and connection confidence between 0 and 1 inclusive.
 
-Do not create teaching units, lesson steps, a learning sequence, learner prompts, assessments, progress, timing, or realtime behavior.`;
+Do not create learner prompts, assessments, progress, timing, or realtime behavior.`;
 }

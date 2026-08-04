@@ -39,7 +39,10 @@ import type {
 } from "@/lib/document-model";
 import type { DocumentSelection } from "@/lib/document-selection";
 import type { TutorialResponse } from "@/lib/tutorial";
-import { useRealtimeTutor } from "@/lib/use-realtime-tutor";
+import {
+  type GuidedSegmentProgress,
+  useRealtimeTutor,
+} from "@/lib/use-realtime-tutor";
 
 type Modal =
   | "transcript"
@@ -105,7 +108,7 @@ export function TutorialWorkspace({
   const learnerCanAsk =
     guidedMode || Boolean(selection && !relatedPagesLoading);
   let learnerTurnPrompt = guidedMode
-    ? `Press ${raiseHandShortcutLabel} to ask about this page`
+    ? `Press ${raiseHandShortcutLabel} to ask about this part`
     : "Draw a rectangle on the PDF";
 
   if (selection) {
@@ -132,6 +135,15 @@ export function TutorialWorkspace({
     realtimeTutor.isUserTurn ||
     realtimeTutor.isSubmittingUserTurn;
   const pageCount = documentModel?.page_count ?? 0;
+  const guidedProgress =
+    realtimeTutor.guidedSegmentProgress?.pageIndex === currentPage
+      ? realtimeTutor.guidedSegmentProgress
+      : null;
+  const guidedTurnBusy =
+    realtimeTutor.isTutorResponding ||
+    realtimeTutor.isTutorSpeaking ||
+    realtimeTutor.isUserTurn ||
+    realtimeTutor.isSubmittingUserTurn;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -297,6 +309,22 @@ export function TutorialWorkspace({
     }
 
     void realtimeTutor.start();
+  }
+
+  function continueGuided() {
+    if (!guidedProgress) {
+      return;
+    }
+
+    if (guidedProgress.pageComplete) {
+      if (currentPage < pageCount) {
+        changePage(currentPage + 1);
+      }
+
+      return;
+    }
+
+    void realtimeTutor.continueGuided();
   }
 
   function endSession() {
@@ -602,6 +630,16 @@ export function TutorialWorkspace({
         </section>
 
         <aside className="insights-column" aria-label="Reading context">
+          {guidedMode ? (
+            <GuidedProgressCard
+              progress={guidedProgress}
+              connected={realtimeTutor.status === "connected"}
+              busy={guidedTurnBusy}
+              hasNextPage={currentPage < pageCount}
+              onContinue={continueGuided}
+            />
+          ) : null}
+
           <TutorTranscriptCard
             transcript={realtimeTutor.currentTutorTranscript}
             history={realtimeTutor.tutorTranscripts}
@@ -805,6 +843,82 @@ function TutorTranscriptCard({
         disabled={history.length === 0}
       >
         Open transcript
+      </button>
+    </section>
+  );
+}
+
+function GuidedProgressCard({
+  progress,
+  connected,
+  busy,
+  hasNextPage,
+  onContinue,
+}: {
+  progress: GuidedSegmentProgress | null;
+  connected: boolean;
+  busy: boolean;
+  hasNextPage: boolean;
+  onContinue: () => void;
+}) {
+  let buttonLabel = "Start the tutor";
+
+  if (progress) {
+    if (progress.pageComplete) {
+      buttonLabel = hasNextPage ? "Next page" : "Document complete";
+    } else if (busy) {
+      buttonLabel = "Explaining…";
+    } else if (progress.segmentComplete) {
+      buttonLabel = "Continue";
+    } else {
+      buttonLabel = "Resume explanation";
+    }
+  }
+
+  return (
+    <section className="insight-card guided-progress-card">
+      <h2>
+        <span className="insight-card-icon">
+          <Sparkles size={18} aria-hidden="true" />
+        </span>
+        Guided progress
+      </h2>
+      {progress ? (
+        <>
+          {progress.sectionTitle ? (
+            <p className="guided-section-title">
+              {progress.sectionTitle}
+            </p>
+          ) : null}
+          <strong className="guided-segment-title">
+            {progress.title}
+          </strong>
+          <p className="guided-segment-count">
+            {progress.segmentCount > 0
+              ? `Part ${progress.segmentNumber} of ${progress.segmentCount} on this page`
+              : "This page has no prepared teaching segments."}
+          </p>
+        </>
+      ) : (
+        <p className="guided-progress-placeholder">
+          Start the guided tutor to begin with the first teaching segment.
+        </p>
+      )}
+      <button
+        className="primary-button guided-continue-button"
+        type="button"
+        onClick={onContinue}
+        disabled={
+          !connected ||
+          !progress ||
+          busy ||
+          (progress.pageComplete && !hasNextPage)
+        }
+      >
+        {buttonLabel}
+        {progress?.pageComplete && hasNextPage ? (
+          <ChevronRight size={17} aria-hidden="true" />
+        ) : null}
       </button>
     </section>
   );

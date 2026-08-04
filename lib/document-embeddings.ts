@@ -390,7 +390,7 @@ function buildChunkSearchText(
     .map((conceptId) => conceptNames.get(conceptId) ?? "")
     .join(" ");
 
-  return `${chunk.title}\n${chunk.summary}\n${concepts}`;
+  return `${chunk.section_title}\n${chunk.title}\n${chunk.source_text}\n${chunk.summary}\n${concepts}`;
 }
 
 function normalizeEmbedding(value: number[]) {

@@ -1,4 +1,4 @@
-export const DOCUMENT_MODEL_SCHEMA_VERSION = 2;
+export const DOCUMENT_MODEL_SCHEMA_VERSION = 3;
 
 const occurrenceRoles = [
   "introduced",
@@ -31,6 +31,8 @@ export type ConceptRelationship = (typeof relationshipValues)[number];
 
 export type DocumentChunk = {
   id: string;
+  section_title: string;
+  source_text: string;
   title: string;
   summary: string;
   concept_ids: string[];
@@ -76,19 +78,21 @@ export type DocumentModel = {
   connections: DocumentConnection[];
 };
 
+export type DocumentChunkSummary = Omit<DocumentChunk, "source_text">;
+
 export type DocumentMapSummary = {
   page_count: number;
   concept_count: number;
   connection_count: number;
 };
 
-export type SelectionRelatedPage = DocumentChunk & {
+export type SelectionRelatedPage = DocumentChunkSummary & {
   page_index: number;
   page_label: string;
 };
 
 export type TextSelectionContext = {
-  selected_chunk: DocumentChunk;
+  selected_chunk: DocumentChunkSummary;
   related_pages: SelectionRelatedPage[];
 };
 
@@ -97,7 +101,7 @@ export type SelectionGrounding = {
     page_index: number;
     page_label: string;
   };
-  current_chunks: DocumentChunk[];
+  current_chunks: DocumentChunkSummary[];
   current_concepts: Array<{
     id: string;
     name: string;
@@ -111,7 +115,7 @@ export type SelectionGrounding = {
     relevant_pages: number[];
     reason: string;
   }>;
-  related_chunks: Array<DocumentChunk & {
+  related_chunks: Array<DocumentChunkSummary & {
     page_index: number;
     page_label: string;
   }>;
@@ -121,10 +125,13 @@ export type SelectionGrounding = {
 type ChunkTokens = {
   title: Set<string>;
   concepts: Set<string>;
+  source: Set<string>;
   summary: Set<string>;
 };
 
-type RelatedPageCandidate = SelectionRelatedPage & {
+type RelatedPageCandidate = DocumentChunk & {
+  page_index: number;
+  page_label: string;
   connection_confidence: number;
   occurrence_priority: number;
   shared_concept_count: number;
@@ -176,6 +183,8 @@ const documentChunkJsonSchema = {
   type: "object",
   properties: {
     id: { type: "string" },
+    section_title: { type: "string" },
+    source_text: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     concept_ids: {
@@ -183,7 +192,14 @@ const documentChunkJsonSchema = {
       items: { type: "string" },
     },
   },
-  required: ["id", "title", "summary", "concept_ids"],
+  required: [
+    "id",
+    "section_title",
+    "source_text",
+    "title",
+    "summary",
+    "concept_ids",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -320,7 +336,7 @@ export function buildTextSelectionContext(
   const selectionTokens = tokenize(selectionText);
 
   return {
-    selected_chunk: selectedChunk,
+    selected_chunk: toChunkSummary(selectedChunk),
     related_pages: findRelatedPages(
       model,
       pageIndex,
@@ -367,7 +383,7 @@ export function buildSelectionGrounding(
           ),
         )
         .map((chunk) => ({
-          ...chunk,
+          ...toChunkSummary(chunk),
           page_index: item.page_index,
           page_label: item.page_label,
         })),
@@ -382,7 +398,7 @@ export function buildSelectionGrounding(
       page_index: pageIndex,
       page_label: page?.page_label ?? String(pageIndex),
     },
-    current_chunks: page?.chunks ?? [],
+    current_chunks: page?.chunks.map(toChunkSummary) ?? [],
     current_concepts: currentOccurrences.map(({ concept, occurrence }) => ({
       id: concept.id,
       name: concept.name,
@@ -507,10 +523,7 @@ function findRelatedPages(
 
     seenPageIndexes.add(candidate.page_index);
     relatedPages.push({
-      id: candidate.id,
-      title: candidate.title,
-      summary: candidate.summary,
-      concept_ids: candidate.concept_ids,
+      ...toChunkSummary(candidate),
       page_index: candidate.page_index,
       page_label: candidate.page_label,
     });
@@ -521,6 +534,16 @@ function findRelatedPages(
   }
 
   return relatedPages;
+}
+
+function toChunkSummary(chunk: DocumentChunk): DocumentChunkSummary {
+  return {
+    id: chunk.id,
+    section_title: chunk.section_title,
+    title: chunk.title,
+    summary: chunk.summary,
+    concept_ids: chunk.concept_ids,
+  };
 }
 
 function getOccurrencePriority(
@@ -571,6 +594,7 @@ function getChunkTokens(
         .map((conceptId) => conceptNamesById.get(conceptId) ?? "")
         .join(" "),
     ),
+    source: tokenize(chunk.source_text),
     summary: tokenize(chunk.summary),
   };
 }
@@ -579,6 +603,7 @@ function combineChunkTokens(chunkTokens: ChunkTokens) {
   return new Set([
     ...chunkTokens.title,
     ...chunkTokens.concepts,
+    ...chunkTokens.source,
     ...chunkTokens.summary,
   ]);
 }
@@ -665,6 +690,8 @@ function validatePages(pages: unknown[]) {
         !isRecord(chunk) ||
         !isChunkId(chunk.id) ||
         chunkIds.has(chunk.id) ||
+        !isNonEmptyString(chunk.section_title) ||
+        !isSourceText(chunk.source_text) ||
         !isNonEmptyString(chunk.title) ||
         !isSourceSummary(chunk.summary) ||
         !isStringArray(chunk.concept_ids, 1, 12)
@@ -871,6 +898,10 @@ function isStringArray(
 
 function isSourceSummary(value: unknown): value is string {
   return isNonEmptyString(value) && value.length <= 1600;
+}
+
+function isSourceText(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= 8000;
 }
 
 function isConfidence(value: unknown): value is number {
