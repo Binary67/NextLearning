@@ -489,12 +489,34 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     cancelTutorOutput();
     selectGuidedSegment(model, pageIndex, segmentIndex);
     tutorResponseKindRef.current = "guided_segment";
+    const activePageContext = activePageContextItemRef.current;
+
+    if (activePageContext?.pageIndex !== pageIndex) {
+      tutorResponseKindRef.current = null;
+      throw new Error("The active PDF page context is unavailable.");
+    }
 
     try {
       await sendEventAndWait(
         {
           type: "response.create",
           response: {
+            input: [
+              {
+                type: "item_reference",
+                id: activePageContext.itemId,
+              },
+              {
+                type: "message",
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: "Explain the active guided segment identified in the response instructions. This is an application-generated lesson step, not a learner question.",
+                  },
+                ],
+              },
+            ],
             instructions: buildGuidedSegmentInstructions(
               model,
               pageIndex,
