@@ -9,9 +9,14 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import type { ExplanationStyle } from "@/lib/use-realtime-tutor";
+
 const DEFAULT_RAISE_HAND_SHORTCUT = " ";
+const DEFAULT_EXPLANATION_STYLE: ExplanationStyle = "technical";
 const RAISE_HAND_SHORTCUT_STORAGE_KEY =
   "nextlearning.raise-hand-shortcut";
+const EXPLANATION_STYLE_STORAGE_KEY =
+  "nextlearning.explanation-style";
 const AUDIO_INPUT_STORAGE_KEY = "nextlearning.audio-input-device";
 const AUDIO_OUTPUT_STORAGE_KEY = "nextlearning.audio-output-device";
 const LOCAL_SETTINGS_EVENT = "nextlearning-settings-change";
@@ -24,10 +29,15 @@ export function useLearningSettings() {
     RAISE_HAND_SHORTCUT_STORAGE_KEY,
     DEFAULT_RAISE_HAND_SHORTCUT,
   );
+  const explanationStyle = useLocalSetting(
+    EXPLANATION_STYLE_STORAGE_KEY,
+    DEFAULT_EXPLANATION_STYLE,
+  ) as ExplanationStyle;
 
   return {
     raiseHandShortcut,
     raiseHandShortcutLabel: formatShortcut(raiseHandShortcut),
+    explanationStyle,
     audioInputDeviceId: useLocalSetting(AUDIO_INPUT_STORAGE_KEY, ""),
     audioOutputDeviceId: useLocalSetting(AUDIO_OUTPUT_STORAGE_KEY, ""),
   };
@@ -35,6 +45,7 @@ export function useLearningSettings() {
 
 export function LearningSettingsDialog({
   audioChangesDisabled = false,
+  explanationStyleChangesDisabled = false,
   requestMicrophonePermission = true,
   onSelectAudioInputDevice,
   onSelectAudioOutputDevice,
@@ -42,6 +53,7 @@ export function LearningSettingsDialog({
   onShowMessage,
 }: {
   audioChangesDisabled?: boolean;
+  explanationStyleChangesDisabled?: boolean;
   requestMicrophonePermission?: boolean;
   onSelectAudioInputDevice?: SelectAudioDevice;
   onSelectAudioOutputDevice?: SelectAudioDevice;
@@ -50,6 +62,7 @@ export function LearningSettingsDialog({
 }) {
   const {
     raiseHandShortcutLabel,
+    explanationStyle,
     audioInputDeviceId,
     audioOutputDeviceId,
   } = useLearningSettings();
@@ -207,6 +220,30 @@ export function LearningSettingsDialog({
         <div className="settings-list">
           <section className="setting-field">
             <div>
+              <label htmlFor="explanation-style">
+                Explanation style
+              </label>
+              <p>Choose how much technical knowledge the tutor assumes.</p>
+            </div>
+            <select
+              id="explanation-style"
+              value={explanationStyle}
+              onChange={(event) => {
+                saveLocalSetting(
+                  EXPLANATION_STYLE_STORAGE_KEY,
+                  event.target.value,
+                );
+                onShowMessage("Explanation style updated.");
+              }}
+              disabled={explanationStyleChangesDisabled}
+            >
+              <option value="plain">Plain language</option>
+              <option value="technical">Technical</option>
+            </select>
+          </section>
+
+          <section className="setting-field">
+            <div>
               <label htmlFor="raise-hand-shortcut">
                 Raise-hand shortcut
               </label>
@@ -282,6 +319,11 @@ export function LearningSettingsDialog({
             Audio devices cannot change while connecting or speaking.
           </p>
         )}
+        {explanationStyleChangesDisabled ? (
+          <p className="settings-status">
+            End the active tutor session to change the explanation style.
+          </p>
+        ) : null}
         {error && (
           <p className="modal-error" role="alert">
             {error}

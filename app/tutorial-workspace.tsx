@@ -97,6 +97,7 @@ export function TutorialWorkspace({
   const {
     raiseHandShortcut,
     raiseHandShortcutLabel,
+    explanationStyle,
     audioInputDeviceId,
     audioOutputDeviceId,
   } = useLearningSettings();
@@ -126,6 +127,7 @@ export function TutorialWorkspace({
     selection,
     textSelectionContext,
     relatedPagesLoading,
+    explanationStyle,
     audioInputDeviceId,
     audioOutputDeviceId,
   });
@@ -810,6 +812,7 @@ export function TutorialWorkspace({
       {modal === "settings" && (
         <LearningSettingsDialog
           audioChangesDisabled={audioSettingsDisabled}
+          explanationStyleChangesDisabled={sessionActive}
           requestMicrophonePermission={
             realtimeTutor.status !== "connected"
           }
