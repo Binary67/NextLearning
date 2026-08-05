@@ -735,6 +735,23 @@ summary:focus-visible {
   margin-bottom: 16px;
 }
 
+.guided-tutor-mode-selector {
+  display: flex;
+  width: 100%;
+}
+
+.guided-tutor-mode-selector button {
+  flex: 1;
+  padding: 0 8px;
+}
+
+.guided-tutor-mode-description {
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
 .tutor-session-action,
 .tutor-ask-button {
   width: 100%;

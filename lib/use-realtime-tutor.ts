@@ -6,7 +6,10 @@ import type {
   DocumentModel,
   TextSelectionContext,
 } from "@/lib/document-model";
-import type { DocumentSelection } from "@/lib/document-selection";
+import type {
+  DocumentSelection,
+  SelectionBounds,
+} from "@/lib/document-selection";
 import {
   type CheckpointSelection,
   type LearningLoopAction,
@@ -42,6 +45,7 @@ export type RealtimeTutorStatus =
   | "error";
 
 export type ExplanationStyle = "plain" | "technical";
+export type GuidedTutorMode = "reading" | "learning";
 
 export type GuidedSegmentProgress = {
   pageIndex: number;
@@ -49,6 +53,7 @@ export type GuidedSegmentProgress = {
   sectionTitle: string;
   title: string;
   sourceText: string;
+  highlightBounds: SelectionBounds[];
   conceptName: string | null;
   learningPhase: LearningLoopState["phase"] | null;
   attemptNumber: LearningLoopState["attemptNumber"] | null;
@@ -188,6 +193,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     null,
   );
   const sessionModeRef = useRef<TutorSessionMode | null>(null);
+  const guidedTutorModeRef = useRef<GuidedTutorMode | null>(null);
   const activeTutorSessionRef = useRef<ActiveTutorSession | null>(null);
   const guidedSegmentStateRef = useRef<GuidedSegmentState | null>(null);
   const activeLearningCheckpointRef =
@@ -271,6 +277,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     activePageContextItemRef.current = null;
     auxiliaryPageContextItemRef.current = null;
     sessionModeRef.current = null;
+    guidedTutorModeRef.current = null;
     activeTutorSessionRef.current = null;
     guidedSegmentStateRef.current = null;
     activeLearningCheckpointRef.current = null;
@@ -292,7 +299,11 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     await startSession("read");
   }
 
-  async function startGuided(pageIndex: number, chunkId: string | null) {
+  async function startGuided(
+    pageIndex: number,
+    chunkId: string | null,
+    guidedTutorMode: GuidedTutorMode,
+  ) {
     const documentModel = optionsRef.current.documentModel;
 
     if (!documentModel || !isValidPageIndex(documentModel, pageIndex)) {
@@ -301,7 +312,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       return;
     }
 
-    const connected = await startSession("guided");
+    const connected = await startSession("guided", guidedTutorMode);
 
     if (connected) {
       await explainPageInConnectedSession(
@@ -331,7 +342,10 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     }
   }
 
-  async function startSession(mode: TutorSessionMode) {
+  async function startSession(
+    mode: TutorSessionMode,
+    guidedTutorMode: GuidedTutorMode | null = null,
+  ) {
     if (status === "connecting" || status === "connected") {
       return false;
     }
@@ -356,6 +370,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     setError("");
     setPersistenceError("");
     sessionModeRef.current = mode;
+    guidedTutorModeRef.current = guidedTutorMode;
     activeTutorSessionRef.current = {
       id: crypto.randomUUID(),
       mode,
@@ -461,12 +476,13 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
             instructions: buildTutorInstructions(
               documentModel,
               mode,
+              guidedTutorMode,
               explanationStyle,
             ),
             tools:
-              mode === "read"
-                ? realtimeTutorTools
-                : learningRealtimeTutorTools,
+              mode === "review" || guidedTutorMode === "learning"
+                ? learningRealtimeTutorTools
+                : realtimeTutorTools,
             tool_choice: "auto",
           },
         },
@@ -699,12 +715,15 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     cancelTutorOutput();
     selectGuidedSegment(model, pageIndex, segmentIndex);
     const segment = model.pages[pageIndex - 1].chunks[segmentIndex];
-    const checkpoint = selectPrimaryCheckpoint(
-      model,
-      pageIndex,
-      segment,
-      checkpointedConceptIdsRef.current,
-    );
+    const checkpoint =
+      guidedTutorModeRef.current === "learning"
+        ? selectPrimaryCheckpoint(
+            model,
+            pageIndex,
+            segment,
+            checkpointedConceptIdsRef.current,
+          )
+        : null;
 
     if (checkpoint) {
       checkpointedConceptIdsRef.current.add(checkpoint.concept.id);
@@ -788,6 +807,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       sectionTitle: segment.section_title,
       title: segment.title,
       sourceText: segment.source_text,
+      highlightBounds: segment.highlight_bounds,
       chunkId: segment.id,
       conceptName: null,
       learningPhase: null,
@@ -810,6 +830,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
       sectionTitle: "",
       title: "No instructional content on this page",
       sourceText: "",
+      highlightBounds: [],
       chunkId: null,
       conceptName: null,
       learningPhase: null,
@@ -1978,8 +1999,13 @@ Follow the session response policy and stop after the answer.`,
 function buildTutorInstructions(
   model: DocumentModel,
   mode: TutorSessionMode,
+  guidedTutorMode: GuidedTutorMode | null,
   explanationStyle: ExplanationStyle,
 ) {
+  const activeLearning =
+    mode === "guided" && guidedTutorMode === "learning";
+  const guidedReading =
+    mode === "guided" && guidedTutorMode === "reading";
   const modePolicy =
     mode === "guided"
       ? `This is a guided segment session. The application supplies one authoritative active-page image and identifies one ordered teaching segment at a time.
@@ -1990,7 +2016,12 @@ function buildTutorInstructions(
 - Treat the active segment's source text and page image as authoritative document evidence.
 - Connect backward to an already taught segment only when it materially clarifies the active segment.
 - Stop after the active segment. Never advance to another segment or page yourself.
-- A learner question does not require a selection. When a selection is supplied, use it as narrower evidence within the authoritative active page.`
+- A learner question does not require a selection. When a selection is supplied, use it as narrower evidence within the authoritative active page.
+${
+  activeLearning
+    ? "- Follow application-requested diagnostics and retrieval checkpoints when they are supplied."
+    : "- This is guided reading. Explain each segment directly. Never initiate a diagnostic, retrieval checkpoint, quiz, or other understanding question. The learner may still ask questions."
+}`
       : mode === "review"
         ? `This is a concept-focused review session. The application supplies one authoritative active-page image, one active chunk, and one active concept.
 - Begin with retrieval, not a fresh explanation.
@@ -2001,9 +2032,8 @@ function buildTutorInstructions(
 - Answer the learner's exact question first.
 - Treat the active selection as the primary document evidence for the question.`;
   const learningAttemptPolicy =
-    mode === "read"
-      ? ""
-      : `
+    activeLearning || mode === "review"
+      ? `
 
 Learning attempt policy:
 - When response instructions ask you to evaluate the learner's latest answer, call record_learning_attempt exactly once before giving any feedback.
@@ -2013,7 +2043,8 @@ Learning attempt policy:
 - Do not speak before recording an evaluated attempt.
 - After record_learning_attempt returns, follow its next_action exactly even when persistence failed. Never call the recording tool again for the same answer.
 - A diagnostic result only changes explanation length. Never describe an incorrect diagnostic as lost mastery or a penalty.
-- Listening, tutor speech, and page completion are not learning evidence.`;
+- Listening, tutor speech, and page completion are not learning evidence.`
+      : "";
 
   return `You are a live voice tutor helping a learner read "${model.title}".
 
@@ -2050,7 +2081,7 @@ Response policy:
 - Do not turn the answer into a planned lesson or continue to unrelated material.
 - Do not reveal future document material merely because it is available.
 - Stop after answering by default.
-- Ask one brief understanding question only when the learner shows a misconception, explicitly asks to be checked, or repeatedly struggles with a foundational concept.
+${guidedReading ? "- Do not ask an understanding question unless the learner explicitly requests one." : "- Ask one brief understanding question only when the learner shows a misconception, explicitly asks to be checked, or repeatedly struggles with a foundational concept."}
 - Never claim that listening alone demonstrates mastery.
 - If the supplied evidence is insufficient, use the relevant tool before saying what is missing.
 - If the supplied evidence and tool results are insufficient, say what is missing instead of guessing.

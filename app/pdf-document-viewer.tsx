@@ -3,7 +3,6 @@
 import {
   type PointerEvent as ReactPointerEvent,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -20,7 +19,7 @@ type PdfDocumentViewerProps = {
   documentName: string;
   pageIndex: number;
   selection: DocumentSelection | null;
-  tutorSourceText: string | null;
+  tutorHighlightBounds: SelectionBounds[];
   onSelectionChange: (selection: DocumentSelection | null) => void;
 };
 
@@ -52,7 +51,7 @@ export function PdfDocumentViewer({
   documentName,
   pageIndex,
   selection,
-  tutorSourceText,
+  tutorHighlightBounds,
   onSelectionChange,
 }: PdfDocumentViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -67,10 +66,6 @@ export function PdfDocumentViewer({
     null,
   );
   const [error, setError] = useState("");
-  const tutorHighlightBounds = useMemo(
-    () => findTutorHighlightBounds(textRegions, tutorSourceText),
-    [textRegions, tutorSourceText],
-  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -403,190 +398,6 @@ export function PdfDocumentViewer({
       )}
     </div>
   );
-}
-
-function findTutorHighlightBounds(
-  textRegions: TextRegion[],
-  sourceText: string | null,
-) {
-  if (!sourceText || textRegions.length === 0) {
-    return [];
-  }
-
-  const query = normalizeMatchText(sourceText);
-
-  if (!query) {
-    return [];
-  }
-
-  const searchablePage = createSearchablePageText(textRegions);
-  const matchStart = searchablePage.text.indexOf(query);
-
-  // An absent or repeated passage is ambiguous, so leave the PDF unmarked.
-  if (
-    matchStart === -1 ||
-    searchablePage.text.indexOf(query, matchStart + 1) !== -1
-  ) {
-    return [];
-  }
-
-  const matchingRegionIndexes = new Set(
-    searchablePage.regionIndexes.slice(
-      matchStart,
-      matchStart + query.length,
-    ),
-  );
-  const matchingRegions = Array.from(matchingRegionIndexes, (index) => {
-    return textRegions[index];
-  });
-
-  return mergeTextRegionsByLine(matchingRegions);
-}
-
-function createSearchablePageText(textRegions: TextRegion[]) {
-  let text = "";
-  const regionIndexes: number[] = [];
-  let previousRegion: TextRegion | null = null;
-
-  textRegions.forEach((region, regionIndex) => {
-    const normalizedText = normalizeMatchText(region.text);
-
-    if (!normalizedText) {
-      return;
-    }
-
-    if (
-      text &&
-      previousRegion &&
-      shouldSeparateTextRegions(previousRegion, region)
-    ) {
-      text += " ";
-      regionIndexes.push(regionIndex);
-    }
-
-    text += normalizedText;
-
-    for (let index = 0; index < normalizedText.length; index += 1) {
-      regionIndexes.push(regionIndex);
-    }
-
-    previousRegion = region;
-  });
-
-  return { text, regionIndexes };
-}
-
-function normalizeMatchText(text: string) {
-  // Normalize PDF line wrapping and typography without changing the words.
-  return text
-    .normalize("NFKC")
-    .replace(/[-\u00ad\u2010-\u2015\u2212]\s+/g, "")
-    .replace(/\u00ad/g, "")
-    .replace(/[-\u2010-\u2015\u2212]/g, "")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201c\u201d]/g, '"')
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLocaleLowerCase();
-}
-
-function shouldSeparateTextRegions(
-  previous: TextRegion,
-  current: TextRegion,
-) {
-  if (/[-\u00ad\u2010-\u2015\u2212]\s*$/.test(previous.text)) {
-    return false;
-  }
-
-  if (/\s$/.test(previous.text) || /^\s/.test(current.text)) {
-    return true;
-  }
-
-  const previousCenterY = previous.y + previous.height / 2;
-  const currentCenterY = current.y + current.height / 2;
-  const lineTolerance = Math.max(previous.height, current.height) / 2;
-
-  if (Math.abs(previousCenterY - currentCenterY) > lineTolerance) {
-    return true;
-  }
-
-  if (current.x < previous.x) {
-    return true;
-  }
-
-  const horizontalGap = current.x - (previous.x + previous.width);
-  return horizontalGap > Math.max(previous.height, current.height) * 0.15;
-}
-
-function mergeTextRegionsByLine(textRegions: TextRegion[]) {
-  const lines: SelectionBounds[] = [];
-
-  textRegions.forEach((region) => {
-    const currentLine = lines.at(-1);
-
-    if (!currentLine || !regionsShareLine(currentLine, region)) {
-      lines.push({
-        x: region.x,
-        y: region.y,
-        width: region.width,
-        height: region.height,
-      });
-      return;
-    }
-
-    const right = Math.max(
-      currentLine.x + currentLine.width,
-      region.x + region.width,
-    );
-    const bottom = Math.max(
-      currentLine.y + currentLine.height,
-      region.y + region.height,
-    );
-    currentLine.x = Math.min(currentLine.x, region.x);
-    currentLine.y = Math.min(currentLine.y, region.y);
-    currentLine.width = right - currentLine.x;
-    currentLine.height = bottom - currentLine.y;
-  });
-
-  return lines.map(addHighlightPadding);
-}
-
-function regionsShareLine(
-  currentLine: SelectionBounds,
-  region: TextRegion,
-) {
-  const verticalOverlap =
-    Math.min(
-      currentLine.y + currentLine.height,
-      region.y + region.height,
-    ) - Math.max(currentLine.y, region.y);
-  const minimumHeight = Math.min(currentLine.height, region.height);
-  const horizontalGap = region.x - (currentLine.x + currentLine.width);
-  const referenceHeight = Math.max(currentLine.height, region.height);
-  const minimumGap = -referenceHeight / 2;
-  const maximumGap = referenceHeight * 2;
-
-  return (
-    verticalOverlap >= minimumHeight * 0.45 &&
-    horizontalGap >= minimumGap &&
-    horizontalGap <= maximumGap
-  );
-}
-
-function addHighlightPadding(bounds: SelectionBounds) {
-  const horizontalPadding = 0.003;
-  const verticalPadding = 0.0015;
-  const x = clamp(bounds.x - horizontalPadding);
-  const y = clamp(bounds.y - verticalPadding);
-  const right = clamp(bounds.x + bounds.width + horizontalPadding);
-  const bottom = clamp(bounds.y + bounds.height + verticalPadding);
-
-  return {
-    x,
-    y,
-    width: right - x,
-    height: bottom - y,
-  };
 }
 
 function getBounds(start: PagePoint, end: PagePoint): SelectionBounds {

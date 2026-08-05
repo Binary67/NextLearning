@@ -112,7 +112,7 @@ function conceptState(
 const conceptNames = ["Alpha", "Beta", "Gamma", "Delta", "Future"];
 
 const model: DocumentModel = {
-  schema_version: 3,
+  schema_version: 4,
   document_id: tutorialId,
   title: "Review tutorial",
   page_count: conceptNames.length,
@@ -124,6 +124,9 @@ const model: DocumentModel = {
         id: `chunk:${name.toLowerCase()}`,
         section_title: name,
         source_text: `${name} source text.`,
+        highlight_bounds: [
+          { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+        ],
         title: name,
         summary: `${name} summary.`,
         concept_ids: [`concept:${name.toLowerCase()}`],

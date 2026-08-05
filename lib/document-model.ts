@@ -1,4 +1,6 @@
-export const DOCUMENT_MODEL_SCHEMA_VERSION = 3;
+import type { SelectionBounds } from "@/lib/document-selection";
+
+export const DOCUMENT_MODEL_SCHEMA_VERSION = 4;
 
 const occurrenceRoles = [
   "introduced",
@@ -29,13 +31,23 @@ export type OccurrenceRole = (typeof occurrenceRoles)[number];
 export type Explicitness = (typeof explicitnessValues)[number];
 export type ConceptRelationship = (typeof relationshipValues)[number];
 
-export type DocumentChunk = {
+export type GeneratedDocumentChunk = {
   id: string;
   section_title: string;
   source_text: string;
   title: string;
   summary: string;
   concept_ids: string[];
+};
+
+export type DocumentChunk = GeneratedDocumentChunk & {
+  highlight_bounds: SelectionBounds[];
+};
+
+export type GeneratedDocumentPage = {
+  page_index: number;
+  page_label: string;
+  chunks: GeneratedDocumentChunk[];
 };
 
 export type DocumentPage = {
@@ -78,7 +90,14 @@ export type DocumentModel = {
   connections: DocumentConnection[];
 };
 
-export type DocumentChunkSummary = Omit<DocumentChunk, "source_text">;
+export type GeneratedDocumentModel = Omit<DocumentModel, "pages"> & {
+  pages: GeneratedDocumentPage[];
+};
+
+export type DocumentChunkSummary = Omit<
+  DocumentChunk,
+  "source_text" | "highlight_bounds"
+>;
 
 export type DocumentMapSummary = {
   page_count: number;
@@ -635,6 +654,25 @@ export function validateDocumentModel(
   value: unknown,
   documentId: string,
 ): DocumentModel {
+  return validateDocumentModelValue(value, documentId, true) as DocumentModel;
+}
+
+export function validateGeneratedDocumentModel(
+  value: unknown,
+  documentId: string,
+): GeneratedDocumentModel {
+  return validateDocumentModelValue(
+    value,
+    documentId,
+    false,
+  ) as GeneratedDocumentModel;
+}
+
+function validateDocumentModelValue(
+  value: unknown,
+  documentId: string,
+  requireHighlightBounds: boolean,
+) {
   if (!isRecord(value)) {
     throw new Error("The generated document model is not an object.");
   }
@@ -655,7 +693,10 @@ export function validateDocumentModel(
     throw new Error("The generated document model has invalid metadata.");
   }
 
-  const pageLabels = validatePages(value.pages);
+  const pageLabels = validatePages(
+    value.pages,
+    requireHighlightBounds,
+  );
   const conceptIds = validateConcepts(
     value.concepts,
     value.page_count,
@@ -664,10 +705,13 @@ export function validateDocumentModel(
   validatePageChunks(value.pages, conceptIds, value.concepts);
   validateConnections(value.connections, conceptIds, value.page_count);
 
-  return value as DocumentModel;
+  return value;
 }
 
-function validatePages(pages: unknown[]) {
+function validatePages(
+  pages: unknown[],
+  requireHighlightBounds: boolean,
+) {
   const pageLabels = new Map<number, string>();
   const chunkIds = new Set<string>();
   let chunkCount = 0;
@@ -694,7 +738,9 @@ function validatePages(pages: unknown[]) {
         !isSourceText(chunk.source_text) ||
         !isNonEmptyString(chunk.title) ||
         !isSourceSummary(chunk.summary) ||
-        !isStringArray(chunk.concept_ids, 1, 12)
+        !isStringArray(chunk.concept_ids, 1, 12) ||
+        (requireHighlightBounds &&
+          !isHighlightBounds(chunk.highlight_bounds))
       ) {
         throw new Error(
           "The generated document model has an invalid page chunk.",
@@ -711,6 +757,31 @@ function validatePages(pages: unknown[]) {
   }
 
   return pageLabels;
+}
+
+function isHighlightBounds(value: unknown): value is SelectionBounds[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (bounds) =>
+        isRecord(bounds) &&
+        isUnitInterval(bounds.x) &&
+        isUnitInterval(bounds.y) &&
+        isPositiveUnitInterval(bounds.width) &&
+        isPositiveUnitInterval(bounds.height) &&
+        bounds.x + bounds.width <= 1 &&
+        bounds.y + bounds.height <= 1,
+    )
+  );
+}
+
+function isUnitInterval(value: unknown): value is number {
+  return typeof value === "number" && value >= 0 && value <= 1;
+}
+
+function isPositiveUnitInterval(value: unknown): value is number {
+  return typeof value === "number" && value > 0 && value <= 1;
 }
 
 function validateConcepts(

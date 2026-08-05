@@ -9,7 +9,7 @@ import {
 import type { DocumentModel } from "@/lib/document-model";
 
 const model: DocumentModel = {
-  schema_version: 3,
+  schema_version: 4,
   document_id: "document-id",
   title: "Document",
   page_count: 1,
@@ -22,6 +22,9 @@ const model: DocumentModel = {
           id: "chunk:first",
           section_title: "Section",
           source_text: "Source text",
+          highlight_bounds: [
+            { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+          ],
           title: "First",
           summary: "Summary",
           concept_ids: [],

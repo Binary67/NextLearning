@@ -47,6 +47,7 @@ import {
 import type { TutorialResponse } from "@/lib/tutorial";
 import {
   type GuidedSegmentProgress,
+  type GuidedTutorMode,
   useRealtimeTutor,
 } from "@/lib/use-realtime-tutor";
 
@@ -118,6 +119,8 @@ export function TutorialWorkspace({
   const [tutorMode, setTutorMode] = useState<TutorMode>(
     reviewConcept ? "review" : "read",
   );
+  const [guidedTutorMode, setGuidedTutorMode] =
+    useState<GuidedTutorMode>("learning");
   const [currentPage, setCurrentPage] = useState(1);
   const [resumeChunkId, setResumeChunkId] = useState<string | null>(
     null,
@@ -146,6 +149,8 @@ export function TutorialWorkspace({
   const relatedPagesLoading = relatedPagesStatus === "loading";
   const guidedMode = tutorMode === "guided";
   const reviewMode = tutorMode === "review";
+  const activeLearningMode =
+    guidedMode && guidedTutorMode === "learning";
   const structuredMode = guidedMode || reviewMode;
 
   const realtimeTutor = useRealtimeTutor({
@@ -164,7 +169,9 @@ export function TutorialWorkspace({
   const modeLabel = reviewMode
     ? "Concept review"
     : guidedMode
-      ? "Guided tutor"
+      ? guidedTutorMode === "reading"
+        ? "Guided reading"
+        : "Active learning"
       : "Read and ask";
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
@@ -183,9 +190,13 @@ export function TutorialWorkspace({
   const learnerCanAsk =
     (structuredMode || Boolean(selection && !relatedPagesLoading)) &&
     !(reviewMode && guidedProgress?.segmentComplete);
-  let learnerTurnPrompt = structuredMode
-    ? `Press ${raiseHandShortcutLabel} to answer or ask about this part`
-    : "Draw a rectangle on the PDF";
+  let learnerTurnPrompt = reviewMode
+    ? `Press ${raiseHandShortcutLabel} to answer the review question`
+    : activeLearningMode
+      ? `Press ${raiseHandShortcutLabel} to answer or ask about this part`
+      : guidedMode
+        ? `Press ${raiseHandShortcutLabel} to ask about this part`
+        : "Draw a rectangle on the PDF";
 
   if (reviewMode && guidedProgress?.segmentComplete) {
     learnerTurnPrompt = "Review complete";
@@ -198,10 +209,10 @@ export function TutorialWorkspace({
       ? "Finding related pages…"
       : `Press ${raiseHandShortcutLabel} to ask about the selection`;
   }
-  const tutorSourceText =
+  const tutorHighlightBounds =
     structuredMode && realtimeTutor.status === "connected"
-      ? guidedProgress?.sourceText ?? null
-      : null;
+      ? guidedProgress?.highlightBounds ?? []
+      : [];
   const guidedTurnBusy =
     realtimeTutor.isTutorResponding ||
     realtimeTutor.isTutorSpeaking ||
@@ -247,6 +258,7 @@ export function TutorialWorkspace({
       setReviewTarget(null);
       setReviewError("");
       setTutorMode(reviewConcept ? "review" : "read");
+      setGuidedTutorMode("learning");
       setCurrentPage(1);
       setResumeChunkId(null);
       lastPersistedResumeRef.current = null;
@@ -515,7 +527,11 @@ export function TutorialWorkspace({
     }
 
     if (guidedMode) {
-      void realtimeTutor.startGuided(currentPage, resumeChunkId);
+      void realtimeTutor.startGuided(
+        currentPage,
+        resumeChunkId,
+        guidedTutorMode,
+      );
       return;
     }
 
@@ -607,7 +623,11 @@ export function TutorialWorkspace({
         realtimeTutor.isTutorResponding ||
         realtimeTutor.isTutorSpeaking
       ) {
-        let activity = structuredMode ? "Tutoring…" : "Thinking…";
+        let activity = reviewMode || activeLearningMode
+          ? "Tutoring…"
+          : guidedMode
+            ? "Explaining…"
+            : "Thinking…";
 
         if (realtimeTutor.isTutorSpeaking) {
           activity = "Speaking…";
@@ -651,7 +671,11 @@ export function TutorialWorkspace({
       <span className="turn-state-copy">
         <small>Ready</small>
         <strong>
-          {guidedMode ? "Learn this paper step by step" : pdfInstruction}
+          {guidedMode
+            ? guidedTutorMode === "reading"
+              ? "Read this paper with section-by-section explanations"
+              : "Learn this paper step by step"
+            : pdfInstruction}
         </strong>
       </span>
     );
@@ -668,7 +692,9 @@ export function TutorialWorkspace({
           {reviewMode
             ? "Starting review…"
             : guidedMode
-              ? "Starting lesson…"
+              ? guidedTutorMode === "reading"
+                ? "Starting guided reading…"
+                : "Starting active learning…"
               : "Starting…"}
         </button>
       );
@@ -690,14 +716,18 @@ export function TutorialWorkspace({
     let startLabel = reviewMode
       ? "Start review"
       : guidedMode
-        ? "Start guided lesson"
+        ? guidedTutorMode === "reading"
+          ? "Start guided reading"
+          : "Start active learning"
         : "Start tutor";
 
     if (realtimeTutor.status === "ended") {
       startLabel = reviewMode
         ? "Review again"
         : guidedMode
-          ? "Start new lesson"
+          ? guidedTutorMode === "reading"
+            ? "Start guided reading again"
+            : "Start active learning again"
           : "Start new session";
     }
 
@@ -889,7 +919,7 @@ export function TutorialWorkspace({
                     documentName={activeTutorial.documentName}
                     pageIndex={currentPage}
                     selection={selection}
-                    tutorSourceText={tutorSourceText}
+                    tutorHighlightBounds={tutorHighlightBounds}
                     onSelectionChange={setSelection}
                   />
                 </div>
@@ -913,6 +943,43 @@ export function TutorialWorkspace({
               </span>
               {modeLabel}
             </h2>
+            {guidedMode ? (
+              <>
+                <div
+                  className="tutor-mode-selector guided-tutor-mode-selector"
+                  role="group"
+                  aria-label="Tutor approach"
+                >
+                  <button
+                    className={
+                      guidedTutorMode === "reading" ? "active" : undefined
+                    }
+                    type="button"
+                    onClick={() => setGuidedTutorMode("reading")}
+                    disabled={sessionActive}
+                    aria-pressed={guidedTutorMode === "reading"}
+                  >
+                    Guided reading
+                  </button>
+                  <button
+                    className={
+                      guidedTutorMode === "learning" ? "active" : undefined
+                    }
+                    type="button"
+                    onClick={() => setGuidedTutorMode("learning")}
+                    disabled={sessionActive}
+                    aria-pressed={guidedTutorMode === "learning"}
+                  >
+                    Active learning
+                  </button>
+                </div>
+                <p className="guided-tutor-mode-description">
+                  {guidedTutorMode === "reading"
+                    ? "Explain each section without testing me."
+                    : "Explain each section and check my understanding."}
+                </p>
+              </>
+            ) : null}
             <div className="tutor-session-status">
               {renderTutorStatus()}
             </div>
@@ -964,6 +1031,7 @@ export function TutorialWorkspace({
               busy={guidedTurnBusy}
               hasNextPage={currentPage < pageCount}
               review={reviewMode}
+              guidedTutorMode={guidedTutorMode}
               onContinue={continueGuided}
             />
           ) : null}
@@ -1161,6 +1229,7 @@ function GuidedProgressCard({
   busy,
   hasNextPage,
   review,
+  guidedTutorMode,
   onContinue,
 }: {
   progress: GuidedSegmentProgress | null;
@@ -1168,6 +1237,7 @@ function GuidedProgressCard({
   busy: boolean;
   hasNextPage: boolean;
   review: boolean;
+  guidedTutorMode: GuidedTutorMode;
   onContinue: () => void;
 }) {
   return (
@@ -1176,7 +1246,11 @@ function GuidedProgressCard({
         <span className="insight-card-icon">
           <Sparkles size={18} aria-hidden="true" />
         </span>
-        {review ? "Review progress" : "Guided progress"}
+        {review
+          ? "Review progress"
+          : guidedTutorMode === "reading"
+            ? "Reading progress"
+            : "Learning progress"}
       </h2>
       {progress ? (
         <>
@@ -1211,7 +1285,9 @@ function GuidedProgressCard({
         <p className="guided-progress-placeholder">
           {review
             ? "Start the review when you are ready to answer by voice."
-            : "Start the guided lesson to begin with the first teaching segment."}
+            : guidedTutorMode === "reading"
+              ? "Start guided reading to hear the first section explained."
+              : "Start active learning to begin with the first teaching segment."}
         </p>
       )}
       {review && progress?.segmentComplete ? (

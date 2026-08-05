@@ -11,8 +11,10 @@ import {
 import {
   documentModelJsonSchema,
   type DocumentModel,
+  validateGeneratedDocumentModel,
   validateDocumentModel,
 } from "@/lib/document-model";
+import { addDocumentHighlightBounds } from "@/lib/document-highlights";
 
 const DOCUMENT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -39,13 +41,18 @@ export async function generateDocumentModel(
     ]);
 
     try {
-      return validateDocumentModel(
+      const generatedModel = validateGeneratedDocumentModel(
         JSON.parse(outputText) as unknown,
         documentId,
       );
+      const model = await addDocumentHighlightBounds(
+        fileData,
+        generatedModel,
+      );
+      return validateDocumentModel(model, documentId);
     } catch (error) {
       throw new InvalidAzureOpenAIContentError(
-        "Azure OpenAI returned an invalid document model.",
+        "Azure OpenAI returned a document model that could not be grounded in the PDF.",
         error,
       );
     }
@@ -109,7 +116,7 @@ function buildDocumentModelPrompt(
   return `Review the complete PDF once, then create a compact document model for an interactive reading tutor.
 
 Document rules:
-- Set schema_version to 3.
+- Set schema_version to 4.
 - Set document_id to "${documentId}" exactly.
 - Set page_count to ${sourcePageCount} exactly.
 - Use 1-based PDF order for page_index.
