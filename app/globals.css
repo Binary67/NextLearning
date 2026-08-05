@@ -846,6 +846,17 @@ a:focus-visible {
   padding: 0 20px;
 }
 
+.guided-lesson-complete {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.guided-progress-card .guided-lesson-complete {
+  display: block;
+  margin-top: 16px;
+}
+
 .insights-column {
   display: flex;
   flex-direction: column;

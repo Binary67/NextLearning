@@ -440,7 +440,7 @@ export function TutorialWorkspace({
         <small>{modeLabel}</small>
         <strong>
           {guidedMode
-            ? "Ready to guide this page"
+            ? "Ready to start this lesson"
             : selection
               ? "Ready to start"
               : "Select something to discuss"}
@@ -450,15 +450,27 @@ export function TutorialWorkspace({
   }
 
   function renderSessionAction() {
-    if (sessionActive) {
+    if (realtimeTutor.status === "connecting") {
       return (
         <button
           className="primary-button end-button"
           type="button"
+          disabled
+        >
+          {guidedMode ? "Starting lesson…" : "Starting…"}
+        </button>
+      );
+    }
+
+    if (realtimeTutor.status === "connected") {
+      return (
+        <button
+          className="secondary-button end-button"
+          type="button"
           onClick={() => setModal("end-session")}
         >
           <LogOut size={20} />
-          End Session
+          End session
         </button>
       );
     }
@@ -473,10 +485,10 @@ export function TutorialWorkspace({
         <Play size={20} />
         {realtimeTutor.status === "ended"
           ? guidedMode
-            ? "New Guided Session"
+            ? "Start new lesson"
             : "New Session"
           : guidedMode
-            ? "Start Guided Tutor"
+            ? "Start guided lesson"
             : "Start Tutor"}
       </button>
     );
@@ -952,7 +964,7 @@ function GuidedLessonView({
               <p className="guided-lesson-placeholder">
                 {progress
                   ? "This page has no prepared instructional passage."
-                  : "Start the guided tutor to load the first passage."}
+                  : "Start the guided lesson to load the first passage."}
               </p>
             )}
           </div>
@@ -1003,22 +1015,21 @@ function GuidedLessonView({
 
       <footer className="guided-lesson-footer">
         <p>{getGuidedLessonStatus(progress, connected, busy, hasNextPage)}</p>
-        <button
-          className="primary-button guided-lesson-continue-button"
-          type="button"
-          onClick={onContinue}
-          disabled={
-            !connected ||
-            !progress ||
-            busy ||
-            (progress.pageComplete && !hasNextPage)
-          }
-        >
-          {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
-          {progress?.pageComplete && hasNextPage ? (
-            <ChevronRight size={17} aria-hidden="true" />
-          ) : null}
-        </button>
+        {progress?.pageComplete && !hasNextPage ? (
+          <strong className="guided-lesson-complete">Lesson complete</strong>
+        ) : connected && progress ? (
+          <button
+            className="primary-button guided-lesson-continue-button"
+            type="button"
+            onClick={onContinue}
+            disabled={busy}
+          >
+            {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
+            {progress.pageComplete && hasNextPage ? (
+              <ChevronRight size={17} aria-hidden="true" />
+            ) : null}
+          </button>
+        ) : null}
       </footer>
     </div>
   );
@@ -1128,38 +1139,33 @@ function GuidedProgressCard({
         </>
       ) : (
         <p className="guided-progress-placeholder">
-          Start the guided tutor to begin with the first teaching segment.
+          Start the guided lesson to begin with the first teaching segment.
         </p>
       )}
-      <button
-        className="primary-button guided-continue-button"
-        type="button"
-        onClick={onContinue}
-        disabled={
-          !connected ||
-          !progress ||
-          busy ||
-          (progress.pageComplete && !hasNextPage)
-        }
-      >
-        {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
-        {progress?.pageComplete && hasNextPage ? (
-          <ChevronRight size={17} aria-hidden="true" />
-        ) : null}
-      </button>
+      {progress?.pageComplete && !hasNextPage ? (
+        <strong className="guided-lesson-complete">Lesson complete</strong>
+      ) : connected && progress ? (
+        <button
+          className="primary-button guided-continue-button"
+          type="button"
+          onClick={onContinue}
+          disabled={busy}
+        >
+          {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
+          {progress.pageComplete && hasNextPage ? (
+            <ChevronRight size={17} aria-hidden="true" />
+          ) : null}
+        </button>
+      ) : null}
     </section>
   );
 }
 
 function getGuidedContinueButtonLabel(
-  progress: GuidedSegmentProgress | null,
+  progress: GuidedSegmentProgress,
   busy: boolean,
   hasNextPage: boolean,
 ) {
-  if (!progress) {
-    return "Start the tutor";
-  }
-
   if (progress.pageComplete) {
     return hasNextPage ? "Next page" : "Document complete";
   }
@@ -1178,7 +1184,7 @@ function getGuidedLessonStatus(
   hasNextPage: boolean,
 ) {
   if (!connected) {
-    return "Start the guided tutor to begin.";
+    return "Start the guided lesson to begin.";
   }
 
   if (!progress) {
