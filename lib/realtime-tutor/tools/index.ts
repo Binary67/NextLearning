@@ -18,18 +18,34 @@ import {
   getPageContext,
   getPageContextTool,
 } from "@/lib/realtime-tutor/tools/get-page-context";
+import {
+  type ActiveLearningAttempt,
+  readLearningAttempt,
+  RECORD_LEARNING_ATTEMPT_TOOL_NAME,
+  recordLearningAttemptTool,
+  type ValidatedLearningAttempt,
+} from "@/lib/realtime-tutor/tools/record-learning-attempt";
 
 type RealtimeTutorToolContext = {
   documentModel: DocumentModel;
   selection: DocumentSelection | null;
   textSelectionContext: TextSelectionContext | null;
   attachPageContext: (pageIndex: number) => Promise<unknown>;
+  activeLearningAttempt: ActiveLearningAttempt | null;
+  recordLearningAttempt: (
+    attempt: ValidatedLearningAttempt,
+  ) => Promise<unknown>;
 };
 
 export const realtimeTutorTools = [
   getSelectionGroundingTool,
   findDocumentTopicsTool,
   getPageContextTool,
+];
+
+export const learningRealtimeTutorTools = [
+  ...realtimeTutorTools,
+  recordLearningAttemptTool,
 ];
 
 export async function executeRealtimeTutorTool(
@@ -56,6 +72,17 @@ export async function executeRealtimeTutorTool(
         context.documentModel,
         argumentsJson,
         context.attachPageContext,
+      );
+    case RECORD_LEARNING_ATTEMPT_TOOL_NAME:
+      if (!context.activeLearningAttempt) {
+        throw new Error("There is no active learning attempt to record.");
+      }
+
+      return context.recordLearningAttempt(
+        readLearningAttempt(
+          argumentsJson,
+          context.activeLearningAttempt,
+        ),
       );
     default:
       throw new Error(`The Realtime tutor requested an unknown tool: ${name}.`);

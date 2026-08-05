@@ -22,6 +22,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -39,6 +40,10 @@ import type {
   TextSelectionContext,
 } from "@/lib/document-model";
 import type { DocumentSelection } from "@/lib/document-selection";
+import {
+  findReviewCheckpoint,
+  type ReviewCheckpoint,
+} from "@/lib/learning-checkpoints";
 import type { TutorialResponse } from "@/lib/tutorial";
 import {
   type GuidedSegmentProgress,
@@ -58,9 +63,27 @@ type TutorialDataResponse = {
   message?: string;
 };
 
+type LearningResume = {
+  pageIndex: number;
+  chunkId: string | null;
+};
+
+type LearningStateResponse = {
+  learningState?: {
+    resume: LearningResume | null;
+    concepts: Record<
+      string,
+      {
+        lastChunkId: string;
+      }
+    >;
+  };
+  message?: string;
+};
+
 type RelatedPagesStatus = "idle" | "loading" | "ready" | "error";
 
-type TutorMode = "read" | "guided";
+type TutorMode = "read" | "guided" | "review";
 
 type RelatedPagesResult = {
   selectionKey: string;
@@ -75,8 +98,10 @@ type RelatedPagesResponse = {
 
 export function TutorialWorkspace({
   tutorialId,
+  reviewConcept,
 }: {
   tutorialId: string;
+  reviewConcept?: string;
 }) {
   const router = useRouter();
   const [modal, setModal] = useState<Modal>(null);
@@ -88,8 +113,19 @@ export function TutorialWorkspace({
   const [documentLoading, setDocumentLoading] = useState(true);
   const [documentError, setDocumentError] = useState("");
   const [deletingTutorial, setDeletingTutorial] = useState(false);
-  const [tutorMode, setTutorMode] = useState<TutorMode>("read");
+  const [tutorMode, setTutorMode] = useState<TutorMode>(
+    reviewConcept ? "review" : "read",
+  );
   const [currentPage, setCurrentPage] = useState(1);
+  const [resumeChunkId, setResumeChunkId] = useState<string | null>(
+    null,
+  );
+  const [learningStateLoaded, setLearningStateLoaded] = useState(false);
+  const [learningStateError, setLearningStateError] = useState("");
+  const [reviewTarget, setReviewTarget] =
+    useState<ReviewCheckpoint | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const lastPersistedResumeRef = useRef<string | null>(null);
   const [selection, setSelection] = useState<DocumentSelection | null>(
     null,
   );
@@ -107,17 +143,8 @@ export function TutorialWorkspace({
   );
   const relatedPagesLoading = relatedPagesStatus === "loading";
   const guidedMode = tutorMode === "guided";
-  const learnerCanAsk =
-    guidedMode || Boolean(selection && !relatedPagesLoading);
-  let learnerTurnPrompt = guidedMode
-    ? `Press ${raiseHandShortcutLabel} to ask about this part`
-    : "Draw a rectangle on the PDF";
-
-  if (selection) {
-    learnerTurnPrompt = !guidedMode && relatedPagesLoading
-      ? "Finding related pages…"
-      : `Press ${raiseHandShortcutLabel} to ask about the selection`;
-  }
+  const reviewMode = tutorMode === "review";
+  const structuredMode = guidedMode || reviewMode;
 
   const realtimeTutor = useRealtimeTutor({
     documentId: activeTutorial?.id ?? null,
@@ -132,7 +159,11 @@ export function TutorialWorkspace({
   const sessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
-  const modeLabel = guidedMode ? "Guided tutor" : "Read and ask";
+  const modeLabel = reviewMode
+    ? "Concept review"
+    : guidedMode
+      ? "Guided tutor"
+      : "Read and ask";
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.isUserTurn ||
@@ -143,8 +174,30 @@ export function TutorialWorkspace({
     realtimeTutor.guidedSegmentProgress?.pageIndex === currentPage
       ? realtimeTutor.guidedSegmentProgress
       : null;
+  const currentResumeChunkId =
+    guidedMode && guidedProgress?.chunkId
+      ? guidedProgress.chunkId
+      : resumeChunkId;
+  const learnerCanAsk =
+    (structuredMode || Boolean(selection && !relatedPagesLoading)) &&
+    !(reviewMode && guidedProgress?.segmentComplete);
+  let learnerTurnPrompt = structuredMode
+    ? `Press ${raiseHandShortcutLabel} to answer or ask about this part`
+    : "Draw a rectangle on the PDF";
+
+  if (reviewMode && guidedProgress?.segmentComplete) {
+    learnerTurnPrompt = "Review complete";
+  } else if (
+    selection &&
+    !reviewMode &&
+    !guidedProgress?.learningPhase
+  ) {
+    learnerTurnPrompt = !structuredMode && relatedPagesLoading
+      ? "Finding related pages…"
+      : `Press ${raiseHandShortcutLabel} to ask about the selection`;
+  }
   const tutorSourceText =
-    guidedMode && realtimeTutor.status === "connected"
+    structuredMode && realtimeTutor.status === "connected"
       ? guidedProgress?.sourceText ?? null
       : null;
   const guidedTurnBusy =
@@ -157,19 +210,25 @@ export function TutorialWorkspace({
     "Draw a rectangle around anything you want explained";
   let askButtonLabel = "Select an area to ask";
 
-  if (guidedMode) {
+  if (structuredMode) {
     pdfInstruction =
-      "Follow along, or select a region for a narrower question";
-    askButtonLabel = "Ask about this page";
+      reviewMode
+        ? "Review the highlighted source passage"
+        : "Follow along, or select a region for a narrower question";
+    askButtonLabel = reviewMode ? "Answer review" : "Ask about this page";
   }
 
-  if (selection) {
+  if (
+    selection &&
+    !reviewMode &&
+    !guidedProgress?.learningPhase
+  ) {
     pdfInstruction = "Selection ready—ask your question";
     askButtonLabel = "Ask about selection";
   }
 
   if (realtimeTutor.isUserTurn) {
-    askButtonLabel = "Finish asking";
+    askButtonLabel = structuredMode ? "Finish response" : "Finish asking";
   }
 
   useEffect(() => {
@@ -181,11 +240,68 @@ export function TutorialWorkspace({
       setActiveTutorial(null);
       setDocumentModel(null);
       setSelection(null);
+      setLearningStateLoaded(false);
+      setLearningStateError("");
+      setReviewTarget(null);
+      setReviewError("");
+      setTutorMode(reviewConcept ? "review" : "read");
+      setCurrentPage(1);
+      setResumeChunkId(null);
+      lastPersistedResumeRef.current = null;
 
       try {
-        const data = await readTutorialData(tutorialId, controller.signal);
+        const [data, learningStateResult] = await Promise.all([
+          readTutorialData(tutorialId, controller.signal),
+          readLearningState(tutorialId, controller.signal).then(
+            (learningState) => ({ learningState, error: null }),
+            (error: unknown) => ({ learningState: null, error }),
+          ),
+        ]);
+
         setActiveTutorial(data.tutorial);
         setDocumentModel(data.model);
+
+        if (learningStateResult.learningState) {
+          const learningState = learningStateResult.learningState;
+          const resume = getValidResume(data.model, learningState.resume);
+
+          lastPersistedResumeRef.current = JSON.stringify(
+            learningState.resume,
+          );
+          setCurrentPage(resume?.pageIndex ?? 1);
+          setResumeChunkId(resume?.chunkId ?? null);
+
+          if (reviewConcept) {
+            const reviewState = learningState.concepts[reviewConcept];
+            const target = reviewState
+              ? findReviewCheckpoint(
+                  data.model,
+                  reviewConcept,
+                  reviewState.lastChunkId,
+                )
+              : null;
+
+            if (target) {
+              setReviewTarget(target);
+              setCurrentPage(target.pageIndex);
+            } else {
+              setReviewError(
+                "This concept review is no longer available for the saved passage.",
+              );
+            }
+          }
+        } else if (
+          learningStateResult.error instanceof Error &&
+          learningStateResult.error.name !== "AbortError"
+        ) {
+          setLearningStateError(learningStateResult.error.message);
+
+          if (reviewConcept) {
+            setReviewError(
+              "The saved review context could not be loaded.",
+            );
+          }
+        }
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
           setDocumentError(error.message);
@@ -193,18 +309,72 @@ export function TutorialWorkspace({
       } finally {
         if (!controller.signal.aborted) {
           setDocumentLoading(false);
+          setLearningStateLoaded(true);
         }
       }
     }
 
     void loadTutorialData();
     return () => controller.abort();
-  }, [tutorialId]);
+  }, [reviewConcept, tutorialId]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   }, []);
+
+  useEffect(() => {
+    if (
+      !learningStateLoaded ||
+      !documentModel ||
+      reviewMode ||
+      currentPage < 1 ||
+      currentPage > documentModel.page_count
+    ) {
+      return;
+    }
+
+    const resume = {
+      pageIndex: currentPage,
+      chunkId: currentResumeChunkId,
+    };
+    const resumeKey = JSON.stringify(resume);
+
+    if (resumeKey === lastPersistedResumeRef.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      void writeLearningResume(
+        tutorialId,
+        resume,
+        controller.signal,
+      ).then(
+        () => {
+          lastPersistedResumeRef.current = resumeKey;
+          setLearningStateError("");
+        },
+        (reason: unknown) => {
+          if (reason instanceof Error && reason.name !== "AbortError") {
+            setLearningStateError(reason.message);
+          }
+        },
+      );
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [
+    currentPage,
+    documentModel,
+    learningStateLoaded,
+    currentResumeChunkId,
+    reviewMode,
+    tutorialId,
+  ]);
 
   const toggleUserTurn = useCallback(async () => {
     const wasListening = realtimeTutor.isUserTurn;
@@ -216,7 +386,7 @@ export function TutorialWorkspace({
 
     showToast(
       wasListening
-        ? "Question sent. Waiting for the tutor."
+        ? "Response sent. Waiting for the tutor."
         : `Listening. Press ${raiseHandShortcutLabel} or tap the check when you finish.`,
     );
   }, [raiseHandShortcutLabel, realtimeTutor, showToast]);
@@ -280,12 +450,16 @@ export function TutorialWorkspace({
     if (
       pageIndex < 1 ||
       pageIndex > pageCount ||
-      (guidedMode && realtimeTutor.status === "connecting")
+      reviewMode ||
+      (guidedMode &&
+        (realtimeTutor.status === "connecting" ||
+          Boolean(guidedProgress?.learningPhase)))
     ) {
       return;
     }
 
     setCurrentPage(pageIndex);
+    setResumeChunkId(null);
     setSelection(null);
 
     if (guidedMode && realtimeTutor.status === "connected") {
@@ -330,8 +504,16 @@ export function TutorialWorkspace({
   }
 
   function startTutor() {
+    if (reviewMode) {
+      if (reviewTarget) {
+        void realtimeTutor.startReview(reviewTarget);
+      }
+
+      return;
+    }
+
     if (guidedMode) {
-      void realtimeTutor.startGuided(currentPage);
+      void realtimeTutor.startGuided(currentPage, resumeChunkId);
       return;
     }
 
@@ -355,9 +537,13 @@ export function TutorialWorkspace({
   }
 
   function endSession() {
-    realtimeTutor.end();
+    if (guidedMode && guidedProgress?.chunkId) {
+      setResumeChunkId(guidedProgress.chunkId);
+    }
+
     setModal(null);
     showToast("Session ended.");
+    void realtimeTutor.end();
   }
 
   function renderTutorStatus() {
@@ -366,8 +552,10 @@ export function TutorialWorkspace({
         <span className="turn-state-copy">
           <small>Connecting</small>
           <strong>
-            {guidedMode
-              ? "Connecting and preparing this page…"
+            {structuredMode
+              ? `Connecting and preparing this ${
+                  reviewMode ? "review" : "page"
+                }…`
               : "Connecting…"}
           </strong>
         </span>
@@ -378,8 +566,8 @@ export function TutorialWorkspace({
       if (realtimeTutor.isSubmittingUserTurn) {
         return (
           <span className="turn-state-copy">
-            <small>Your question</small>
-            <strong>Sending your question…</strong>
+            <small>Your turn</small>
+            <strong>Sending your response…</strong>
           </span>
         );
       }
@@ -392,9 +580,13 @@ export function TutorialWorkspace({
               Listening
             </small>
             <strong>
-              {selection
-                ? "Ask about the selected region"
-                : "Ask about this page"}
+              {guidedProgress?.learningPhase
+                ? "Answer the active learning question"
+                : selection
+                  ? "Ask about the selected region"
+                  : reviewMode
+                  ? "Answer the review question"
+                  : "Ask about this page"}
             </strong>
           </span>
         );
@@ -413,7 +605,7 @@ export function TutorialWorkspace({
         realtimeTutor.isTutorResponding ||
         realtimeTutor.isTutorSpeaking
       ) {
-        let activity = guidedMode ? "Explaining…" : "Thinking…";
+        let activity = structuredMode ? "Tutoring…" : "Thinking…";
 
         if (realtimeTutor.isTutorSpeaking) {
           activity = "Speaking…";
@@ -471,7 +663,11 @@ export function TutorialWorkspace({
           type="button"
           disabled
         >
-          {guidedMode ? "Starting lesson…" : "Starting…"}
+          {reviewMode
+            ? "Starting review…"
+            : guidedMode
+              ? "Starting lesson…"
+              : "Starting…"}
         </button>
       );
     }
@@ -489,10 +685,18 @@ export function TutorialWorkspace({
       );
     }
 
-    let startLabel = guidedMode ? "Start guided lesson" : "Start tutor";
+    let startLabel = reviewMode
+      ? "Start review"
+      : guidedMode
+        ? "Start guided lesson"
+        : "Start tutor";
 
     if (realtimeTutor.status === "ended") {
-      startLabel = guidedMode ? "Start new lesson" : "Start new session";
+      startLabel = reviewMode
+        ? "Review again"
+        : guidedMode
+          ? "Start new lesson"
+          : "Start new session";
     }
 
     return (
@@ -500,7 +704,10 @@ export function TutorialWorkspace({
         className="primary-button tutor-session-action"
         type="button"
         onClick={startTutor}
-        disabled={!documentModel}
+        disabled={
+          !documentModel ||
+          (reviewMode && (!learningStateLoaded || !reviewTarget))
+        }
       >
         <Play size={20} />
         {startLabel}
@@ -531,24 +738,37 @@ export function TutorialWorkspace({
                 role="group"
                 aria-label="Tutor mode"
               >
-                <button
-                  className={guidedMode ? undefined : "active"}
-                  type="button"
-                  onClick={() => setTutorMode("read")}
-                  disabled={sessionActive}
-                  aria-pressed={!guidedMode}
-                >
-                  Read
-                </button>
-                <button
-                  className={guidedMode ? "active" : undefined}
-                  type="button"
-                  onClick={() => setTutorMode("guided")}
-                  disabled={sessionActive}
-                  aria-pressed={guidedMode}
-                >
-                  Tutor
-                </button>
+                {reviewMode ? (
+                  <button
+                    className="active"
+                    type="button"
+                    disabled
+                    aria-pressed="true"
+                  >
+                    Review
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className={guidedMode ? undefined : "active"}
+                      type="button"
+                      onClick={() => setTutorMode("read")}
+                      disabled={sessionActive}
+                      aria-pressed={!guidedMode}
+                    >
+                      Read
+                    </button>
+                    <button
+                      className={guidedMode ? "active" : undefined}
+                      type="button"
+                      onClick={() => setTutorMode("guided")}
+                      disabled={sessionActive}
+                      aria-pressed={guidedMode}
+                    >
+                      Tutor
+                    </button>
+                  </>
+                )}
               </div>
               <div className="lesson-actions">
                 <button
@@ -614,8 +834,10 @@ export function TutorialWorkspace({
                       onClick={() => changePage(currentPage - 1)}
                       disabled={
                         currentPage <= 1 ||
+                        reviewMode ||
                         (guidedMode &&
-                          realtimeTutor.status === "connecting")
+                          (realtimeTutor.status === "connecting" ||
+                            Boolean(guidedProgress?.learningPhase)))
                       }
                       aria-label="Previous page"
                     >
@@ -632,8 +854,10 @@ export function TutorialWorkspace({
                       onClick={() => changePage(currentPage + 1)}
                       disabled={
                         currentPage >= pageCount ||
+                        reviewMode ||
                         (guidedMode &&
-                          realtimeTutor.status === "connecting")
+                          (realtimeTutor.status === "connecting" ||
+                            Boolean(guidedProgress?.learningPhase)))
                       }
                       aria-label="Next page"
                     >
@@ -685,11 +909,19 @@ export function TutorialWorkspace({
               <span className="insight-card-icon">
                 <Sparkles size={18} aria-hidden="true" />
               </span>
-              {guidedMode ? "Guided tutor" : "Read and ask"}
+              {modeLabel}
             </h2>
             <div className="tutor-session-status">
               {renderTutorStatus()}
             </div>
+            {reviewError ? (
+              <p className="learning-persistence-error">{reviewError}</p>
+            ) : null}
+            {learningStateError || realtimeTutor.persistenceError ? (
+              <p className="learning-persistence-error" role="status">
+                {realtimeTutor.persistenceError || learningStateError}
+              </p>
+            ) : null}
             {realtimeTutor.status === "connected" ? (
               <button
                 className={`secondary-button tutor-ask-button${
@@ -710,14 +942,26 @@ export function TutorialWorkspace({
               </button>
             ) : null}
             {renderSessionAction()}
+            {reviewMode &&
+            (reviewError ||
+              realtimeTutor.status === "ended" ||
+              realtimeTutor.status === "error") ? (
+              <Link
+                className="secondary-button review-back-link"
+                href="/review"
+              >
+                Back to review
+              </Link>
+            ) : null}
           </section>
 
-          {guidedMode ? (
+          {structuredMode ? (
             <GuidedProgressCard
               progress={guidedProgress}
               connected={realtimeTutor.status === "connected"}
               busy={guidedTurnBusy}
               hasNextPage={currentPage < pageCount}
+              review={reviewMode}
               onContinue={continueGuided}
             />
           ) : null}
@@ -737,7 +981,7 @@ export function TutorialWorkspace({
             onOpen={() => setModal("transcript")}
           />
 
-          {!guidedMode || selection ? (
+          {!structuredMode || selection ? (
             <section className="insight-card context-card">
               <h2>
                 <span className="insight-card-icon">
@@ -914,12 +1158,14 @@ function GuidedProgressCard({
   connected,
   busy,
   hasNextPage,
+  review,
   onContinue,
 }: {
   progress: GuidedSegmentProgress | null;
   connected: boolean;
   busy: boolean;
   hasNextPage: boolean;
+  review: boolean;
   onContinue: () => void;
 }) {
   return (
@@ -928,7 +1174,7 @@ function GuidedProgressCard({
         <span className="insight-card-icon">
           <Sparkles size={18} aria-hidden="true" />
         </span>
-        Guided progress
+        {review ? "Review progress" : "Guided progress"}
       </h2>
       {progress ? (
         <>
@@ -938,25 +1184,46 @@ function GuidedProgressCard({
             </p>
           ) : null}
           <strong className="guided-segment-title">
-            {progress.title}
+            {progress.conceptName ?? progress.title}
           </strong>
+          {progress.learningPhase ? (
+            <p className="learning-checkpoint-status">
+              {getLearningCheckpointLabel(
+                progress.learningPhase,
+                progress.attemptNumber,
+              )}
+            </p>
+          ) : null}
           {progress.sourceText ? (
             <p className="guided-passage-preview">{progress.sourceText}</p>
           ) : null}
           <p className="guided-segment-count">
-            {progress.segmentCount > 0
+            {review
+              ? "Focused review of the saved source passage"
+              : progress.segmentCount > 0
               ? `Part ${progress.segmentNumber} of ${progress.segmentCount} on this page`
               : "This page has no prepared teaching segments."}
           </p>
         </>
       ) : (
         <p className="guided-progress-placeholder">
-          Start the guided lesson to begin with the first teaching segment.
+          {review
+            ? "Start the review when you are ready to answer by voice."
+            : "Start the guided lesson to begin with the first teaching segment."}
         </p>
       )}
-      {progress?.pageComplete && !hasNextPage ? (
+      {review && progress?.segmentComplete ? (
+        <div className="review-complete-actions">
+          <strong className="guided-progress-complete">
+            Review complete
+          </strong>
+          <Link className="primary-button" href="/review">
+            Back to review
+          </Link>
+        </div>
+      ) : progress?.pageComplete && !hasNextPage ? (
         <strong className="guided-progress-complete">Lesson complete</strong>
-      ) : connected && progress ? (
+      ) : connected && progress && !progress.learningPhase && !review ? (
         <button
           className="primary-button guided-continue-button"
           type="button"
@@ -971,6 +1238,25 @@ function GuidedProgressCard({
       ) : null}
     </section>
   );
+}
+
+function getLearningCheckpointLabel(
+  phase: GuidedSegmentProgress["learningPhase"],
+  attemptNumber: GuidedSegmentProgress["attemptNumber"],
+) {
+  if (phase === "diagnostic") {
+    return "Quick diagnostic · no penalty";
+  }
+
+  if (phase === "review") {
+    return attemptNumber === 2
+      ? "Review retry · final attempt"
+      : "Retrieval review";
+  }
+
+  return attemptNumber === 2
+    ? "Checkpoint retry · final attempt"
+    : "Retrieval checkpoint";
 }
 
 function getGuidedContinueButtonLabel(
@@ -1192,6 +1478,82 @@ async function readTutorialData(
   return {
     tutorial: data.tutorial,
     model: data.model,
+  };
+}
+
+async function readLearningState(
+  tutorialId: string,
+  signal: AbortSignal,
+) {
+  const response = await fetch(
+    `/api/tutorials/${tutorialId}/learning-state`,
+    { signal },
+  );
+  const data = (await response.json()) as LearningStateResponse;
+
+  if (!response.ok || !data.learningState) {
+    throw new Error(
+      data.message ?? "Your saved learning progress could not be loaded.",
+    );
+  }
+
+  return data.learningState;
+}
+
+async function writeLearningResume(
+  tutorialId: string,
+  resume: {
+    pageIndex: number;
+    chunkId: string | null;
+  },
+  signal: AbortSignal,
+) {
+  const response = await fetch(
+    `/api/tutorials/${tutorialId}/learning-state`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ resume }),
+      signal,
+    },
+  );
+
+  if (response.ok) {
+    return;
+  }
+
+  const data = (await response.json()) as { message?: string };
+  throw new Error(
+    data.message ?? "Your reading position could not be saved.",
+  );
+}
+
+function getValidResume(
+  model: DocumentModel,
+  resume: LearningResume | null,
+) {
+  if (
+    !resume ||
+    !Number.isInteger(resume.pageIndex) ||
+    resume.pageIndex < 1 ||
+    resume.pageIndex > model.page_count
+  ) {
+    return null;
+  }
+
+  const chunkId =
+    resume.chunkId &&
+    model.pages[resume.pageIndex - 1].chunks.some(
+      (chunk) => chunk.id === resume.chunkId,
+    )
+      ? resume.chunkId
+      : null;
+
+  return {
+    pageIndex: resume.pageIndex,
+    chunkId,
   };
 }
 

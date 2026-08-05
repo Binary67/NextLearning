@@ -768,6 +768,28 @@ summary:focus-visible {
   line-height: 1.4;
 }
 
+.learning-checkpoint-status {
+  width: fit-content;
+  margin: 9px 0 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.learning-persistence-error {
+  margin: 0 0 12px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(162, 36, 36, 0.08);
+  color: #a22424;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .guided-passage-preview {
   max-height: 132px;
   overflow-y: auto;
@@ -795,6 +817,28 @@ summary:focus-visible {
   min-height: 40px;
   margin-top: 16px;
   font-size: 0.8rem;
+}
+
+.review-complete-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.review-complete-actions .guided-progress-complete {
+  margin: 0;
+}
+
+.review-complete-actions .primary-button {
+  min-height: 40px;
+  text-decoration: none;
+}
+
+.review-back-link {
+  display: flex;
+  min-height: 40px;
+  margin-top: 10px;
+  text-decoration: none;
 }
 
 .tutor-response-card > p {
