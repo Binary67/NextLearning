@@ -1,0 +1,271 @@
+.main {
+  min-height: 0;
+  overflow-y: auto;
+  background:
+    radial-gradient(
+      circle at 72% 0%,
+      rgba(0, 122, 255, 0.035),
+      transparent 30%
+    ),
+    var(--background);
+}
+
+.content {
+  width: min(920px, calc(100% - 64px));
+  padding: 54px 0 80px;
+  margin: 0 auto;
+}
+
+.heading {
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.heading h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 3.2vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1.1;
+}
+
+.heading p {
+  max-width: 620px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+
+.state {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  padding: 88px 30px 64px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.stateIcon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 17px;
+  background: var(--soft-blue);
+  color: var(--blue);
+}
+
+.stateIcon svg {
+  width: 29px;
+  height: 29px;
+}
+
+.state h2 {
+  margin: 20px 0 0;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.state p {
+  max-width: 430px;
+  margin: 10px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.retryButton {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid #d4d4da;
+  border-radius: 11px;
+  margin-top: 22px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.retryButton:hover {
+  background: var(--background);
+}
+
+.queueSummary {
+  margin: 26px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.reviewList {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  margin: 14px 0 0;
+  list-style: none;
+}
+
+.card {
+  padding: 26px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.025),
+    0 6px 20px rgba(0, 0, 0, 0.025);
+}
+
+.tutorialTitle {
+  margin: 0;
+  color: var(--blue-deep);
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.card h2 {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.3;
+}
+
+.definition {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: #3a3a3c;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding: 18px 0;
+  margin: 22px 0 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.details div {
+  min-width: 0;
+}
+
+.details dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.details dd {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.misconception {
+  padding: 14px 16px;
+  margin-top: 18px;
+  border-left: 3px solid rgba(175, 104, 0, 0.55);
+  border-radius: 0 10px 10px 0;
+  background: rgba(255, 204, 0, 0.08);
+}
+
+.misconception h3 {
+  margin: 0;
+  color: #77500f;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.misconception p {
+  margin: 6px 0 0;
+  color: #4b3a20;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.reviewLink {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 17px;
+  border: 1px solid var(--blue);
+  border-radius: 11px;
+  margin-top: 20px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-decoration: none;
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.reviewLink:hover {
+  background: #0071eb;
+  box-shadow: 0 6px 16px rgba(0, 113, 235, 0.18);
+  transform: translateY(-1px);
+}
+
+.reviewLink:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 880px) {
+  .content {
+    width: min(760px, calc(100% - 36px));
+    padding-top: 42px;
+  }
+}
+
+@media (max-width: 640px) {
+  .content {
+    width: calc(100% - 28px);
+    padding: 34px 0 50px;
+  }
+
+  .heading h1 {
+    font-size: 2.1rem;
+  }
+
+  .state {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .card {
+    padding: 22px;
+  }
+
+  .details {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .reviewLink {
+    width: 100%;
+  }
+}

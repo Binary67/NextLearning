@@ -15,7 +15,7 @@ import {
   type TutorialStatusItem,
 } from "@/lib/tutorial-status";
 
-type AppSection = "library" | "dashboard";
+type AppSection = "library" | "review" | "dashboard";
 const QUEUE_REFRESH_INTERVAL_MS = 3000;
 
 export function AppHeader({
@@ -73,6 +73,13 @@ export function AppHeader({
           aria-current={activeSection === "library" ? "page" : undefined}
         >
           Library
+        </Link>
+        <Link
+          className={`nav-link${activeSection === "review" ? " active" : ""}`}
+          href="/review"
+          aria-current={activeSection === "review" ? "page" : undefined}
+        >
+          Review
         </Link>
         {dashboardHref ? (
           <Link
