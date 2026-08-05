@@ -29,8 +29,10 @@ const tutorialMetadataFileName = "tutorial.json";
 const documentFileName = "source.pdf";
 const documentModelFileName = "document-model.json";
 const documentEmbeddingsFileName = "document-embeddings.json";
+const learningStateFileName = "learning-state.json";
 const tutorialIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const learningStateUpdates = new Map<string, Promise<void>>();
 
 export function isTutorialId(value: string) {
   return tutorialIdPattern.test(value);
@@ -98,6 +100,46 @@ export async function readDocumentEmbeddings(
   return readJsonFile<DocumentEmbeddings>(
     tutorialFilePath(tutorialId, documentEmbeddingsFileName),
   );
+}
+
+export function readStoredLearningState(
+  tutorialId: string,
+): Promise<unknown | null> {
+  return readJsonFile<unknown>(
+    tutorialFilePath(tutorialId, learningStateFileName),
+  );
+}
+
+export async function updateStoredLearningState<T>(
+  tutorialId: string,
+  update: (stored: unknown | null) => T | Promise<T>,
+): Promise<T> {
+  const previous = learningStateUpdates.get(tutorialId) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const turn = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => turn);
+
+  learningStateUpdates.set(tutorialId, queued);
+  await previous;
+
+  try {
+    const updated = await update(
+      await readStoredLearningState(tutorialId),
+    );
+    await writeJsonFileAtomically(
+      tutorialFilePath(tutorialId, learningStateFileName),
+      updated,
+    );
+    return updated;
+  } finally {
+    release();
+
+    if (learningStateUpdates.get(tutorialId) === queued) {
+      learningStateUpdates.delete(tutorialId);
+    }
+  }
 }
 
 export async function hasDocumentEmbeddings(tutorialId: string) {
