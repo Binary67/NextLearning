@@ -9,6 +9,8 @@ import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
   isContentLengthOverLimit,
   isMultipartFormDataContentType,
+  readRequestBytesWithLimit,
+  RequestBodyTooLargeError,
 } from "@/lib/request-body-size";
 import {
   listTutorials,
@@ -32,11 +34,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (
-    !isMultipartFormDataContentType(
-      request.headers.get("content-type"),
-    )
-  ) {
+  const contentType = request.headers.get("content-type");
+
+  if (!isMultipartFormDataContentType(contentType)) {
     return Response.json(
       { message: "The upload must use multipart form data." },
       { status: 415 },
@@ -55,7 +55,32 @@ export async function POST(request: Request) {
     );
   }
 
-  const formData = await request.formData();
+  let requestBytes: Uint8Array;
+
+  try {
+    requestBytes = await readRequestBytesWithLimit(
+      request,
+      MAX_MULTIPART_REQUEST_SIZE,
+    );
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json(
+        { message: "The document must be 10 MB or smaller." },
+        { status: 413 },
+      );
+    }
+
+    throw error;
+  }
+
+  const formData = await new Response(
+    new Uint8Array(requestBytes),
+    {
+      headers: {
+        "Content-Type": contentType!,
+      },
+    },
+  ).formData();
   const file = formData.get("file");
 
   if (!(file instanceof File)) {

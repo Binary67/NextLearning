@@ -1,7 +1,8 @@
 import { isTutorialId } from "@/lib/document-storage";
 import {
   isContentLengthOverLimit,
-  isUtf8TextOverLimit,
+  readRequestTextWithLimit,
+  RequestBodyTooLargeError,
 } from "@/lib/request-body-size";
 import { readPreparedTutorial } from "@/lib/tutorial";
 
@@ -55,13 +56,22 @@ export async function POST(
     );
   }
 
-  const sdp = await request.text();
+  let sdp: string;
 
-  if (isUtf8TextOverLimit(sdp, MAX_SDP_REQUEST_SIZE)) {
-    return Response.json(
-      { message: "The WebRTC session offer is too large." },
-      { status: 413 },
+  try {
+    sdp = await readRequestTextWithLimit(
+      request,
+      MAX_SDP_REQUEST_SIZE,
     );
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json(
+        { message: "The WebRTC session offer is too large." },
+        { status: 413 },
+      );
+    }
+
+    throw error;
   }
 
   if (!sdp.trim()) {
@@ -98,6 +108,10 @@ export async function POST(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(sessionConfig),
+        signal: AbortSignal.any([
+          request.signal,
+          AbortSignal.timeout(30_000),
+        ]),
       },
     );
     const clientSecretBody = await clientSecretResponse.text();
@@ -130,6 +144,10 @@ export async function POST(
           "Content-Type": "application/sdp",
         },
         body: sdp,
+        signal: AbortSignal.any([
+          request.signal,
+          AbortSignal.timeout(30_000),
+        ]),
       },
     );
     const responseBody = await response.text();
