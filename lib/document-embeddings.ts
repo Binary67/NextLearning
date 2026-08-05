@@ -1,8 +1,8 @@
 import {
   createAzureOpenAIResponseError,
   readAzureOpenAIEmbeddingConfiguration,
-  type AzureOpenAIErrorDetails,
 } from "@/lib/azure-openai-generation-retry";
+import { readAzureOpenAIResponseError } from "@/lib/azure-openai-response";
 import {
   buildTextSelectionContext,
   type DocumentChunk,
@@ -28,7 +28,6 @@ type EmbeddingResponse = {
     embedding?: number[];
     index?: number;
   }>;
-  error?: AzureOpenAIErrorDetails;
 };
 
 type RankedChunk = {
@@ -40,6 +39,7 @@ type RankedChunk = {
 const EMBEDDING_WEIGHT = 0.7;
 const BM25_WEIGHT = 0.3;
 const EMBEDDING_BATCH_SIZE = 100;
+const EMBEDDING_REQUEST_TIMEOUT_MS = 30 * 1000;
 const BM25_K1 = 1.2;
 const BM25_LENGTH_NORMALIZATION = 0.75;
 const STOP_WORDS = new Set([
@@ -97,6 +97,7 @@ export async function findTextSelectionContext(
   documentEmbeddings: DocumentEmbeddings,
   pageIndex: number,
   selectionText: string,
+  signal?: AbortSignal,
 ): Promise<TextSelectionContext | null> {
   const page = model.pages[pageIndex - 1];
 
@@ -104,9 +105,10 @@ export async function findTextSelectionContext(
     return null;
   }
 
-  const { deployment, embeddings } = await requestEmbeddings([
-    selectionText,
-  ]);
+  const { deployment, embeddings } = await requestEmbeddings(
+    [selectionText],
+    signal,
+  );
 
   if (deployment !== documentEmbeddings.deployment) {
     throw new Error(
@@ -218,7 +220,10 @@ export function validateDocumentEmbeddings(
   };
 }
 
-async function requestEmbeddings(inputs: string[]) {
+async function requestEmbeddings(
+  inputs: string[],
+  signal?: AbortSignal,
+) {
   if (inputs.length === 0 || inputs.some((input) => !input.trim())) {
     throw new Error("Embedding input text is required.");
   }
@@ -235,6 +240,7 @@ async function requestEmbeddings(inputs: string[]) {
         endpoint,
         apiKey,
         deployment,
+        signal,
       )),
     );
   }
@@ -256,7 +262,11 @@ async function requestEmbeddingBatch(
   endpoint: string,
   apiKey: string,
   deployment: string,
+  signal?: AbortSignal,
 ) {
+  const timeoutSignal = AbortSignal.timeout(
+    EMBEDDING_REQUEST_TIMEOUT_MS,
+  );
   const response = await fetch(`${endpoint}/embeddings`, {
     method: "POST",
     headers: {
@@ -268,18 +278,22 @@ async function requestEmbeddingBatch(
       input: inputs,
       encoding_format: "float",
     }),
+    signal: signal
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal,
   });
-  const result = (await response.json()) as EmbeddingResponse;
   const fallbackMessage = "Azure OpenAI could not create embeddings.";
 
   if (!response.ok) {
     throw createAzureOpenAIResponseError(
       response.status,
-      result.error,
+      await readAzureOpenAIResponseError(response),
       fallbackMessage,
       response.headers,
     );
   }
+
+  const result = (await response.json()) as EmbeddingResponse;
 
   if (!Array.isArray(result.data) || result.data.length !== inputs.length) {
     throw new Error("Azure OpenAI returned invalid embeddings.");

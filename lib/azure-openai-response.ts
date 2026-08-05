@@ -29,10 +29,9 @@ export async function readAzureOpenAIResponseStream<
   T extends AzureOpenAIResponseWithError,
 >(response: Response, fallbackMessage: string): Promise<T> {
   if (!response.ok) {
-    const result = (await response.json()) as T;
     throw createAzureOpenAIResponseError(
       response.status,
-      result.error,
+      await readAzureOpenAIResponseError(response),
       fallbackMessage,
       response.headers,
     );
@@ -82,6 +81,40 @@ export async function readAzureOpenAIResponseStream<
   throw new Error(fallbackMessage);
 }
 
+export async function readAzureOpenAIResponseError(response: Response) {
+  let result: unknown;
+
+  try {
+    result = await response.json();
+  } catch {
+    return undefined;
+  }
+
+  if (!isRecord(result)) {
+    return undefined;
+  }
+
+  const error = result.error;
+
+  if (error === null) {
+    return null;
+  }
+
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  return {
+    type: typeof error.type === "string" ? error.type : undefined,
+    code:
+      typeof error.code === "string" || error.code === null
+        ? error.code
+        : undefined,
+    message:
+      typeof error.message === "string" ? error.message : undefined,
+  };
+}
+
 export function readAzureOpenAIOutputText(
   result: AzureOpenAIResponse,
   refusalMessage: string,
@@ -116,4 +149,8 @@ function parseStreamEvent<T>(
   }
 
   return JSON.parse(data) as AzureOpenAIStreamEvent<T>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

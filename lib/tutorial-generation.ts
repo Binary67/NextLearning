@@ -14,6 +14,8 @@ import {
   validateDocumentModel,
 } from "@/lib/document-model";
 
+const DOCUMENT_GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+
 export async function generateDocumentModel(
   fileData: Buffer,
   fileName: string,
@@ -81,6 +83,7 @@ async function requestStructuredGeneration(content: object[]) {
         },
       },
     }),
+    signal: AbortSignal.timeout(DOCUMENT_GENERATION_TIMEOUT_MS),
   });
   const fallbackMessage = "Azure OpenAI could not analyze the document.";
   const result = await readAzureOpenAIResponseStream<AzureOpenAIResponse>(
