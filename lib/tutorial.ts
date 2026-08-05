@@ -12,6 +12,14 @@ import {
   type StoredTutorial,
   type TutorialStatus,
 } from "@/lib/document-storage";
+import { LruPromiseCache } from "@/lib/lru-promise-cache";
+
+const preparedDocumentModelCache = new LruPromiseCache<
+  string,
+  DocumentModel
+>(100);
+
+class MissingPreparedDocumentModelError extends Error {}
 
 export type PreparedTutorial = {
   tutorial: StoredTutorial;
@@ -69,18 +77,25 @@ export async function listTutorials() {
 export async function readPreparedTutorial(
   tutorialId: string,
 ): Promise<PreparedTutorial | null> {
-  const [tutorial, storedModel, embeddingsAvailable] = await Promise.all([
+  const [tutorial, embeddingsAvailable] = await Promise.all([
     readStoredTutorial(tutorialId),
-    readDocumentModel(tutorialId),
     hasDocumentEmbeddings(tutorialId),
   ]);
 
   if (
     !tutorial ||
     tutorial.status !== "ready" ||
-    !storedModel ||
     !embeddingsAvailable
   ) {
+    return null;
+  }
+
+  const model = await readPreparedDocumentModel(
+    tutorialId,
+    tutorial.updatedAt,
+  );
+
+  if (!model) {
     return null;
   }
 
@@ -90,8 +105,34 @@ export async function readPreparedTutorial(
 
   return {
     tutorial,
-    model: validateDocumentModel(storedModel, tutorialId),
+    model,
   };
+}
+
+async function readPreparedDocumentModel(
+  tutorialId: string,
+  updatedAt: string,
+): Promise<DocumentModel | null> {
+  try {
+    return await preparedDocumentModelCache.getOrCreate(
+      `${tutorialId}\0${updatedAt}`,
+      async () => {
+        const storedModel = await readDocumentModel(tutorialId);
+
+        if (!storedModel) {
+          throw new MissingPreparedDocumentModelError();
+        }
+
+        return validateDocumentModel(storedModel, tutorialId);
+      },
+    );
+  } catch (error) {
+    if (error instanceof MissingPreparedDocumentModelError) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export function toTutorialResponse(
