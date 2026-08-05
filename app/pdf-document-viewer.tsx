@@ -128,7 +128,7 @@ export function PdfDocumentViewer({
         const availableWidth = Math.max(containerWidth - 32, 1);
         const scale = availableWidth / initialViewport.width;
         const viewport = page.getViewport({ scale });
-        const outputScale = window.devicePixelRatio || 1;
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
 
         canvasElement.width = Math.floor(viewport.width * outputScale);
         canvasElement.height = Math.floor(viewport.height * outputScale);

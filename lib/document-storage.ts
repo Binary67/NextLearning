@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import type { DocumentEmbeddings } from "@/lib/document-embeddings";
 import type { DocumentModel } from "@/lib/document-model";
@@ -84,6 +85,39 @@ export async function readStoredTutorial(
 
 export async function readDocumentFile(tutorialId: string) {
   return fs.readFile(tutorialFilePath(tutorialId, documentFileName));
+}
+
+export async function statDocumentFile(tutorialId: string) {
+  const stats = await fs.stat(
+    tutorialFilePath(tutorialId, documentFileName),
+    { bigint: true },
+  );
+  const identity = [
+    stats.dev,
+    stats.ino,
+    stats.size,
+    stats.mtimeNs,
+  ].join(":");
+  const etag = createHash("sha256")
+    .update(identity)
+    .digest("base64url");
+
+  return {
+    etag: `"${etag}"`,
+    size: Number(stats.size),
+  };
+}
+
+export function streamDocumentFile(
+  tutorialId: string,
+  range?: { start: number; end: number },
+) {
+  const stream = createReadStream(
+    tutorialFilePath(tutorialId, documentFileName),
+    range,
+  );
+
+  return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
 }
 
 export async function readDocumentModel(

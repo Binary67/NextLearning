@@ -10,6 +10,7 @@ const pdfPageImagePromises = new LruPromiseCache<
 
 const TARGET_PAGE_WIDTHS = [2000, 1700, 1400, 1150, 950, 768];
 const JPEG_QUALITIES = [0.86, 0.72, 0.58, 0.44, 0.32];
+const STANDARD_FONT_DATA_URL = "/api/pdf/standard-fonts/";
 
 export type RenderedPdfPageImage = {
   imageUrl: string;
@@ -23,7 +24,11 @@ export async function loadPdfDocument(
 ) {
   return pdfDocumentPromises.getOrCreate(documentId, () =>
     import("pdfjs-dist/webpack.mjs").then(
-      ({ getDocument }) => getDocument({ url: documentUrl }).promise,
+      ({ getDocument }) =>
+        getDocument({
+          url: documentUrl,
+          standardFontDataUrl: STANDARD_FONT_DATA_URL,
+        }).promise,
     ),
   );
 }
