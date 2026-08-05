@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Ellipsis,
   FileText,
   Hand,
   LogOut,
@@ -60,7 +61,6 @@ type TutorialDataResponse = {
 type RelatedPagesStatus = "idle" | "loading" | "ready" | "error";
 
 type TutorMode = "read" | "guided";
-type GuidedView = "document" | "lesson";
 
 type RelatedPagesResult = {
   selectionKey: string;
@@ -89,7 +89,6 @@ export function TutorialWorkspace({
   const [documentError, setDocumentError] = useState("");
   const [deletingTutorial, setDeletingTutorial] = useState(false);
   const [tutorMode, setTutorMode] = useState<TutorMode>("read");
-  const [guidedView, setGuidedView] = useState<GuidedView>("document");
   const [currentPage, setCurrentPage] = useState(1);
   const [selection, setSelection] = useState<DocumentSelection | null>(
     null,
@@ -108,7 +107,6 @@ export function TutorialWorkspace({
   );
   const relatedPagesLoading = relatedPagesStatus === "loading";
   const guidedMode = tutorMode === "guided";
-  const guidedLessonView = guidedMode && guidedView === "lesson";
   const learnerCanAsk =
     guidedMode || Boolean(selection && !relatedPagesLoading);
   let learnerTurnPrompt = guidedMode
@@ -145,12 +143,34 @@ export function TutorialWorkspace({
     realtimeTutor.guidedSegmentProgress?.pageIndex === currentPage
       ? realtimeTutor.guidedSegmentProgress
       : null;
+  const tutorSourceText =
+    guidedMode && realtimeTutor.status === "connected"
+      ? guidedProgress?.sourceText ?? null
+      : null;
   const guidedTurnBusy =
     realtimeTutor.isTutorResponding ||
     realtimeTutor.isTutorSpeaking ||
     realtimeTutor.isUserTurn ||
     realtimeTutor.isSubmittingUserTurn ||
     realtimeTutor.isReplayingTutorAudio;
+  let pdfInstruction =
+    "Draw a rectangle around anything you want explained";
+  let askButtonLabel = "Select an area to ask";
+
+  if (guidedMode) {
+    pdfInstruction =
+      "Follow along, or select a region for a narrower question";
+    askButtonLabel = "Ask about this page";
+  }
+
+  if (selection) {
+    pdfInstruction = "Selection ready—ask your question";
+    askButtonLabel = "Ask about selection";
+  }
+
+  if (realtimeTutor.isUserTurn) {
+    askButtonLabel = "Finish asking";
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -161,7 +181,6 @@ export function TutorialWorkspace({
       setActiveTutorial(null);
       setDocumentModel(null);
       setSelection(null);
-      setGuidedView("document");
 
       try {
         const data = await readTutorialData(tutorialId, controller.signal);
@@ -312,7 +331,6 @@ export function TutorialWorkspace({
 
   function startTutor() {
     if (guidedMode) {
-      setGuidedView("lesson");
       void realtimeTutor.startGuided(currentPage);
       return;
     }
@@ -346,7 +364,7 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "connecting") {
       return (
         <span className="turn-state-copy">
-          <small>{modeLabel}</small>
+          <small>Connecting</small>
           <strong>
             {guidedMode
               ? "Connecting and preparing this page…"
@@ -360,7 +378,7 @@ export function TutorialWorkspace({
       if (realtimeTutor.isSubmittingUserTurn) {
         return (
           <span className="turn-state-copy">
-            <small>{modeLabel} · Your turn</small>
+            <small>Your question</small>
             <strong>Sending your question…</strong>
           </span>
         );
@@ -371,7 +389,7 @@ export function TutorialWorkspace({
           <span className="turn-state-copy">
             <small className="listening-label">
               <span className="listening-dot" aria-hidden="true" />
-              {modeLabel} · Listening
+              Listening
             </small>
             <strong>
               {selection
@@ -385,7 +403,7 @@ export function TutorialWorkspace({
       if (realtimeTutor.isReplayingTutorAudio) {
         return (
           <span className="turn-state-copy">
-            <small>{modeLabel} · Replay</small>
+            <small>Tutor audio</small>
             <strong>Replaying tutor audio…</strong>
           </span>
         );
@@ -395,23 +413,23 @@ export function TutorialWorkspace({
         realtimeTutor.isTutorResponding ||
         realtimeTutor.isTutorSpeaking
       ) {
+        let activity = guidedMode ? "Explaining…" : "Thinking…";
+
+        if (realtimeTutor.isTutorSpeaking) {
+          activity = "Speaking…";
+        }
+
         return (
           <span className="turn-state-copy">
-            <small>{modeLabel} · Tutor</small>
-            <strong>
-              {realtimeTutor.isTutorSpeaking
-                ? "Speaking…"
-                : guidedMode
-                  ? "Explaining…"
-                  : "Thinking…"}
-            </strong>
+            <small>Tutor</small>
+            <strong>{activity}</strong>
           </span>
         );
       }
 
       return (
         <span className="turn-state-copy">
-          <small>{modeLabel} · Your turn</small>
+          <small>Your turn</small>
           <strong>{learnerTurnPrompt}</strong>
         </span>
       );
@@ -420,7 +438,7 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "error") {
       return (
         <span className="turn-state-copy error">
-          <small>{modeLabel} · Tutor unavailable</small>
+          <small>Tutor unavailable</small>
           <strong>{realtimeTutor.error}</strong>
         </span>
       );
@@ -429,7 +447,7 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "ended") {
       return (
         <span className="turn-state-copy">
-          <small>{modeLabel}</small>
+          <small>Session</small>
           <strong>Session ended</strong>
         </span>
       );
@@ -437,13 +455,9 @@ export function TutorialWorkspace({
 
     return (
       <span className="turn-state-copy">
-        <small>{modeLabel}</small>
+        <small>Ready</small>
         <strong>
-          {guidedMode
-            ? "Ready to start this lesson"
-            : selection
-              ? "Ready to start"
-              : "Select something to discuss"}
+          {guidedMode ? "Learn this paper step by step" : pdfInstruction}
         </strong>
       </span>
     );
@@ -453,7 +467,7 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "connecting") {
       return (
         <button
-          className="primary-button end-button"
+          className="primary-button tutor-session-action"
           type="button"
           disabled
         >
@@ -465,7 +479,7 @@ export function TutorialWorkspace({
     if (realtimeTutor.status === "connected") {
       return (
         <button
-          className="secondary-button end-button"
+          className="secondary-button tutor-session-action"
           type="button"
           onClick={() => setModal("end-session")}
         >
@@ -475,21 +489,21 @@ export function TutorialWorkspace({
       );
     }
 
+    let startLabel = guidedMode ? "Start guided lesson" : "Start tutor";
+
+    if (realtimeTutor.status === "ended") {
+      startLabel = guidedMode ? "Start new lesson" : "Start new session";
+    }
+
     return (
       <button
-        className="primary-button end-button"
+        className="primary-button tutor-session-action"
         type="button"
         onClick={startTutor}
         disabled={!documentModel}
       >
         <Play size={20} />
-        {realtimeTutor.status === "ended"
-          ? guidedMode
-            ? "Start new lesson"
-            : "New Session"
-          : guidedMode
-            ? "Start guided lesson"
-            : "Start Tutor"}
+        {startLabel}
       </button>
     );
   }
@@ -504,11 +518,7 @@ export function TutorialWorkspace({
         onShowMessage={showToast}
       />
 
-      <div
-        className={`dashboard-layout${
-          guidedLessonView ? " guided-lesson-layout" : ""
-        }`}
-      >
+      <div className="dashboard-layout">
         <section className="lesson-card">
           <header className="lesson-toolbar">
             <div>
@@ -524,14 +534,11 @@ export function TutorialWorkspace({
                 <button
                   className={guidedMode ? undefined : "active"}
                   type="button"
-                  onClick={() => {
-                    setTutorMode("read");
-                    setGuidedView("document");
-                  }}
+                  onClick={() => setTutorMode("read")}
                   disabled={sessionActive}
                   aria-pressed={!guidedMode}
                 >
-                  Read and ask
+                  Read
                 </button>
                 <button
                   className={guidedMode ? "active" : undefined}
@@ -540,7 +547,7 @@ export function TutorialWorkspace({
                   disabled={sessionActive}
                   aria-pressed={guidedMode}
                 >
-                  Guided tutor
+                  Tutor
                 </button>
               </div>
               <div className="lesson-actions">
@@ -553,22 +560,31 @@ export function TutorialWorkspace({
                 >
                   <Download size={18} />
                 </button>
-                <button
-                  className="icon-button small danger-icon-button"
-                  type="button"
-                  onClick={() => setModal("delete-tutorial")}
-                  disabled={!activeTutorial}
-                  aria-label="Delete document"
-                >
-                  <Trash2 size={18} />
-                </button>
+                <NewTutorialButton
+                  variant="icon"
+                  onQueued={() =>
+                    showToast("Document added to the preparation queue.")
+                  }
+                />
+                <details className="document-actions-menu">
+                  <summary
+                    className="icon-button small"
+                    aria-label="More document actions"
+                  >
+                    <Ellipsis size={19} />
+                  </summary>
+                  <div className="document-actions-popover">
+                    <button
+                      type="button"
+                      onClick={() => setModal("delete-tutorial")}
+                      disabled={!activeTutorial}
+                    >
+                      <Trash2 size={17} />
+                      Delete document
+                    </button>
+                  </div>
+                </details>
               </div>
-              <NewTutorialButton
-                variant="icon"
-                onQueued={() =>
-                  showToast("Document added to the preparation queue.")
-                }
-              />
             </div>
           </header>
 
@@ -588,110 +604,70 @@ export function TutorialWorkspace({
               error
             />
           ) : activeTutorial && documentModel ? (
-            <div
-              className={`workspace-content${
-                guidedMode ? " has-guided-view-switcher" : ""
-              }`}
-            >
-              {guidedMode ? (
-                <GuidedViewSwitcher
-                  view={guidedView}
-                  onChange={setGuidedView}
-                />
-              ) : null}
-
-              {guidedLessonView ? (
-                <GuidedLessonView
-                  progress={guidedProgress}
-                  transcript={realtimeTutor.currentTutorTranscript}
-                  history={realtimeTutor.tutorTranscripts}
-                  isStreaming={
-                    realtimeTutor.isTutorResponding ||
-                    realtimeTutor.isTutorSpeaking
-                  }
-                  connected={realtimeTutor.status === "connected"}
-                  busy={guidedTurnBusy}
-                  canReplayAudio={realtimeTutor.canReplayTutorAudio}
-                  isReplayingAudio={
-                    realtimeTutor.isReplayingTutorAudio
-                  }
-                  hasNextPage={currentPage < pageCount}
-                  onContinue={continueGuided}
-                  onReplayAudio={() => {
-                    void realtimeTutor.replayTutorAudio();
-                  }}
-                  onOpenTranscript={() => setModal("transcript")}
-                />
-              ) : (
-                <div className="pdf-content">
-                  <div className="pdf-page-bar">
-                    <div className="pdf-page-controls">
-                      <button
-                        className="icon-button small"
-                        type="button"
-                        onClick={() => changePage(currentPage - 1)}
-                        disabled={
-                          currentPage <= 1 ||
-                          (guidedMode &&
-                            realtimeTutor.status === "connecting")
-                        }
-                        aria-label="Previous page"
-                      >
-                        <ChevronLeft size={17} />
-                      </button>
-                      <span>
-                        <strong>{currentPage}</strong>
-                        <i>/</i>
-                        {pageCount}
-                      </span>
-                      <button
-                        className="icon-button small"
-                        type="button"
-                        onClick={() => changePage(currentPage + 1)}
-                        disabled={
-                          currentPage >= pageCount ||
-                          (guidedMode &&
-                            realtimeTutor.status === "connecting")
-                        }
-                        aria-label="Next page"
-                      >
-                        <ChevronRight size={17} />
-                      </button>
-                    </div>
-                    <div className="pdf-selection-context">
-                      <ScanText size={15} aria-hidden="true" />
-                      <strong>
-                        {selection
-                          ? "Selection ready—ask your question"
-                          : guidedMode
-                            ? "Follow along, or select a region for a narrower question"
-                            : "Draw a rectangle around anything you want explained"}
-                      </strong>
-                      {selection && (
-                        <button
-                          className="icon-button pdf-clear-selection-button"
-                          type="button"
-                          onClick={() => setSelection(null)}
-                          aria-label="Clear selection"
-                          title="Clear selection"
-                        >
-                          <X size={15} />
-                        </button>
-                      )}
-                    </div>
+            <div className="workspace-content">
+              <div className="pdf-content">
+                <div className="pdf-page-bar">
+                  <div className="pdf-page-controls">
+                    <button
+                      className="icon-button small"
+                      type="button"
+                      onClick={() => changePage(currentPage - 1)}
+                      disabled={
+                        currentPage <= 1 ||
+                        (guidedMode &&
+                          realtimeTutor.status === "connecting")
+                      }
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={17} />
+                    </button>
+                    <span>
+                      <strong>{currentPage}</strong>
+                      <i>/</i>
+                      {pageCount}
+                    </span>
+                    <button
+                      className="icon-button small"
+                      type="button"
+                      onClick={() => changePage(currentPage + 1)}
+                      disabled={
+                        currentPage >= pageCount ||
+                        (guidedMode &&
+                          realtimeTutor.status === "connecting")
+                      }
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={17} />
+                    </button>
                   </div>
-                  <div className="pdf-stage">
-                    <PdfDocumentViewer
-                      documentId={activeTutorial.id}
-                      documentUrl={activeTutorial.url}
-                      documentName={activeTutorial.documentName}
-                      pageIndex={currentPage}
-                      selection={selection}
-                      onSelectionChange={setSelection}
-                    />
+                  <div className="pdf-selection-context">
+                    <ScanText size={15} aria-hidden="true" />
+                    <strong>{pdfInstruction}</strong>
+                    {selection && (
+                      <button
+                        className="icon-button pdf-clear-selection-button"
+                        type="button"
+                        onClick={() => setSelection(null)}
+                        aria-label="Clear selection"
+                        title="Clear selection"
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
+                <div className="pdf-stage">
+                  <PdfDocumentViewer
+                    documentId={activeTutorial.id}
+                    documentUrl={activeTutorial.url}
+                    documentName={activeTutorial.documentName}
+                    pageIndex={currentPage}
+                    selection={selection}
+                    tutorSourceText={tutorSourceText}
+                    onSelectionChange={setSelection}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
             <DocumentState
@@ -703,108 +679,95 @@ export function TutorialWorkspace({
           )}
         </section>
 
-        {!guidedLessonView ? (
-          <aside className="insights-column" aria-label="Reading context">
-            {guidedMode ? (
-              <GuidedProgressCard
-                progress={guidedProgress}
-                connected={realtimeTutor.status === "connected"}
-                busy={guidedTurnBusy}
-                hasNextPage={currentPage < pageCount}
-                onContinue={continueGuided}
-              />
+        <aside className="insights-column" aria-label={`${modeLabel} workspace`}>
+          <section className="insight-card tutor-session-card">
+            <h2>
+              <span className="insight-card-icon">
+                <Sparkles size={18} aria-hidden="true" />
+              </span>
+              {guidedMode ? "Guided tutor" : "Read and ask"}
+            </h2>
+            <div className="tutor-session-status">
+              {renderTutorStatus()}
+            </div>
+            {realtimeTutor.status === "connected" ? (
+              <button
+                className={`secondary-button tutor-ask-button${
+                  realtimeTutor.isUserTurn ? " user-turn" : ""
+                }`}
+                type="button"
+                onClick={() => void toggleUserTurn()}
+                disabled={
+                  realtimeTutor.isSubmittingUserTurn || !learnerCanAsk
+                }
+              >
+                {realtimeTutor.isUserTurn ? (
+                  <Check size={18} />
+                ) : (
+                  <Hand size={18} />
+                )}
+                {askButtonLabel}
+              </button>
             ) : null}
-
-            <TutorTranscriptCard
-              transcript={realtimeTutor.currentTutorTranscript}
-              history={realtimeTutor.tutorTranscripts}
-              isStreaming={
-                realtimeTutor.isTutorResponding ||
-                realtimeTutor.isTutorSpeaking
-              }
-              onOpen={() => setModal("transcript")}
-            />
-
-            {!guidedMode || selection ? (
-              <section className="insight-card context-card">
-                <h2>
-                  <span className="insight-card-icon">
-                    <Sparkles size={18} aria-hidden="true" />
-                  </span>
-                  Related pages
-                </h2>
-                <ul>
-                  {textSelectionContext?.related_pages.length ? (
-                    textSelectionContext.related_pages.map(
-                      (relatedPage) => (
-                        <li key={relatedPage.page_index}>
-                          <strong>Page {relatedPage.page_label}</strong>
-                          <span>{relatedPage.title}</span>
-                        </li>
-                      ),
-                    )
-                  ) : (
-                    <li className="waiting">
-                      {getRelatedPagesMessage(
-                        selection,
-                        documentModel,
-                        textSelectionContext,
-                        relatedPagesStatus,
-                      )}
-                    </li>
-                  )}
-                </ul>
-              </section>
-            ) : null}
-          </aside>
-        ) : null}
-      </div>
-
-      {activeTutorial && (
-        <div className="session-controls">
-          <div className="session-dock">
-            <button
-              className={`icon-button dock-icon${
-                realtimeTutor.isUserTurn ? " user-turn" : ""
-              }`}
-              type="button"
-              onClick={() => void toggleUserTurn()}
-              disabled={
-                realtimeTutor.status !== "connected" ||
-                realtimeTutor.isSubmittingUserTurn ||
-                !learnerCanAsk
-              }
-              aria-label={
-                realtimeTutor.isUserTurn
-                  ? "Finish asking"
-                  : selection
-                    ? "Ask about the selection"
-                    : guidedMode
-                      ? "Ask about this page"
-                      : "Ask about a selection"
-              }
-            >
-              {realtimeTutor.isUserTurn ? (
-                <Check size={22} />
-              ) : (
-                <Hand size={22} />
-              )}
-            </button>
-            <div className="listening-status">{renderTutorStatus()}</div>
-            <button
-              className="icon-button dock-icon"
-              type="button"
-              onClick={() => setModal("transcript")}
-              disabled={realtimeTutor.tutorTranscripts.length === 0}
-              aria-label="Open transcript"
-            >
-              <MessageSquareText size={21} />
-            </button>
-            <span className="session-dock-spacer" aria-hidden="true" />
             {renderSessionAction()}
-          </div>
-        </div>
-      )}
+          </section>
+
+          {guidedMode ? (
+            <GuidedProgressCard
+              progress={guidedProgress}
+              connected={realtimeTutor.status === "connected"}
+              busy={guidedTurnBusy}
+              hasNextPage={currentPage < pageCount}
+              onContinue={continueGuided}
+            />
+          ) : null}
+
+          <TutorResponseCard
+            transcript={realtimeTutor.currentTutorTranscript}
+            history={realtimeTutor.tutorTranscripts}
+            isStreaming={
+              realtimeTutor.isTutorResponding ||
+              realtimeTutor.isTutorSpeaking
+            }
+            canReplayAudio={realtimeTutor.canReplayTutorAudio}
+            isReplayingAudio={realtimeTutor.isReplayingTutorAudio}
+            onReplayAudio={() => {
+              void realtimeTutor.replayTutorAudio();
+            }}
+            onOpen={() => setModal("transcript")}
+          />
+
+          {!guidedMode || selection ? (
+            <section className="insight-card context-card">
+              <h2>
+                <span className="insight-card-icon">
+                  <ScanText size={18} aria-hidden="true" />
+                </span>
+                Related pages
+              </h2>
+              <ul>
+                {textSelectionContext?.related_pages.length ? (
+                  textSelectionContext.related_pages.map((relatedPage) => (
+                    <li key={relatedPage.page_index}>
+                      <strong>Page {relatedPage.page_label}</strong>
+                      <span>{relatedPage.title}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="waiting">
+                    {getRelatedPagesMessage(
+                      selection,
+                      documentModel,
+                      textSelectionContext,
+                      relatedPagesStatus,
+                    )}
+                  </li>
+                )}
+              </ul>
+            </section>
+          ) : null}
+        </aside>
+      </div>
 
       {modal === "transcript" && (
         <TranscriptModal
@@ -864,177 +827,6 @@ export function TutorialWorkspace({
   );
 }
 
-function GuidedViewSwitcher({
-  view,
-  onChange,
-}: {
-  view: GuidedView;
-  onChange: (view: GuidedView) => void;
-}) {
-  return (
-    <div className="guided-view-bar">
-      <div
-        className="guided-view-selector"
-        role="group"
-        aria-label="Guided tutor view"
-      >
-        <button
-          className={view === "document" ? "active" : undefined}
-          type="button"
-          onClick={() => onChange("document")}
-          aria-pressed={view === "document"}
-        >
-          <FileText size={15} aria-hidden="true" />
-          PDF
-        </button>
-        <button
-          className={view === "lesson" ? "active" : undefined}
-          type="button"
-          onClick={() => onChange("lesson")}
-          aria-pressed={view === "lesson"}
-        >
-          <Sparkles size={15} aria-hidden="true" />
-          Guided lesson
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function GuidedLessonView({
-  progress,
-  transcript,
-  history,
-  isStreaming,
-  connected,
-  busy,
-  canReplayAudio,
-  isReplayingAudio,
-  hasNextPage,
-  onContinue,
-  onReplayAudio,
-  onOpenTranscript,
-}: {
-  progress: GuidedSegmentProgress | null;
-  transcript: string;
-  history: string[];
-  isStreaming: boolean;
-  connected: boolean;
-  busy: boolean;
-  canReplayAudio: boolean;
-  isReplayingAudio: boolean;
-  hasNextPage: boolean;
-  onContinue: () => void;
-  onReplayAudio: () => void;
-  onOpenTranscript: () => void;
-}) {
-  const latestTranscript =
-    transcript || (!isStreaming ? history.at(-1) : "") || "";
-  const heading =
-    progress?.sectionTitle || progress?.title || "Guided lesson";
-
-  return (
-    <div className="guided-lesson-view">
-      <header className="guided-lesson-heading">
-        <div>
-          <p>Guided tutor</p>
-          <h1>{heading}</h1>
-          {progress?.sectionTitle ? <span>{progress.title}</span> : null}
-        </div>
-        {progress?.segmentCount ? (
-          <strong>
-            Page {progress.pageIndex} · Part {progress.segmentNumber} of{" "}
-            {progress.segmentCount}
-          </strong>
-        ) : null}
-      </header>
-
-      <div className="guided-lesson-panels">
-        <section className="guided-lesson-panel">
-          <h2>
-            <span className="insight-card-icon">
-              <FileText size={18} aria-hidden="true" />
-            </span>
-            Current passage
-          </h2>
-          <div className="guided-passage-text">
-            {progress?.sourceText ? (
-              <p>{progress.sourceText}</p>
-            ) : (
-              <p className="guided-lesson-placeholder">
-                {progress
-                  ? "This page has no prepared instructional passage."
-                  : "Start the guided lesson to load the first passage."}
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="guided-lesson-panel">
-          <h2>
-            <span className="insight-card-icon">
-              <MessageSquareText size={18} aria-hidden="true" />
-            </span>
-            Tutor explanation
-          </h2>
-          <div className="guided-explanation-text">
-            <p
-              className={
-                latestTranscript ? undefined : "guided-lesson-placeholder"
-              }
-            >
-              {latestTranscript ||
-                (isStreaming
-                  ? "The tutor is preparing the explanation…"
-                  : "The tutor’s explanation will appear here.")}
-            </p>
-          </div>
-          <div className="guided-explanation-actions">
-            <button
-              className="secondary-button guided-replay-button"
-              type="button"
-              onClick={onReplayAudio}
-              disabled={
-                !canReplayAudio || isStreaming || isReplayingAudio
-              }
-            >
-              <Play size={15} aria-hidden="true" />
-              {isReplayingAudio ? "Replaying…" : "Replay audio"}
-            </button>
-            <button
-              className="secondary-button guided-transcript-button"
-              type="button"
-              onClick={onOpenTranscript}
-              disabled={history.length === 0}
-            >
-              Open full transcript
-            </button>
-          </div>
-        </section>
-      </div>
-
-      <footer className="guided-lesson-footer">
-        <p>{getGuidedLessonStatus(progress, connected, busy, hasNextPage)}</p>
-        {progress?.pageComplete && !hasNextPage ? (
-          <strong className="guided-lesson-complete">Lesson complete</strong>
-        ) : connected && progress ? (
-          <button
-            className="primary-button guided-lesson-continue-button"
-            type="button"
-            onClick={onContinue}
-            disabled={busy}
-          >
-            {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
-            {progress.pageComplete && hasNextPage ? (
-              <ChevronRight size={17} aria-hidden="true" />
-            ) : null}
-          </button>
-        ) : null}
-      </footer>
-    </div>
-  );
-}
-
 function DocumentState({
   icon,
   eyebrow,
@@ -1061,21 +853,27 @@ function DocumentState({
   );
 }
 
-function TutorTranscriptCard({
+function TutorResponseCard({
   transcript,
   history,
   isStreaming,
+  canReplayAudio,
+  isReplayingAudio,
+  onReplayAudio,
   onOpen,
 }: {
   transcript: string;
   history: string[];
   isStreaming: boolean;
+  canReplayAudio: boolean;
+  isReplayingAudio: boolean;
+  onReplayAudio: () => void;
   onOpen: () => void;
 }) {
   const latestTranscript = transcript || history.at(-1) || "";
 
   return (
-    <section className="insight-card compact-transcript-card">
+    <section className="insight-card tutor-response-card">
       <h2>
         <span className="insight-card-icon">
           <MessageSquareText size={18} aria-hidden="true" />
@@ -1088,14 +886,25 @@ function TutorTranscriptCard({
             ? "The tutor is preparing a response…"
             : "The tutor’s response will appear here.")}
       </p>
-      <button
-        className="secondary-button transcript-open-button"
-        type="button"
-        onClick={onOpen}
-        disabled={history.length === 0}
-      >
-        Open transcript
-      </button>
+      <div className="tutor-response-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onReplayAudio}
+          disabled={!canReplayAudio || isStreaming || isReplayingAudio}
+        >
+          <Play size={15} aria-hidden="true" />
+          {isReplayingAudio ? "Replaying…" : "Replay"}
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onOpen}
+          disabled={history.length === 0}
+        >
+          Transcript
+        </button>
+      </div>
     </section>
   );
 }
@@ -1131,6 +940,9 @@ function GuidedProgressCard({
           <strong className="guided-segment-title">
             {progress.title}
           </strong>
+          {progress.sourceText ? (
+            <p className="guided-passage-preview">{progress.sourceText}</p>
+          ) : null}
           <p className="guided-segment-count">
             {progress.segmentCount > 0
               ? `Part ${progress.segmentNumber} of ${progress.segmentCount} on this page`
@@ -1143,7 +955,7 @@ function GuidedProgressCard({
         </p>
       )}
       {progress?.pageComplete && !hasNextPage ? (
-        <strong className="guided-lesson-complete">Lesson complete</strong>
+        <strong className="guided-progress-complete">Lesson complete</strong>
       ) : connected && progress ? (
         <button
           className="primary-button guided-continue-button"
@@ -1175,35 +987,6 @@ function getGuidedContinueButtonLabel(
   }
 
   return progress.segmentComplete ? "Continue" : "Resume explanation";
-}
-
-function getGuidedLessonStatus(
-  progress: GuidedSegmentProgress | null,
-  connected: boolean,
-  busy: boolean,
-  hasNextPage: boolean,
-) {
-  if (!connected) {
-    return "Start the guided lesson to begin.";
-  }
-
-  if (!progress) {
-    return "Preparing the first passage…";
-  }
-
-  if (busy) {
-    return "The tutor is working with this passage.";
-  }
-
-  if (progress.pageComplete) {
-    return hasNextPage
-      ? "This page is complete. Continue when you are ready."
-      : "You have reached the end of the document.";
-  }
-
-  return progress.segmentComplete
-    ? "This passage is complete. Continue when you are ready."
-    : "The explanation was paused. Resume when you are ready.";
 }
 
 function TranscriptModal({
