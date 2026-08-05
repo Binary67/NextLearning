@@ -15,7 +15,7 @@ describe("generateDocumentModel", () => {
     vi.unstubAllGlobals();
   });
 
-  it("aborts generation requests after five minutes", async () => {
+  it("aborts generation requests after fifteen minutes", async () => {
     const timeoutController = new AbortController();
     const timeoutError = new DOMException(
       "The operation timed out.",
@@ -43,7 +43,7 @@ describe("generateDocumentModel", () => {
     );
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(timeout).toHaveBeenCalledWith(5 * 60 * 1000);
+    expect(timeout).toHaveBeenCalledWith(15 * 60 * 1000);
 
     timeoutController.abort(timeoutError);
 

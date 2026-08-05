@@ -14,7 +14,7 @@ import {
   validateDocumentModel,
 } from "@/lib/document-model";
 
-const DOCUMENT_GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+const DOCUMENT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 
 export async function generateDocumentModel(
   fileData: Buffer,

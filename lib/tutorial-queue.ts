@@ -98,9 +98,11 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
     status: "processing",
     error: null,
   });
+  let stage = "reading the source document";
 
   try {
     const fileData = await readDocumentFile(tutorial.id);
+    stage = "document analysis";
     const model = await retryAzureOpenAIRateLimits(() =>
       generateDocumentModel(
         fileData,
@@ -109,13 +111,18 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
         tutorial.sourcePageCount,
       ),
     );
+    stage = "embedding generation";
     const embeddings = await retryAzureOpenAIRateLimits(() =>
       generateDocumentEmbeddings(model),
     );
 
+    stage = "saving prepared data";
     await savePreparedTutorial(tutorial, model, embeddings);
   } catch (error) {
-    console.error(`Document ${tutorial.id} preparation failed:`, error);
+    console.error(
+      `Document ${tutorial.id} preparation failed during ${stage}:`,
+      error,
+    );
     await updateStoredTutorial(tutorial, {
       status: "failed",
       error: getPreparationFailureMessage(error),
