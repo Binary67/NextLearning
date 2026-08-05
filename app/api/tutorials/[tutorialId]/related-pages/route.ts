@@ -7,6 +7,10 @@ import {
   isTutorialId,
   readDocumentEmbeddings,
 } from "@/lib/document-storage";
+import {
+  readRequestTextWithLimit,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body-size";
 import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
@@ -16,6 +20,7 @@ type RelatedPagesRouteContext = {
 };
 
 const MAXIMUM_SELECTION_TEXT_LENGTH = 20_000;
+const MAXIMUM_REQUEST_BODY_SIZE = 64 * 1024;
 
 export async function POST(
   request: Request,
@@ -27,7 +32,20 @@ export async function POST(
     return tutorialNotFoundResponse();
   }
 
-  const input = await readRelatedPagesInput(request);
+  let input: Awaited<ReturnType<typeof readRelatedPagesInput>>;
+
+  try {
+    input = await readRelatedPagesInput(request);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json(
+        { message: "The related-page request is too large." },
+        { status: 413 },
+      );
+    }
+
+    throw error;
+  }
 
   if (!input) {
     return Response.json(
@@ -62,10 +80,15 @@ export async function POST(
       embeddings,
       input.page_index,
       input.selection_text,
+      request.signal,
     );
 
     return Response.json({ text_selection: textSelection });
   } catch (error) {
+    if (request.signal.aborted) {
+      throw error;
+    }
+
     console.error("Related-page matching failed:", error);
 
     if (error instanceof MissingAzureOpenAIConfigurationError) {
@@ -86,10 +109,27 @@ export async function POST(
 }
 
 async function readRelatedPagesInput(request: Request) {
+  let requestText: string;
   let value: unknown;
 
   try {
-    value = await request.json();
+    requestText = await readRequestTextWithLimit(
+      request,
+      MAXIMUM_REQUEST_BODY_SIZE,
+    );
+  } catch (error) {
+    if (
+      error instanceof RequestBodyTooLargeError ||
+      request.signal.aborted
+    ) {
+      throw error;
+    }
+
+    return null;
+  }
+
+  try {
+    value = JSON.parse(requestText);
   } catch {
     return null;
   }

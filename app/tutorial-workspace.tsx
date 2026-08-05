@@ -96,6 +96,8 @@ type RelatedPagesResponse = {
   message?: string;
 };
 
+const RELATED_PAGES_DEBOUNCE_MS = 300;
+
 export function TutorialWorkspace({
   tutorialId,
   reviewConcept,
@@ -1399,6 +1401,7 @@ function useRelatedPages(
   const selectionKey = getSelectionKey(selection);
   const activeResult =
     result?.selectionKey === selectionKey ? result : null;
+  const hasReusableResult = activeResult?.status === "ready";
   const selectedPageHasChunks = Boolean(
     selection && model?.pages[selection.page_index - 1]?.chunks.length,
   );
@@ -1417,7 +1420,8 @@ function useRelatedPages(
       !model ||
       !selection?.text ||
       !selectionKey ||
-      !selectedPageHasChunks
+      !selectedPageHasChunks ||
+      hasReusableResult
     ) {
       return () => controller.abort();
     }
@@ -1448,9 +1452,16 @@ function useRelatedPages(
       }
     }
 
-    void loadRelatedPages();
-    return () => controller.abort();
+    const timeoutId = window.setTimeout(() => {
+      void loadRelatedPages();
+    }, RELATED_PAGES_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [
+    hasReusableResult,
     model,
     selectedPageHasChunks,
     selection,
