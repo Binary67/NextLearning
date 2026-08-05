@@ -26,7 +26,7 @@ import {
   useState,
 } from "react";
 
-import { AppHeader } from "@/app/app-header";
+import { useApplicationShell } from "@/app/application-shell";
 import {
   LearningSettingsDialog,
   useLearningSettings,
@@ -58,28 +58,19 @@ type Modal =
   | "delete-tutorial"
   | null;
 
-type TutorialDataResponse = {
-  tutorial?: TutorialResponse;
-  model?: DocumentModel;
-  message?: string;
-};
-
 type LearningResume = {
   pageIndex: number;
   chunkId: string | null;
 };
 
-type LearningStateResponse = {
-  learningState?: {
-    resume: LearningResume | null;
-    concepts: Record<
-      string,
-      {
-        lastChunkId: string;
-      }
-    >;
-  };
-  message?: string;
+type InitialLearningState = {
+  resume: LearningResume | null;
+  concepts: Record<
+    string,
+    {
+      lastChunkId: string;
+    }
+  >;
 };
 
 type RelatedPagesStatus = "idle" | "loading" | "ready" | "error";
@@ -102,35 +93,67 @@ const RELATED_PAGES_DEBOUNCE_MS = 300;
 export function TutorialWorkspace({
   tutorialId,
   reviewConcept,
+  initialTutorial,
+  initialModel,
+  initialLearningState,
+  initialDocumentError,
+  initialLearningStateError,
 }: {
   tutorialId: string;
   reviewConcept?: string;
+  initialTutorial: TutorialResponse | null;
+  initialModel: DocumentModel | null;
+  initialLearningState: InitialLearningState | null;
+  initialDocumentError: string;
+  initialLearningStateError: string;
 }) {
   const router = useRouter();
+  const {
+    addTutorial,
+    removeTutorial,
+    registerSettings,
+    showToast,
+  } = useApplicationShell();
+  const initialResume = initialModel
+    ? getValidResume(initialModel, initialLearningState?.resume ?? null)
+    : null;
+  const initialReviewTarget =
+    reviewConcept && initialModel && initialLearningState
+      ? findInitialReviewTarget(
+          initialModel,
+          initialLearningState,
+          reviewConcept,
+        )
+      : null;
   const [modal, setModal] = useState<Modal>(null);
-  const [toast, setToast] = useState("");
-  const [activeTutorial, setActiveTutorial] =
-    useState<TutorialResponse | null>(null);
-  const [documentModel, setDocumentModel] =
-    useState<DocumentModel | null>(null);
-  const [documentLoading, setDocumentLoading] = useState(true);
-  const [documentError, setDocumentError] = useState("");
+  const activeTutorial = initialTutorial;
+  const documentModel = initialModel;
+  const documentError = initialDocumentError;
   const [deletingTutorial, setDeletingTutorial] = useState(false);
   const [tutorMode, setTutorMode] = useState<TutorMode>(
     reviewConcept ? "review" : "read",
   );
   const [guidedTutorMode, setGuidedTutorMode] =
     useState<GuidedTutorMode>("learning");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [resumeChunkId, setResumeChunkId] = useState<string | null>(
-    null,
+  const [currentPage, setCurrentPage] = useState(
+    initialReviewTarget?.pageIndex ?? initialResume?.pageIndex ?? 1,
   );
-  const [learningStateLoaded, setLearningStateLoaded] = useState(false);
-  const [learningStateError, setLearningStateError] = useState("");
-  const [reviewTarget, setReviewTarget] =
-    useState<ReviewCheckpoint | null>(null);
-  const [reviewError, setReviewError] = useState("");
-  const lastPersistedResumeRef = useRef<string | null>(null);
+  const [resumeChunkId, setResumeChunkId] = useState<string | null>(
+    initialResume?.chunkId ?? null,
+  );
+  const [learningStateError, setLearningStateError] = useState(
+    initialLearningStateError,
+  );
+  const reviewTarget = initialReviewTarget;
+  const reviewError = getInitialReviewError(
+    reviewConcept,
+    initialLearningState,
+    initialReviewTarget,
+    initialLearningStateError,
+  );
+  const lastPersistedResumeRef = useRef<string | null>(
+    JSON.stringify(initialLearningState?.resume ?? null),
+  );
   const [selection, setSelection] = useState<DocumentSelection | null>(
     null,
   );
@@ -245,101 +268,16 @@ export function TutorialWorkspace({
   }
 
   useEffect(() => {
-    const controller = new AbortController();
+    registerSettings({
+      isOpen: modal === "settings",
+      open: () => setModal("settings"),
+    });
 
-    async function loadTutorialData() {
-      setDocumentLoading(true);
-      setDocumentError("");
-      setActiveTutorial(null);
-      setDocumentModel(null);
-      setSelection(null);
-      setLearningStateLoaded(false);
-      setLearningStateError("");
-      setReviewTarget(null);
-      setReviewError("");
-      setTutorMode(reviewConcept ? "review" : "read");
-      setGuidedTutorMode("learning");
-      setCurrentPage(1);
-      setResumeChunkId(null);
-      lastPersistedResumeRef.current = null;
-
-      try {
-        const [data, learningStateResult] = await Promise.all([
-          readTutorialData(tutorialId, controller.signal),
-          readLearningState(tutorialId, controller.signal).then(
-            (learningState) => ({ learningState, error: null }),
-            (error: unknown) => ({ learningState: null, error }),
-          ),
-        ]);
-
-        setActiveTutorial(data.tutorial);
-        setDocumentModel(data.model);
-
-        if (learningStateResult.learningState) {
-          const learningState = learningStateResult.learningState;
-          const resume = getValidResume(data.model, learningState.resume);
-
-          lastPersistedResumeRef.current = JSON.stringify(
-            learningState.resume,
-          );
-          setCurrentPage(resume?.pageIndex ?? 1);
-          setResumeChunkId(resume?.chunkId ?? null);
-
-          if (reviewConcept) {
-            const reviewState = learningState.concepts[reviewConcept];
-            const target = reviewState
-              ? findReviewCheckpoint(
-                  data.model,
-                  reviewConcept,
-                  reviewState.lastChunkId,
-                )
-              : null;
-
-            if (target) {
-              setReviewTarget(target);
-              setCurrentPage(target.pageIndex);
-            } else {
-              setReviewError(
-                "This concept review is no longer available for the saved passage.",
-              );
-            }
-          }
-        } else if (
-          learningStateResult.error instanceof Error &&
-          learningStateResult.error.name !== "AbortError"
-        ) {
-          setLearningStateError(learningStateResult.error.message);
-
-          if (reviewConcept) {
-            setReviewError(
-              "The saved review context could not be loaded.",
-            );
-          }
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name !== "AbortError") {
-          setDocumentError(error.message);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setDocumentLoading(false);
-          setLearningStateLoaded(true);
-        }
-      }
-    }
-
-    void loadTutorialData();
-    return () => controller.abort();
-  }, [reviewConcept, tutorialId]);
-
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2600);
-  }, []);
+    return () => registerSettings(null);
+  }, [modal, registerSettings]);
 
   useEffect(() => {
     if (
-      !learningStateLoaded ||
       !documentModel ||
       reviewMode ||
       currentPage < 1 ||
@@ -384,7 +322,6 @@ export function TutorialWorkspace({
   }, [
     currentPage,
     documentModel,
-    learningStateLoaded,
     currentResumeChunkId,
     reviewMode,
     tutorialId,
@@ -505,6 +442,7 @@ export function TutorialWorkspace({
       }
 
       realtimeTutor.reset();
+      removeTutorial(tutorialId);
       router.replace("/library");
     } catch (error) {
       showToast(
@@ -738,7 +676,7 @@ export function TutorialWorkspace({
         onClick={startTutor}
         disabled={
           !documentModel ||
-          (reviewMode && (!learningStateLoaded || !reviewTarget))
+          (reviewMode && !reviewTarget)
         }
       >
         <Play size={20} />
@@ -748,16 +686,8 @@ export function TutorialWorkspace({
   }
 
   return (
-    <main className="app-shell">
-      <AppHeader
-        activeSection="dashboard"
-        dashboardHref={`/tutorials/${tutorialId}`}
-        settingsOpen={modal === "settings"}
-        onOpenSettings={() => setModal("settings")}
-        onShowMessage={showToast}
-      />
-
-      <div className="dashboard-layout">
+    <>
+      <main className="dashboard-layout">
         <section className="lesson-card">
           <header className="lesson-toolbar">
             <div>
@@ -814,9 +744,10 @@ export function TutorialWorkspace({
                 </button>
                 <NewTutorialButton
                   variant="icon"
-                  onQueued={() =>
-                    showToast("Document added to the preparation queue.")
-                  }
+                  onQueued={(tutorial) => {
+                    addTutorial(tutorial);
+                    showToast("Document added to the preparation queue.");
+                  }}
                 />
                 <details className="document-actions-menu">
                   <summary
@@ -840,14 +771,7 @@ export function TutorialWorkspace({
             </div>
           </header>
 
-          {documentLoading ? (
-            <DocumentState
-              icon={<Sparkles size={34} />}
-              eyebrow="Preparing reader"
-              title="Loading the document"
-              message="Getting its concepts and page context ready."
-            />
-          ) : documentError ? (
+          {documentError ? (
             <DocumentState
               icon={<FileText size={34} />}
               eyebrow="Document unavailable"
@@ -1081,7 +1005,7 @@ export function TutorialWorkspace({
             </section>
           ) : null}
         </aside>
-      </div>
+      </main>
 
       {modal === "transcript" && (
         <TranscriptModal
@@ -1134,10 +1058,7 @@ export function TutorialWorkspace({
         />
       )}
 
-      <div className={`toast${toast ? " visible" : ""}`} aria-live="polite">
-        {toast}
-      </div>
-    </main>
+    </>
   );
 }
 
@@ -1551,42 +1472,6 @@ function useRelatedPages(
   };
 }
 
-async function readTutorialData(
-  tutorialId: string,
-  signal: AbortSignal,
-) {
-  const response = await fetch(`/api/tutorials/${tutorialId}`, { signal });
-  const data = (await response.json()) as TutorialDataResponse;
-
-  if (!response.ok || !data.tutorial || !data.model) {
-    throw new Error(data.message ?? "The document could not be loaded.");
-  }
-
-  return {
-    tutorial: data.tutorial,
-    model: data.model,
-  };
-}
-
-async function readLearningState(
-  tutorialId: string,
-  signal: AbortSignal,
-) {
-  const response = await fetch(
-    `/api/tutorials/${tutorialId}/learning-state`,
-    { signal },
-  );
-  const data = (await response.json()) as LearningStateResponse;
-
-  if (!response.ok || !data.learningState) {
-    throw new Error(
-      data.message ?? "Your saved learning progress could not be loaded.",
-    );
-  }
-
-  return data.learningState;
-}
-
 async function writeLearningResume(
   tutorialId: string,
   resume: {
@@ -1642,6 +1527,37 @@ function getValidResume(
     pageIndex: resume.pageIndex,
     chunkId,
   };
+}
+
+function findInitialReviewTarget(
+  model: DocumentModel,
+  learningState: InitialLearningState,
+  reviewConcept: string,
+) {
+  const reviewState = learningState.concepts[reviewConcept];
+
+  return reviewState
+    ? findReviewCheckpoint(
+        model,
+        reviewConcept,
+        reviewState.lastChunkId,
+      )
+    : null;
+}
+
+function getInitialReviewError(
+  reviewConcept: string | undefined,
+  learningState: InitialLearningState | null,
+  reviewTarget: ReviewCheckpoint | null,
+  learningStateError: string,
+) {
+  if (!reviewConcept || reviewTarget) {
+    return "";
+  }
+
+  return learningStateError || !learningState
+    ? "The saved review context could not be loaded."
+    : "This concept review is no longer available for the saved passage.";
 }
 
 async function readRelatedPages(

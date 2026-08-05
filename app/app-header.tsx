@@ -2,21 +2,14 @@
 
 import { LoaderCircle, LogOut, Settings, User } from "lucide-react";
 import Link from "next/link";
-import {
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 
 import {
   countActiveTutorials,
-  getTutorialTransitionMessage,
   type TutorialStatusItem,
 } from "@/lib/tutorial-status";
 
 type AppSection = "library" | "review" | "dashboard";
-const QUEUE_REFRESH_INTERVAL_MS = 3000;
 
 export function AppHeader({
   activeSection,
@@ -31,7 +24,7 @@ export function AppHeader({
   settingsOpen: boolean;
   onOpenSettings: () => void;
   onShowMessage: (message: string) => void;
-  tutorialStatuses?: readonly TutorialStatusItem[];
+  tutorialStatuses: readonly TutorialStatusItem[];
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -103,7 +96,6 @@ export function AppHeader({
 
       <div className="header-actions">
         <TutorialQueueIndicator
-          onShowMessage={onShowMessage}
           tutorialStatuses={tutorialStatuses}
         />
         <button
@@ -158,85 +150,11 @@ export function AppHeader({
 }
 
 function TutorialQueueIndicator({
-  onShowMessage,
   tutorialStatuses,
 }: {
-  onShowMessage: (message: string) => void;
-  tutorialStatuses?: readonly TutorialStatusItem[];
+  tutorialStatuses: readonly TutorialStatusItem[];
 }) {
-  const [fetchedStatuses, setFetchedStatuses] = useState<
-    TutorialStatusItem[]
-  >([]);
-  const previousStatusesRef = useRef<Map<
-    string,
-    TutorialStatusItem["status"]
-  > | null>(null);
-  const statusesProvided = tutorialStatuses !== undefined;
-  const statuses = tutorialStatuses ?? fetchedStatuses;
-  const counts = countActiveTutorials(statuses);
-  const updateNotificationHistory = useEffectEvent(
-    (tutorials: readonly TutorialStatusItem[]) => {
-      const message = getTutorialTransitionMessage(
-        previousStatusesRef.current,
-        tutorials,
-      );
-      previousStatusesRef.current = new Map(
-        tutorials.map((tutorial) => [
-          tutorial.id,
-          tutorial.status,
-        ]),
-      );
-
-      if (message) {
-        onShowMessage(message);
-      }
-    },
-  );
-
-  useEffect(() => {
-    updateNotificationHistory(statuses);
-  }, [statuses]);
-
-  useEffect(() => {
-    if (statusesProvided) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let refreshTimeout: number | undefined;
-
-    async function loadQueueStatus() {
-      try {
-        const response = await fetch("/api/tutorials/status", {
-          signal: controller.signal,
-        });
-        const data = (await response.json()) as {
-          tutorials?: TutorialStatusItem[];
-        };
-
-        if (response.ok && data.tutorials) {
-          setFetchedStatuses(data.tutorials);
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name !== "AbortError") {
-          console.error("Document queue status could not be loaded:", error);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          refreshTimeout = window.setTimeout(
-            loadQueueStatus,
-            QUEUE_REFRESH_INTERVAL_MS,
-          );
-        }
-      }
-    }
-
-    loadQueueStatus();
-    return () => {
-      controller.abort();
-      window.clearTimeout(refreshTimeout);
-    };
-  }, [statusesProvided]);
+  const counts = countActiveTutorials(tutorialStatuses);
 
   if (counts.queued === 0 && counts.processing === 0) {
     return null;
