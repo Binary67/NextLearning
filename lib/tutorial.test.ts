@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentModel } from "@/lib/document-model";
 import type { StoredTutorial } from "@/lib/document-storage";
+import type { LearningState } from "@/lib/learning-state";
 
 const mocks = vi.hoisted(() => ({
   hasDocumentEmbeddings: vi.fn(),
@@ -36,6 +37,170 @@ import {
   listTutorials,
   readPreparedTutorial,
 } from "@/lib/tutorial";
+
+describe("tutorial learning progress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.hasDocumentEmbeddings.mockResolvedValue(true);
+    mocks.readStoredLearningState.mockResolvedValue(null);
+    mocks.validateDocumentModel.mockImplementation((value) => value);
+  });
+
+  it("summarizes valid stored learning progress", async () => {
+    const now = new Date("2026-08-05T12:00:00.000Z");
+    const storedTutorial = tutorial(
+      "00000000-0000-4000-8000-000000000101",
+      "2026-08-05T11:00:00.000Z",
+    );
+    const storedModel = model(storedTutorial.id, "Progress model");
+    const learningState: LearningState = {
+      tutorialId: storedTutorial.id,
+      updatedAt: "2026-08-05T11:30:00.000Z",
+      resume: null,
+      concepts: {
+        "concept:one": {
+          conceptId: "concept:one",
+          status: "reviewing",
+          lastChunkId: "chunk:one",
+          lastAttemptAt: "2026-08-05T11:30:00.000Z",
+          nextReviewAt: "2026-08-05T11:45:00.000Z",
+          consecutiveCorrect: 1,
+          lastResult: "correct",
+          lastConfidence: 3,
+          misconception: null,
+        },
+      },
+      sessions: [],
+    };
+
+    mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
+    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+    mocks.readDocumentModel.mockResolvedValue(storedModel);
+    mocks.readStoredLearningState.mockResolvedValue(learningState);
+
+    await expect(listTutorials(now)).resolves.toMatchObject([
+      {
+        id: storedTutorial.id,
+        map: {
+          page_count: 1,
+          concept_count: 1,
+          connection_count: 0,
+        },
+        learningSummary: {
+          practiced: 1,
+          total: 1,
+          mastered: 0,
+          reviewing: 1,
+          learning: 0,
+          notPracticed: 0,
+          dueNow: 1,
+        },
+      },
+    ]);
+  });
+
+  it("summarizes missing learning state as no progress", async () => {
+    const storedTutorial = tutorial(
+      "00000000-0000-4000-8000-000000000102",
+      "2026-08-05T11:01:00.000Z",
+    );
+    const storedModel = model(storedTutorial.id, "Empty progress");
+
+    mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
+    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+    mocks.readDocumentModel.mockResolvedValue(storedModel);
+
+    await expect(listTutorials()).resolves.toMatchObject([
+      {
+        id: storedTutorial.id,
+        learningSummary: {
+          practiced: 0,
+          total: 1,
+          mastered: 0,
+          reviewing: 0,
+          learning: 0,
+          notPracticed: 1,
+          dueNow: 0,
+        },
+      },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "cannot be read",
+      learningState: new Error("learning state read failed"),
+    },
+    {
+      name: "is invalid",
+      learningState: { tutorialId: "wrong-tutorial" },
+    },
+  ])(
+    "keeps the prepared tutorial when learning state $name",
+    async ({ learningState }) => {
+      const storedTutorial = tutorial(
+        "00000000-0000-4000-8000-000000000103",
+        "2026-08-05T11:02:00.000Z",
+      );
+      const storedModel = model(storedTutorial.id, "Fallback progress");
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
+      mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+      mocks.readDocumentModel.mockResolvedValue(storedModel);
+
+      if (learningState instanceof Error) {
+        mocks.readStoredLearningState.mockRejectedValue(learningState);
+      } else {
+        mocks.readStoredLearningState.mockResolvedValue(learningState);
+      }
+
+      await expect(listTutorials()).resolves.toMatchObject([
+        {
+          id: storedTutorial.id,
+          map: {
+            page_count: 1,
+            concept_count: 1,
+            connection_count: 0,
+          },
+          learningSummary: null,
+        },
+      ]);
+      expect(consoleError).toHaveBeenCalledWith(
+        `Learning progress for stored tutorial ${storedTutorial.id} could not be loaded:`,
+        expect.any(Error),
+      );
+
+      consoleError.mockRestore();
+    },
+  );
+
+  it("omits a tutorial when its prepared document fails", async () => {
+    const storedTutorial = tutorial(
+      "00000000-0000-4000-8000-000000000104",
+      "2026-08-05T11:03:00.000Z",
+    );
+    const preparedError = new Error("prepared document read failed");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
+    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+    mocks.readDocumentModel.mockRejectedValue(preparedError);
+
+    await expect(listTutorials()).resolves.toEqual([]);
+    expect(mocks.readStoredLearningState).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      `Stored tutorial ${storedTutorial.id} could not be loaded:`,
+      preparedError,
+    );
+
+    consoleError.mockRestore();
+  });
+});
 
 describe("prepared tutorial model cache", () => {
   beforeEach(() => {
