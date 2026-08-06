@@ -12,6 +12,11 @@ import {
   type StoredTutorial,
   type TutorialStatus,
 } from "@/lib/document-storage";
+import {
+  type LearningProgressSummary,
+  summarizeLearningProgress,
+} from "@/lib/learning-progress";
+import { readLearningState } from "@/lib/learning-state-store";
 import { LruPromiseCache } from "@/lib/lru-promise-cache";
 
 const preparedDocumentModelCache = new LruPromiseCache<
@@ -35,9 +40,10 @@ export type TutorialResponse = {
   status: TutorialStatus;
   error: string | null;
   map: DocumentMapSummary | null;
+  learningSummary: LearningProgressSummary | null;
 };
 
-export async function listTutorials() {
+export async function listTutorials(now = new Date()) {
   const storedTutorials = await listStoredTutorials();
   const tutorialResults = await Promise.allSettled(
     storedTutorials.map(async (tutorial) => {
@@ -51,7 +57,17 @@ export async function listTutorials() {
         throw new Error("The prepared tutorial data is incomplete.");
       }
 
-      return toTutorialResponse(prepared.tutorial, prepared.model);
+      const learningState = await readLearningState(
+        tutorial.id,
+        prepared.model,
+        now,
+      );
+
+      return toTutorialResponse(
+        prepared.tutorial,
+        prepared.model,
+        summarizeLearningProgress(prepared.model, learningState, now),
+      );
     }),
   );
   const tutorials: TutorialResponse[] = [];
@@ -138,6 +154,7 @@ async function readPreparedDocumentModel(
 export function toTutorialResponse(
   tutorial: StoredTutorial,
   model?: DocumentModel,
+  learningSummary?: LearningProgressSummary | null,
 ): TutorialResponse {
   return {
     id: tutorial.id,
@@ -148,5 +165,6 @@ export function toTutorialResponse(
     status: tutorial.status,
     error: tutorial.error,
     map: model ? summarizeDocumentModel(model) : null,
+    learningSummary: learningSummary ?? null,
   };
 }

@@ -1809,6 +1809,61 @@ summary:focus-visible {
   background: #fff0ee;
 }
 
+.tutorial-learning-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 14px 0 0;
+  margin: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.tutorial-learning-metrics div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.tutorial-learning-metrics dt {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.tutorial-learning-metrics dd {
+  order: -1;
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.tutorial-progress-link {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--blue-deep);
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.tutorial-progress-link:hover {
+  background: var(--soft-blue);
+}
+
+.tutorial-card-has-progress .tutorial-card-footer {
+  padding-right: 96px;
+}
+
 @media (max-width: 880px) {
   .library-content {
     width: min(760px, calc(100% - 36px));

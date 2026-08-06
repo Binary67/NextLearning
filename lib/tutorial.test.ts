@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   hasDocumentEmbeddings: vi.fn(),
   listStoredTutorials: vi.fn(),
   readDocumentModel: vi.fn(),
+  readStoredLearningState: vi.fn(),
   readStoredTutorial: vi.fn(),
+  updateStoredLearningState: vi.fn(),
   validateDocumentModel: vi.fn(),
 }));
 
@@ -25,7 +27,9 @@ vi.mock("@/lib/document-storage", () => ({
   hasDocumentEmbeddings: mocks.hasDocumentEmbeddings,
   listStoredTutorials: mocks.listStoredTutorials,
   readDocumentModel: mocks.readDocumentModel,
+  readStoredLearningState: mocks.readStoredLearningState,
   readStoredTutorial: mocks.readStoredTutorial,
+  updateStoredLearningState: mocks.updateStoredLearningState,
 }));
 
 import {
@@ -37,6 +41,7 @@ describe("prepared tutorial model cache", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasDocumentEmbeddings.mockResolvedValue(true);
+    mocks.readStoredLearningState.mockResolvedValue(null);
     mocks.validateDocumentModel.mockImplementation((value) => value);
   });
 

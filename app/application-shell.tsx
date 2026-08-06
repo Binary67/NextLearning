@@ -309,7 +309,9 @@ function ApplicationHeader({
   onShowMessage: (message: string) => void;
 }) {
   const pathname = usePathname();
-  const tutorialMatch = pathname.match(/^\/tutorials\/([^/]+)$/);
+  const tutorialMatch = pathname.match(
+    /^\/tutorials\/([^/]+)(?:\/progress)?$/,
+  );
   const currentTutorialHref = tutorialMatch
     ? `/tutorials/${tutorialMatch[1]}`
     : null;

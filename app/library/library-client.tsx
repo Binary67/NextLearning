@@ -2,6 +2,7 @@
 
 import {
   ArrowRight,
+  BarChart2,
   BookOpen,
   FileText,
   LibraryBig,
@@ -234,20 +235,41 @@ function TutorialCard({
       <h2>{tutorial.title}</h2>
       <p className="tutorial-document-name">{tutorial.documentName}</p>
       {ready ? (
-        <dl className="tutorial-metrics">
-          <div>
-            <dt>Pages</dt>
-            <dd>{map.page_count}</dd>
-          </div>
-          <div>
-            <dt>Concepts</dt>
-            <dd>{map.concept_count}</dd>
-          </div>
-          <div>
-            <dt>Connections</dt>
-            <dd>{map.connection_count}</dd>
-          </div>
-        </dl>
+        <>
+          <dl className="tutorial-metrics">
+            <div>
+              <dt>Pages</dt>
+              <dd>{map.page_count}</dd>
+            </div>
+            <div>
+              <dt>Concepts</dt>
+              <dd>{map.concept_count}</dd>
+            </div>
+            <div>
+              <dt>Connections</dt>
+              <dd>{map.connection_count}</dd>
+            </div>
+          </dl>
+          {tutorial.learningSummary && (
+            <dl className="tutorial-learning-metrics">
+              <div>
+                <dt>Practiced</dt>
+                <dd>
+                  {tutorial.learningSummary.practiced}/
+                  {tutorial.learningSummary.total}
+                </dd>
+              </div>
+              <div>
+                <dt>Mastered</dt>
+                <dd>{tutorial.learningSummary.mastered}</dd>
+              </div>
+              <div>
+                <dt>Due now</dt>
+                <dd>{tutorial.learningSummary.dueNow}</dd>
+              </div>
+            </dl>
+          )}
+        </>
       ) : (
         <div className="tutorial-preparation-state">
           <p>{getTutorialStatusMessage(tutorial)}</p>
@@ -276,7 +298,9 @@ function TutorialCard({
   );
 
   return (
-    <article className="tutorial-card">
+    <article
+      className={`tutorial-card${ready ? " tutorial-card-has-progress" : ""}`}
+    >
       {ready ? (
         <Link
           className="tutorial-card-content"
@@ -286,6 +310,16 @@ function TutorialCard({
         </Link>
       ) : (
         <div className="tutorial-card-content">{content}</div>
+      )}
+      {ready && (
+        <Link
+          className="tutorial-progress-link"
+          href={`/tutorials/${tutorial.id}/progress`}
+          aria-label={`View progress for ${tutorial.title}`}
+        >
+          <BarChart2 size={15} aria-hidden="true" />
+          Progress
+        </Link>
       )}
       {canDelete && (
         <button
@@ -345,7 +379,7 @@ function mergeTutorialData(
     const initialTutorial = initialById.get(tutorial.id);
 
     return tutorial.status === "ready" &&
-      tutorial.map === null &&
+      (tutorial.map === null || tutorial.learningSummary === null) &&
       initialTutorial?.status === "ready"
       ? initialTutorial
       : tutorial;
