@@ -8,10 +8,12 @@ import {
   Ellipsis,
   FileText,
   Hand,
+  LoaderCircle,
   LogOut,
   MessageSquareText,
   Play,
   ScanText,
+  ScrollText,
   Sparkles,
   Trash2,
   X,
@@ -189,6 +191,8 @@ export function TutorialWorkspace({
   const sessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
+  const guidedSessionActive =
+    guidedMode && realtimeTutor.status === "connected";
   const modeLabel = reviewMode
     ? "Concept review"
     : guidedMode
@@ -685,6 +689,68 @@ export function TutorialWorkspace({
     );
   }
 
+  let guidedContinueAction: ReactNode = null;
+
+  if (guidedSessionActive && guidedProgress) {
+    const hasNextPage = currentPage < pageCount;
+
+    if (guidedProgress.pageComplete && !hasNextPage) {
+      guidedContinueAction = (
+        <strong className="guided-progress-complete">Lesson complete</strong>
+      );
+    } else if (!guidedProgress.learningPhase) {
+      guidedContinueAction = (
+        <button
+          className="primary-button guided-continue-button"
+          type="button"
+          onClick={continueGuided}
+          disabled={guidedTurnBusy}
+        >
+          {getGuidedContinueButtonLabel(
+            guidedProgress,
+            guidedTurnBusy,
+            hasNextPage,
+          )}
+          {guidedProgress.pageComplete && hasNextPage ? (
+            <ChevronRight size={17} aria-hidden="true" />
+          ) : null}
+        </button>
+      );
+    }
+  }
+
+  const guidedSessionStatus = guidedSessionActive ? (
+    <>
+      <div className="tutor-session-status">{renderTutorStatus()}</div>
+      {learningStateError || realtimeTutor.persistenceError ? (
+        <p className="learning-persistence-error" role="status">
+          {realtimeTutor.persistenceError || learningStateError}
+        </p>
+      ) : null}
+    </>
+  ) : null;
+
+  const guidedSessionActions = guidedSessionActive ? (
+    <>
+      <button
+        className={`secondary-button tutor-ask-button${
+          realtimeTutor.isUserTurn ? " user-turn" : ""
+        }`}
+        type="button"
+        onClick={() => void toggleUserTurn()}
+        disabled={realtimeTutor.isSubmittingUserTurn || !learnerCanAsk}
+      >
+        {realtimeTutor.isUserTurn ? (
+          <Check size={18} />
+        ) : (
+          <Hand size={18} />
+        )}
+        {askButtonLabel}
+      </button>
+      {guidedContinueAction}
+    </>
+  ) : null;
+
   return (
     <>
       <main className="dashboard-layout">
@@ -695,43 +761,70 @@ export function TutorialWorkspace({
               <h2>{activeTutorial?.title ?? "Document reader"}</h2>
             </div>
             <div className="lesson-toolbar-controls">
-              <div
-                className="tutor-mode-selector"
-                role="group"
-                aria-label="Tutor mode"
-              >
-                {reviewMode ? (
+              {guidedSessionActive ? (
+                <div
+                  className="active-tutor-session"
+                  role="group"
+                  aria-label={`${modeLabel} session active`}
+                >
+                  <span className="active-tutor-session-status">
+                    <span
+                      className="active-tutor-session-dot"
+                      aria-hidden="true"
+                    />
+                    <strong>{modeLabel}</strong>
+                    <small>Live</small>
+                  </span>
                   <button
-                    className="active"
+                    className="secondary-button active-tutor-session-end"
                     type="button"
-                    disabled
-                    aria-pressed="true"
+                    onClick={() => setModal("end-session")}
+                    aria-label={`End ${modeLabel.toLowerCase()} session`}
+                    title="End session"
                   >
-                    Review
+                    <LogOut size={16} aria-hidden="true" />
+                    <span>End session</span>
                   </button>
-                ) : (
-                  <>
+                </div>
+              ) : (
+                <div
+                  className="tutor-mode-selector"
+                  role="group"
+                  aria-label="Tutor mode"
+                >
+                  {reviewMode ? (
                     <button
-                      className={guidedMode ? undefined : "active"}
+                      className="active"
                       type="button"
-                      onClick={() => setTutorMode("read")}
-                      disabled={sessionActive}
-                      aria-pressed={!guidedMode}
+                      disabled
+                      aria-pressed="true"
                     >
-                      Read
+                      Review
                     </button>
-                    <button
-                      className={guidedMode ? "active" : undefined}
-                      type="button"
-                      onClick={() => setTutorMode("guided")}
-                      disabled={sessionActive}
-                      aria-pressed={guidedMode}
-                    >
-                      Tutor
-                    </button>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <button
+                        className={guidedMode ? undefined : "active"}
+                        type="button"
+                        onClick={() => setTutorMode("read")}
+                        disabled={sessionActive}
+                        aria-pressed={!guidedMode}
+                      >
+                        Read
+                      </button>
+                      <button
+                        className={guidedMode ? "active" : undefined}
+                        type="button"
+                        onClick={() => setTutorMode("guided")}
+                        disabled={sessionActive}
+                        aria-pressed={guidedMode}
+                      >
+                        Tutor
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="lesson-actions">
                 <button
                   className="icon-button small"
@@ -859,15 +952,23 @@ export function TutorialWorkspace({
           )}
         </section>
 
-        <aside className="insights-column" aria-label={`${modeLabel} workspace`}>
-          <section className="insight-card tutor-session-card">
+        <aside
+          className={`insights-column${sessionActive ? " session-active" : ""}${
+            guidedSessionActive ? " guided-session-active" : ""
+          }`}
+          aria-label={`${modeLabel} workspace`}
+        >
+          <section
+            className="insight-card tutor-session-card"
+            hidden={guidedSessionActive}
+          >
             <h2>
               <span className="insight-card-icon">
                 <Sparkles size={18} aria-hidden="true" />
               </span>
               {modeLabel}
             </h2>
-            {guidedMode ? (
+            {guidedMode && !sessionActive ? (
               <>
                 <div
                   className="tutor-mode-selector guided-tutor-mode-selector"
@@ -948,7 +1049,7 @@ export function TutorialWorkspace({
             ) : null}
           </section>
 
-          {structuredMode ? (
+          {reviewMode ? (
             <GuidedProgressCard
               progress={guidedProgress}
               connected={realtimeTutor.status === "connected"}
@@ -969,13 +1070,15 @@ export function TutorialWorkspace({
             }
             canReplayAudio={realtimeTutor.canReplayTutorAudio}
             isReplayingAudio={realtimeTutor.isReplayingTutorAudio}
+            sessionStatus={guidedSessionStatus}
+            sessionActions={guidedSessionActions}
             onReplayAudio={() => {
               void realtimeTutor.replayTutorAudio();
             }}
             onOpen={() => setModal("transcript")}
           />
 
-          {!structuredMode || selection ? (
+          {(!structuredMode || selection) && !guidedSessionActive ? (
             <section className="insight-card context-card">
               <h2>
                 <span className="insight-card-icon">
@@ -1094,6 +1197,8 @@ function TutorResponseCard({
   isStreaming,
   canReplayAudio,
   isReplayingAudio,
+  sessionStatus,
+  sessionActions,
   onReplayAudio,
   onOpen,
 }: {
@@ -1102,44 +1207,70 @@ function TutorResponseCard({
   isStreaming: boolean;
   canReplayAudio: boolean;
   isReplayingAudio: boolean;
+  sessionStatus: ReactNode;
+  sessionActions: ReactNode;
   onReplayAudio: () => void;
   onOpen: () => void;
 }) {
   const latestTranscript = transcript || history.at(-1) || "";
+  const replayLabel = isReplayingAudio
+    ? "Replaying tutor response"
+    : "Replay tutor response";
 
   return (
     <section className="insight-card tutor-response-card">
-      <h2>
-        <span className="insight-card-icon">
-          <MessageSquareText size={18} aria-hidden="true" />
-        </span>
-        Tutor response
-      </h2>
+      <header className="tutor-response-header">
+        <h2>
+          <span className="insight-card-icon">
+            <MessageSquareText size={18} aria-hidden="true" />
+          </span>
+          Tutor response
+        </h2>
+        <div className="tutor-response-tools">
+          <button
+            className="icon-button small"
+            type="button"
+            onClick={onReplayAudio}
+            disabled={!canReplayAudio || isStreaming || isReplayingAudio}
+            aria-label={replayLabel}
+            title={replayLabel}
+          >
+            {isReplayingAudio ? (
+              <LoaderCircle
+                className="tutor-response-tool-spinner"
+                size={16}
+                aria-hidden="true"
+              />
+            ) : (
+              <Play size={16} aria-hidden="true" />
+            )}
+          </button>
+          <button
+            className="icon-button small"
+            type="button"
+            onClick={onOpen}
+            disabled={history.length === 0}
+            aria-label="View full transcript"
+            title="View full transcript"
+          >
+            <ScrollText size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+      {sessionStatus ? (
+        <div className="tutor-response-status">{sessionStatus}</div>
+      ) : null}
       <p className={latestTranscript ? undefined : "selection-placeholder"}>
         {latestTranscript ||
           (isStreaming
             ? "The tutor is preparing a response…"
             : "The tutor’s response will appear here.")}
       </p>
-      <div className="tutor-response-actions">
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={onReplayAudio}
-          disabled={!canReplayAudio || isStreaming || isReplayingAudio}
-        >
-          <Play size={15} aria-hidden="true" />
-          {isReplayingAudio ? "Replaying…" : "Replay"}
-        </button>
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={onOpen}
-          disabled={history.length === 0}
-        >
-          Transcript
-        </button>
-      </div>
+      {sessionActions ? (
+        <div className="tutor-response-session-actions">
+          {sessionActions}
+        </div>
+      ) : null}
     </section>
   );
 }
