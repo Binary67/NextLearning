@@ -26,6 +26,7 @@ describe("learning progress summary", () => {
       learning: 0,
       notPracticed: 6,
       dueNow: 0,
+      nextReviewAt: null,
     });
   });
 
@@ -62,6 +63,7 @@ describe("learning progress summary", () => {
       learning: 2,
       notPracticed: 2,
       dueNow: 2,
+      nextReviewAt: "2026-08-06T10:00:00.000Z",
     });
   });
 
@@ -91,6 +93,7 @@ describe("learning progress summary", () => {
       learning: 0,
       notPracticed: 0,
       dueNow: 0,
+      nextReviewAt: "2026-08-19T10:00:00.000Z",
     });
   });
 
@@ -107,6 +110,51 @@ describe("learning progress summary", () => {
     );
 
     expect(summary.dueNow).toBe(1);
+    expect(summary.nextReviewAt).toBeNull();
+  });
+
+  it("selects the earliest future review after past and exact-now reviews", () => {
+    const summary = summarizeLearningProgress(
+      model,
+      learningState({
+        "concept:alpha": conceptState("concept:alpha", {
+          nextReviewAt: "2026-08-05T09:59:59.999Z",
+        }),
+        "concept:beta": conceptState("concept:beta", {
+          nextReviewAt: now.toISOString(),
+        }),
+        "concept:gamma": conceptState("concept:gamma", {
+          nextReviewAt: "2026-08-05T12:00:00.000Z",
+        }),
+        "concept:delta": conceptState("concept:delta", {
+          nextReviewAt: "2026-08-05T11:00:00.000Z",
+        }),
+      }),
+      now,
+    );
+
+    expect(summary.dueNow).toBe(2);
+    expect(summary.nextReviewAt).toBe("2026-08-05T11:00:00.000Z");
+  });
+
+  it("reports no future boundary when schedules are past, exact-now, or absent", () => {
+    const summary = summarizeLearningProgress(
+      model,
+      learningState({
+        "concept:alpha": conceptState("concept:alpha", {
+          nextReviewAt: "2026-08-05T09:59:59.999Z",
+        }),
+        "concept:beta": conceptState("concept:beta", {
+          nextReviewAt: now.toISOString(),
+        }),
+        "concept:gamma": conceptState("concept:gamma", {
+          nextReviewAt: null,
+        }),
+      }),
+      now,
+    );
+
+    expect(summary.nextReviewAt).toBeNull();
   });
 });
 

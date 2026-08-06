@@ -1,6 +1,3 @@
-import Link from "next/link";
-
-import type { DocumentConcept } from "@/lib/document-model";
 import { isTutorialId } from "@/lib/document-storage";
 import { summarizeLearningProgress } from "@/lib/learning-progress";
 import type {
@@ -14,17 +11,11 @@ import {
 } from "@/lib/tutorial";
 
 import styles from "./progress.module.css";
-
-const reviewDateFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeZone: "UTC",
-  timeStyle: "short",
-});
+import { ProgressDetails } from "./progress-details";
 
 type ConceptProgressRow = {
-  concept: DocumentConcept;
+  concept: PreparedTutorial["model"]["concepts"][number];
   state: ConceptLearningState | null;
-  due: boolean;
 };
 
 export default async function TutorialProgressPage({
@@ -69,7 +60,6 @@ export default async function TutorialProgressPage({
   }
 
   const now = new Date();
-  const nowTimestamp = now.getTime();
   const model = prepared.model;
   const conceptStates = learningState.concepts;
   const sessions = learningState.sessions;
@@ -81,10 +71,6 @@ export default async function TutorialProgressPage({
     return {
       concept,
       state,
-      due:
-        state !== null &&
-        state.nextReviewAt !== null &&
-        Date.parse(state.nextReviewAt) <= nowTimestamp,
     };
   });
   const weakRows = rows.filter(
@@ -162,107 +148,20 @@ export default async function TutorialProgressPage({
           )}
         </section>
 
-        <section className={styles.section}>
-          <h2>Concepts</h2>
-          <div className={styles.tableScroll}>
-            <table className={styles.conceptTable}>
-              <thead>
-                <tr>
-                  <th scope="col">Concept</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Streak</th>
-                  <th scope="col">Last result</th>
-                  <th scope="col">Next review</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.concept.id}>
-                    <td>{row.concept.name}</td>
-                    <td>{getStatusLabel(row.state)}</td>
-                    <td>{row.state ? row.state.consecutiveCorrect : "—"}</td>
-                    <td>
-                      {row.state
-                        ? getResultLabel(row.state.lastResult)
-                        : "—"}
-                    </td>
-                    <td>
-                      {row.due ? (
-                        <Link
-                          className={styles.reviewLink}
-                          href={`/tutorials/${encodeURIComponent(
-                            tutorialId,
-                          )}?reviewConcept=${encodeURIComponent(
-                            row.concept.id,
-                          )}`}
-                        >
-                          Review now
-                        </Link>
-                      ) : row.state?.nextReviewAt ? (
-                        <time dateTime={row.state.nextReviewAt}>
-                          {reviewDateFormatter.format(
-                            new Date(row.state.nextReviewAt),
-                          )}
-                        </time>
-                      ) : row.state ? (
-                        "Not scheduled"
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <dl className={styles.footerStats}>
-          <div>
-            <dt>Resume position</dt>
-            <dd>
-              {resume
-                ? `Page ${resumePage?.page_label ?? resume.pageIndex}`
-                : "None"}
-            </dd>
-          </div>
-          <div>
-            <dt>Last studied</dt>
-            <dd>
-              {lastSession ? (
-                <time dateTime={lastSession.endedAt}>
-                  {reviewDateFormatter.format(
-                    new Date(lastSession.endedAt),
-                  )}
-                </time>
-              ) : (
-                "Never"
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Sessions</dt>
-            <dd>{sessions.length}</dd>
-          </div>
-        </dl>
+        <ProgressDetails
+          tutorialId={tutorialId}
+          rows={rows}
+          resumePosition={
+            resume
+              ? `Page ${resumePage?.page_label ?? resume.pageIndex}`
+              : "None"
+          }
+          lastStudiedAt={lastSession?.endedAt ?? null}
+          sessionCount={sessions.length}
+        />
       </section>
     </main>
   );
-}
-
-function getStatusLabel(state: ConceptLearningState | null) {
-  if (!state) {
-    return "Not practiced";
-  }
-
-  switch (state.status) {
-    case "mastered":
-      return "Mastered";
-    case "reviewing":
-      return "Reviewing";
-    case "learning":
-      return "Learning";
-  }
 }
 
 function getResultLabel(result: ConceptLearningState["lastResult"]) {
