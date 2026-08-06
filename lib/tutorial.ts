@@ -57,16 +57,30 @@ export async function listTutorials(now = new Date()) {
         throw new Error("The prepared tutorial data is incomplete.");
       }
 
-      const learningState = await readLearningState(
-        tutorial.id,
-        prepared.model,
-        now,
-      );
+      let learningSummary: LearningProgressSummary | null = null;
+
+      try {
+        const learningState = await readLearningState(
+          tutorial.id,
+          prepared.model,
+          now,
+        );
+        learningSummary = summarizeLearningProgress(
+          prepared.model,
+          learningState,
+          now,
+        );
+      } catch (error) {
+        console.error(
+          `Learning progress for stored tutorial ${tutorial.id} could not be loaded:`,
+          error,
+        );
+      }
 
       return toTutorialResponse(
         prepared.tutorial,
         prepared.model,
-        summarizeLearningProgress(prepared.model, learningState, now),
+        learningSummary,
       );
     }),
   );
