@@ -9,6 +9,7 @@ export type LearningProgressSummary = {
   learning: number;
   notPracticed: number;
   dueNow: number;
+  nextReviewAt: string | null;
 };
 
 export function summarizeLearningProgress(
@@ -21,6 +22,8 @@ export function summarizeLearningProgress(
   let reviewing = 0;
   let learning = 0;
   let dueNow = 0;
+  let nextReviewTimestamp = Number.POSITIVE_INFINITY;
+  let nextReviewAt: string | null = null;
 
   for (const state of Object.values(learningState.concepts)) {
     if (state.status === "mastered") {
@@ -31,11 +34,15 @@ export function summarizeLearningProgress(
       learning += 1;
     }
 
-    if (
-      state.nextReviewAt !== null &&
-      Date.parse(state.nextReviewAt) <= nowTimestamp
-    ) {
-      dueNow += 1;
+    if (state.nextReviewAt !== null) {
+      const reviewTimestamp = Date.parse(state.nextReviewAt);
+
+      if (reviewTimestamp <= nowTimestamp) {
+        dueNow += 1;
+      } else if (reviewTimestamp < nextReviewTimestamp) {
+        nextReviewTimestamp = reviewTimestamp;
+        nextReviewAt = state.nextReviewAt;
+      }
     }
   }
 
@@ -50,5 +57,6 @@ export function summarizeLearningProgress(
     learning,
     notPracticed: total - practiced,
     dueNow,
+    nextReviewAt,
   };
 }

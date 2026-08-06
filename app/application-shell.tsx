@@ -33,6 +33,7 @@ type ApplicationShellContextValue = {
   addTutorial: (tutorial: TutorialResponse) => void;
   updateTutorial: (tutorial: TutorialResponse) => void;
   removeTutorial: (tutorialId: string) => void;
+  refreshTutorials: () => Promise<boolean>;
   registerSettings: (
     registration: SettingsRegistration | null,
   ) => void;
@@ -56,7 +57,7 @@ export function ApplicationShell({
     useState<SettingsRegistration | null>(null);
   const [toast, setToast] = useState("");
   const refreshControllerRef = useRef<AbortController | null>(null);
-  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
   const previousStatusesRef = useRef(
     new Map(
       initialTutorials.map((tutorial) => [
@@ -99,7 +100,7 @@ export function ApplicationShell({
     [showToast],
   );
 
-  const refreshTutorials = useCallback(() => {
+  const refreshTutorials = useCallback((): Promise<boolean> => {
     if (refreshInFlightRef.current) {
       return refreshInFlightRef.current;
     }
@@ -112,17 +113,25 @@ export function ApplicationShell({
         const response = await fetch("/api/tutorials", {
           signal: controller.signal,
         });
-        const data = (await response.json()) as {
-          tutorials?: TutorialResponse[];
-        };
 
-        if (response.ok && data.tutorials) {
-          replaceTutorials(data.tutorials);
+        if (!response.ok) {
+          return false;
         }
+
+        const data = (await response.json()) as { tutorials?: unknown };
+
+        if (!isTutorialResponseList(data.tutorials)) {
+          return false;
+        }
+
+        replaceTutorials(data.tutorials);
+        return true;
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
           console.error("Document status could not be refreshed:", error);
         }
+
+        return false;
       } finally {
         if (refreshControllerRef.current === controller) {
           refreshControllerRef.current = null;
@@ -227,6 +236,7 @@ export function ApplicationShell({
       addTutorial,
       updateTutorial,
       removeTutorial,
+      refreshTutorials,
       registerSettings,
       showToast,
     }),
@@ -234,6 +244,7 @@ export function ApplicationShell({
       addTutorial,
       registerSettings,
       removeTutorial,
+      refreshTutorials,
       showToast,
       tutorialRevision,
       tutorials,
@@ -343,4 +354,43 @@ function getLatestDashboardHref(tutorials: TutorialResponse[]) {
   return latestReadyTutorial
     ? `/tutorials/${latestReadyTutorial.id}`
     : null;
+}
+
+function isTutorialResponseList(
+  value: unknown,
+): value is TutorialResponse[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (tutorial) =>
+        typeof tutorial === "object" &&
+        tutorial !== null &&
+        typeof tutorial.id === "string" &&
+        typeof tutorial.title === "string" &&
+        typeof tutorial.documentName === "string" &&
+        typeof tutorial.url === "string" &&
+        typeof tutorial.createdAt === "string" &&
+        ["queued", "processing", "ready", "failed"].includes(
+          String(tutorial.status),
+        ) &&
+        (tutorial.error === null ||
+          typeof tutorial.error === "string") &&
+        (tutorial.map === null ||
+          (typeof tutorial.map === "object" &&
+            typeof tutorial.map.page_count === "number" &&
+            typeof tutorial.map.concept_count === "number" &&
+            typeof tutorial.map.connection_count === "number")) &&
+        (tutorial.learningSummary === null ||
+          (typeof tutorial.learningSummary === "object" &&
+            typeof tutorial.learningSummary.practiced === "number" &&
+            typeof tutorial.learningSummary.total === "number" &&
+            typeof tutorial.learningSummary.mastered === "number" &&
+            typeof tutorial.learningSummary.reviewing === "number" &&
+            typeof tutorial.learningSummary.learning === "number" &&
+            typeof tutorial.learningSummary.notPracticed === "number" &&
+            typeof tutorial.learningSummary.dueNow === "number" &&
+            (tutorial.learningSummary.nextReviewAt === null ||
+              typeof tutorial.learningSummary.nextReviewAt === "string")))
+    )
+  );
 }

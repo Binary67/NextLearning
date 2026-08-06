@@ -11,11 +11,13 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useApplicationShell } from "@/app/application-shell";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
 import type { TutorialResponse } from "@/lib/tutorial";
+
+const BOUNDARY_REFRESH_RETRY_MS = 60_000;
 
 const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
@@ -37,6 +39,7 @@ export function LibraryClient({
     addTutorial,
     updateTutorial,
     removeTutorial,
+    refreshTutorials,
     showToast,
   } = useApplicationShell();
   const tutorials = mergeTutorialData(
@@ -47,6 +50,52 @@ export function LibraryClient({
   const [tutorialToDelete, setTutorialToDelete] =
     useState<TutorialResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const refreshedBoundaryRef = useRef<string | null>(null);
+  const nextReviewAt = getNextReviewAt(tutorials);
+
+  useEffect(() => {
+    if (!nextReviewAt) {
+      return;
+    }
+
+    const boundaryTimestamp = Date.parse(nextReviewAt);
+
+    if (
+      !Number.isFinite(boundaryTimestamp) ||
+      (refreshedBoundaryRef.current === nextReviewAt &&
+        boundaryTimestamp <= getCurrentTimestamp())
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let refreshTimeout = window.setTimeout(
+      refreshAtBoundary,
+      Math.max(0, boundaryTimestamp - getCurrentTimestamp()),
+    );
+
+    async function refreshAtBoundary() {
+      const refreshed = await refreshTutorials();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (refreshed) {
+        refreshedBoundaryRef.current = nextReviewAt;
+      } else {
+        refreshTimeout = window.setTimeout(
+          refreshAtBoundary,
+          BOUNDARY_REFRESH_RETRY_MS,
+        );
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(refreshTimeout);
+    };
+  }, [nextReviewAt, refreshTutorials]);
 
   function addQueuedTutorial(tutorial: TutorialResponse) {
     addTutorial(tutorial);
@@ -395,4 +444,30 @@ function mergeTutorialData(
     (left, right) =>
       Date.parse(right.createdAt) - Date.parse(left.createdAt),
   );
+}
+
+function getNextReviewAt(tutorials: TutorialResponse[]) {
+  let nextReviewTimestamp = Number.POSITIVE_INFINITY;
+  let nextReviewAt: string | null = null;
+
+  for (const tutorial of tutorials) {
+    const candidate = tutorial.learningSummary?.nextReviewAt;
+
+    if (!candidate) {
+      continue;
+    }
+
+    const candidateTimestamp = Date.parse(candidate);
+
+    if (candidateTimestamp < nextReviewTimestamp) {
+      nextReviewTimestamp = candidateTimestamp;
+      nextReviewAt = candidate;
+    }
+  }
+
+  return nextReviewAt;
+}
+
+function getCurrentTimestamp() {
+  return Date.now();
 }
