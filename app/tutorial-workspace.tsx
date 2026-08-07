@@ -40,6 +40,7 @@ export function TutorialWorkspace({
   initialTutorial,
   initialModel,
   initialLearningState,
+  initialGuidedProgress,
   initialDocumentError,
   initialLearningStateError,
 }: TutorialWorkspaceProps) {
@@ -51,7 +52,12 @@ export function TutorialWorkspace({
     showToast,
   } = useApplicationShell();
   const initialResume = initialModel
-    ? getValidResume(initialModel, initialLearningState?.resume ?? null)
+    ? getValidResume(
+        initialModel,
+        initialGuidedProgress
+          ? initialGuidedProgress.cursor
+          : (initialLearningState?.resume ?? null),
+      )
     : null;
   const initialReviewTarget =
     reviewConcept && initialModel && initialLearningState
@@ -63,9 +69,7 @@ export function TutorialWorkspace({
       : null;
   const [modal, setModal] = useState<Modal>(null);
   const [deletingTutorial, setDeletingTutorial] = useState(false);
-  const [tutorMode, setTutorMode] = useState<TutorMode>(
-    reviewConcept ? "review" : "read",
-  );
+  const tutorMode: TutorMode = reviewConcept ? "review" : "guided";
   const [guidedTutorMode, setGuidedTutorMode] =
     useState<GuidedTutorMode>("learning");
   const [currentPage, setCurrentPage] = useState(
@@ -97,7 +101,6 @@ export function TutorialWorkspace({
   const reviewMode = tutorMode === "review";
   const activeLearningMode =
     guidedMode && guidedTutorMode === "learning";
-  const structuredMode = guidedMode || reviewMode;
   const reviewError = getInitialReviewError(
     reviewConcept,
     initialLearningState,
@@ -121,11 +124,9 @@ export function TutorialWorkspace({
     guidedMode && realtimeTutor.status === "connected";
   const modeLabel = reviewMode
     ? "Concept review"
-    : guidedMode
-      ? guidedTutorMode === "reading"
-        ? "Guided reading"
-        : "Active learning"
-      : "Read and ask";
+    : guidedTutorMode === "reading"
+      ? "Guided reading"
+      : "Active learning";
   const audioSettingsDisabled =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.isUserTurn ||
@@ -140,26 +141,20 @@ export function TutorialWorkspace({
     guidedMode && guidedProgress?.chunkId
       ? guidedProgress.chunkId
       : resumeChunkId;
-  const learnerCanAsk =
-    (structuredMode || Boolean(selection && !relatedPagesLoading)) &&
-    !(reviewMode && guidedProgress?.segmentComplete);
+  const learnerCanAsk = !(reviewMode && guidedProgress?.segmentComplete);
   let learnerTurnPrompt = reviewMode
     ? `Press ${raiseHandShortcutLabel} to answer the review question`
     : activeLearningMode
       ? `Press ${raiseHandShortcutLabel} to answer or ask about this part`
-      : guidedMode
-        ? `Press ${raiseHandShortcutLabel} to ask about this part`
-        : "Draw a rectangle on the PDF";
+      : `Press ${raiseHandShortcutLabel} to ask about this part`;
 
   if (reviewMode && guidedProgress?.segmentComplete) {
     learnerTurnPrompt = "Review complete";
   } else if (selection && !reviewMode && !guidedProgress?.learningPhase) {
-    learnerTurnPrompt = !structuredMode && relatedPagesLoading
-      ? "Finding related pages…"
-      : `Press ${raiseHandShortcutLabel} to ask about the selection`;
+    learnerTurnPrompt = `Press ${raiseHandShortcutLabel} to ask about the selection`;
   }
   const tutorHighlightBounds =
-    structuredMode && realtimeTutor.status === "connected"
+    realtimeTutor.status === "connected"
       ? guidedProgress?.highlightBounds ?? []
       : [];
   const guidedTurnBusy =
@@ -168,16 +163,10 @@ export function TutorialWorkspace({
     realtimeTutor.isUserTurn ||
     realtimeTutor.isSubmittingUserTurn ||
     realtimeTutor.isReplayingTutorAudio;
-  let pdfInstruction =
-    "Draw a rectangle around anything you want explained";
-  let askButtonLabel = "Select an area to ask";
-
-  if (structuredMode) {
-    pdfInstruction = reviewMode
-      ? "Review the highlighted source passage"
-      : "Follow along, or select a region for a narrower question";
-    askButtonLabel = reviewMode ? "Answer review" : "Ask about this page";
-  }
+  let pdfInstruction = reviewMode
+    ? "Review the highlighted source passage"
+    : "Follow along, or select a region for a narrower question";
+  let askButtonLabel = reviewMode ? "Answer review" : "Ask about this page";
 
   if (selection && !reviewMode && !guidedProgress?.learningPhase) {
     pdfInstruction = "Selection ready—ask your question";
@@ -185,7 +174,7 @@ export function TutorialWorkspace({
   }
 
   if (realtimeTutor.isUserTurn) {
-    askButtonLabel = structuredMode ? "Finish response" : "Finish asking";
+    askButtonLabel = "Finish response";
   }
   useEffect(() => {
     registerSettings({
@@ -281,9 +270,8 @@ export function TutorialWorkspace({
       pageIndex < 1 ||
       pageIndex > pageCount ||
       reviewMode ||
-      (guidedMode &&
-        (realtimeTutor.status === "connecting" ||
-          Boolean(guidedProgress?.learningPhase)))
+      realtimeTutor.status === "connecting" ||
+      Boolean(guidedProgress?.learningPhase)
     ) {
       return;
     }
@@ -292,7 +280,7 @@ export function TutorialWorkspace({
     setResumeChunkId(null);
     setSelection(null);
 
-    if (guidedMode && realtimeTutor.status === "connected") {
+    if (realtimeTutor.status === "connected") {
       void realtimeTutor.explainPage(pageIndex);
     }
   }
@@ -342,16 +330,11 @@ export function TutorialWorkspace({
       return;
     }
 
-    if (guidedMode) {
-      void realtimeTutor.startGuided(
-        currentPage,
-        resumeChunkId,
-        guidedTutorMode,
-      );
-      return;
-    }
-
-    void realtimeTutor.start();
+    void realtimeTutor.startGuided(
+      currentPage,
+      resumeChunkId,
+      guidedTutorMode,
+    );
   }
 
   function continueGuided() {
@@ -392,17 +375,14 @@ export function TutorialWorkspace({
           tutorHighlightBounds={tutorHighlightBounds}
           pdfInstruction={pdfInstruction}
           modeLabel={modeLabel}
-          tutorMode={tutorMode}
-          sessionActive={sessionActive}
+          reviewMode={reviewMode}
           guidedSessionActive={guidedSessionActive}
           pageNavigationDisabled={
-            guidedMode &&
-            (realtimeTutor.status === "connecting" ||
-              Boolean(guidedProgress?.learningPhase))
+            realtimeTutor.status === "connecting" ||
+            Boolean(guidedProgress?.learningPhase)
           }
           onChangePage={changePage}
           onSelectionChange={setSelection}
-          onTutorModeChange={setTutorMode}
           onDownload={downloadDocument}
           onTutorialQueued={(tutorial) => {
             addTutorial(tutorial);

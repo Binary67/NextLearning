@@ -84,10 +84,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     );
   }
 
-  async function start() {
-    await startSession("read");
-  }
-
   async function startGuided(
     pageIndex: number,
     chunkId: string | null,
@@ -172,7 +168,6 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     guidedSegmentProgress,
     error,
     persistenceError,
-    start,
     startGuided,
     startReview,
     explainPage,

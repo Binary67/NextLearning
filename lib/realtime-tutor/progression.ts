@@ -8,7 +8,10 @@ import type { GuidedSegmentContext } from "@/lib/guided-segment-context";
 import {
   buildLearningLoopToolAction,
 } from "@/lib/realtime-tutor/instructions";
-import { postLearningAttempt } from "@/lib/realtime-tutor/persistence";
+import {
+  postGuidedProgressEvent,
+  postLearningAttempt,
+} from "@/lib/realtime-tutor/persistence";
 import type { RealtimeTutorRuntime } from "@/lib/realtime-tutor/types";
 import type { ValidatedLearningAttempt } from "@/lib/realtime-tutor/tools/record-learning-attempt";
 import { getErrorMessage } from "@/lib/realtime-tutor/transport";
@@ -42,6 +45,11 @@ export function selectGuidedSegment(
     segmentComplete: false,
     pageComplete: false,
   });
+  persistGuidedProgress(runtime, {
+    type: "segment_started",
+    pageIndex,
+    chunkId: segment.id,
+  });
 }
 
 export function setEmptyGuidedPage(
@@ -68,6 +76,10 @@ export function setEmptyGuidedPage(
     segmentComplete: true,
     pageComplete: true,
   });
+  persistGuidedProgress(runtime, {
+    type: "empty_page_completed",
+    pageIndex,
+  });
 }
 
 export function setGuidedSegmentCompletion(
@@ -75,6 +87,7 @@ export function setGuidedSegmentCompletion(
   complete: boolean,
 ) {
   const guidedSegment = runtime.guidedSegmentStateRef.current;
+  const wasComplete = guidedSegment?.complete ?? false;
 
   if (guidedSegment) {
     runtime.guidedSegmentStateRef.current = {
@@ -94,6 +107,25 @@ export function setGuidedSegmentCompletion(
         }
       : progress,
   );
+
+  if (
+    complete &&
+    !wasComplete &&
+    guidedSegment &&
+    guidedSegment.segmentIndex !== null
+  ) {
+    const chunk = runtime.optionsRef.current.documentModel?.pages[
+      guidedSegment.pageIndex - 1
+    ]?.chunks[guidedSegment.segmentIndex];
+
+    if (chunk) {
+      persistGuidedProgress(runtime, {
+        type: "segment_completed",
+        pageIndex: guidedSegment.pageIndex,
+        chunkId: chunk.id,
+      });
+    }
+  }
 }
 
 export function startLearningCheckpoint(
@@ -199,4 +231,29 @@ export async function recordLearningAttempt(
       learningCheckpoint.surroundingContext,
     ),
   };
+}
+
+function persistGuidedProgress(
+  runtime: RealtimeTutorRuntime,
+  event: Parameters<typeof postGuidedProgressEvent>[1],
+) {
+  const documentId = runtime.optionsRef.current.documentId;
+
+  if (!documentId) {
+    return;
+  }
+
+  void postGuidedProgressEvent(documentId, event).then(
+    () => {
+      runtime.setPersistenceError("");
+    },
+    (reason: unknown) => {
+      runtime.setPersistenceError(
+        getErrorMessage(
+          reason,
+          "Your guided-reading progress could not be saved.",
+        ),
+      );
+    },
+  );
 }

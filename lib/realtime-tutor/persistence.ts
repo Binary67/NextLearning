@@ -1,4 +1,7 @@
 import { readResponseMessage } from "@/lib/realtime-tutor/transport";
+import type { GuidedProgressEvent } from "@/lib/guided-progress";
+
+const guidedProgressQueues = new Map<string, Promise<void>>();
 
 export async function postLearningAttempt(
   tutorialId: string,
@@ -23,7 +26,7 @@ export async function postLearningSession(
   tutorialId: string,
   session: {
     id: string;
-    mode: "read" | "guided" | "review";
+    mode: "guided" | "review";
     startedAt: string;
     endedAt: string;
     conceptsPracticed: string[];
@@ -36,10 +39,40 @@ export async function postLearningSession(
   );
 }
 
+export function postGuidedProgressEvent(
+  tutorialId: string,
+  event: GuidedProgressEvent,
+) {
+  const previous =
+    guidedProgressQueues.get(tutorialId) ?? Promise.resolve();
+  const queued = previous
+    .catch(() => {})
+    .then(() =>
+      postLearningState(
+        `/api/tutorials/${tutorialId}/guided-progress`,
+        event,
+        "Your guided-reading progress could not be saved.",
+        true,
+      ),
+    );
+
+  guidedProgressQueues.set(tutorialId, queued);
+  void queued.then(clearQueue, clearQueue);
+
+  return queued;
+
+  function clearQueue() {
+    if (guidedProgressQueues.get(tutorialId) === queued) {
+      guidedProgressQueues.delete(tutorialId);
+    }
+  }
+}
+
 async function postLearningState(
   url: string,
   body: object,
   fallbackMessage: string,
+  keepalive = false,
 ) {
   const response = await fetch(url, {
     method: "POST",
@@ -47,6 +80,7 @@ async function postLearningState(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    keepalive,
   });
 
   if (response.ok) {

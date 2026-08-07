@@ -21,8 +21,6 @@ import type {
 } from "@/lib/document-selection";
 import type { TutorialResponse } from "@/lib/tutorial";
 
-import type { TutorMode } from "./types";
-
 export function DocumentPanel({
   tutorial,
   documentModel,
@@ -33,13 +31,11 @@ export function DocumentPanel({
   tutorHighlightBounds,
   pdfInstruction,
   modeLabel,
-  tutorMode,
-  sessionActive,
+  reviewMode,
   guidedSessionActive,
   pageNavigationDisabled,
   onChangePage,
   onSelectionChange,
-  onTutorModeChange,
   onDownload,
   onTutorialQueued,
   onEndSession,
@@ -54,21 +50,16 @@ export function DocumentPanel({
   tutorHighlightBounds: SelectionBounds[];
   pdfInstruction: string;
   modeLabel: string;
-  tutorMode: TutorMode;
-  sessionActive: boolean;
+  reviewMode: boolean;
   guidedSessionActive: boolean;
   pageNavigationDisabled: boolean;
   onChangePage: (pageIndex: number) => void;
   onSelectionChange: (selection: DocumentSelection | null) => void;
-  onTutorModeChange: (mode: TutorMode) => void;
   onDownload: () => void;
   onTutorialQueued: (tutorial: TutorialResponse) => void;
   onEndSession: () => void;
   onDelete: () => void;
 }) {
-  const guidedMode = tutorMode === "guided";
-  const reviewMode = tutorMode === "review";
-
   return (
     <section className="lesson-card">
       <header className="lesson-toolbar">
@@ -102,45 +93,22 @@ export function DocumentPanel({
                 <span>End session</span>
               </button>
             </div>
-          ) : (
+          ) : reviewMode ? (
             <div
               className="tutor-mode-selector"
               role="group"
               aria-label="Tutor mode"
             >
-              {reviewMode ? (
-                <button
-                  className="active"
-                  type="button"
-                  disabled
-                  aria-pressed="true"
-                >
-                  Review
-                </button>
-              ) : (
-                <>
-                  <button
-                    className={guidedMode ? undefined : "active"}
-                    type="button"
-                    onClick={() => onTutorModeChange("read")}
-                    disabled={sessionActive}
-                    aria-pressed={!guidedMode}
-                  >
-                    Read
-                  </button>
-                  <button
-                    className={guidedMode ? "active" : undefined}
-                    type="button"
-                    onClick={() => onTutorModeChange("guided")}
-                    disabled={sessionActive}
-                    aria-pressed={guidedMode}
-                  >
-                    Tutor
-                  </button>
-                </>
-              )}
+              <button
+                className="active"
+                type="button"
+                disabled
+                aria-pressed="true"
+              >
+                Review
+              </button>
             </div>
-          )}
+          ) : null}
           <div className="lesson-actions">
             <button
               className="icon-button small"
@@ -256,7 +224,7 @@ export function DocumentPanel({
           icon={<FileText size={34} />}
           eyebrow="No document"
           title="Choose a PDF to begin"
-          message="Upload a PDF, select a region, and ask questions by voice."
+          message="Upload a PDF to begin guided reading or active learning."
         />
       )}
     </section>

@@ -112,7 +112,7 @@ export type TutorAudioCapture = {
   saveOnStop: boolean;
 };
 
-export type TutorSessionMode = "read" | "guided" | "review";
+export type TutorSessionMode = "guided" | "review";
 
 export type GuidedSegmentState = {
   pageIndex: number;

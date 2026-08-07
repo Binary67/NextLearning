@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateDocumentModel } from "@/lib/tutorial-generation";
+import { generateDocumentBatch } from "@/lib/tutorial-generation";
 
-describe("generateDocumentModel", () => {
+describe("generateDocumentBatch", () => {
   beforeEach(() => {
     vi.stubEnv("AZURE_OPENAI_ENDPOINT", "https://azure.example");
     vi.stubEnv("AZURE_OPENAI_API_KEY", "api-key");
@@ -35,10 +35,15 @@ describe("generateDocumentModel", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const request = generateDocumentModel(
+    const request = generateDocumentBatch(
       Buffer.from("pdf"),
       "document.pdf",
       "document-id",
+      1,
+      1,
+      1,
+      1,
+      1,
       1,
     );
 

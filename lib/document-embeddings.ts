@@ -36,6 +36,14 @@ type RankedChunk = {
   bm25Score: number;
 };
 
+export type DocumentTopicMatch = {
+  page_index: number;
+  page_label: string;
+  title: string;
+  summary: string;
+  concepts: string[];
+};
+
 const EMBEDDING_WEIGHT = 0.7;
 const BM25_WEIGHT = 0.3;
 const EMBEDDING_BATCH_SIZE = 100;
@@ -164,6 +172,109 @@ export async function findTextSelectionContext(
     rankedChunks[0].chunk,
     selectionText,
   );
+}
+
+export async function findHybridDocumentTopics(
+  model: DocumentModel,
+  documentEmbeddings: DocumentEmbeddings,
+  query: string,
+  signal?: AbortSignal,
+): Promise<DocumentTopicMatch[]> {
+  const chunks = getDocumentChunks(model);
+  const conceptNames = getConceptNames(model);
+  const { deployment, embeddings } = await requestEmbeddings(
+    [query],
+    signal,
+  );
+
+  if (
+    deployment !== documentEmbeddings.deployment ||
+    embeddings[0].length !== documentEmbeddings.dimensions
+  ) {
+    throw new Error(
+      "The tutorial embeddings use a different Azure OpenAI deployment.",
+    );
+  }
+
+  const queryEmbedding = embeddings[0];
+  const embeddingsByChunkId = new Map(
+    documentEmbeddings.chunks.map((item) => [
+      item.chunk_id,
+      item.embedding,
+    ]),
+  );
+  const bm25Scores = scoreChunksWithBm25(
+    query,
+    chunks,
+    chunks,
+    conceptNames,
+  );
+  const highestBm25Score = Math.max(0, ...bm25Scores.values());
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const ranked = chunks.map((chunk) => {
+    const embedding = embeddingsByChunkId.get(chunk.id);
+    const embeddingSimilarity = embedding
+      ? dotProduct(queryEmbedding, embedding)
+      : 0;
+    const lexicalScore =
+      highestBm25Score === 0
+        ? 0
+        : (bm25Scores.get(chunk.id) ?? 0) / highestBm25Score;
+    const exactMatchBoost =
+      normalizedQuery &&
+      [chunk.section_title, chunk.title]
+        .some((value) =>
+          value.toLocaleLowerCase().includes(normalizedQuery),
+        )
+        ? 0.15
+        : 0;
+
+    return {
+      chunk,
+      score:
+        EMBEDDING_WEIGHT * embeddingSimilarity +
+        BM25_WEIGHT * lexicalScore +
+        exactMatchBoost,
+    };
+  });
+  ranked.sort(
+    (left, right) =>
+      right.score - left.score ||
+      left.chunk.id.localeCompare(right.chunk.id),
+  );
+  const pageByChunkId = new Map(
+    model.pages.flatMap((page) =>
+      page.chunks.map((chunk) => [chunk.id, page] as const),
+    ),
+  );
+  const matches: DocumentTopicMatch[] = [];
+  const seenPages = new Set<number>();
+
+  for (const { chunk } of ranked) {
+    const page = pageByChunkId.get(chunk.id);
+
+    if (!page || seenPages.has(page.page_index)) {
+      continue;
+    }
+
+    seenPages.add(page.page_index);
+    matches.push({
+      page_index: page.page_index,
+      page_label: page.page_label,
+      title: chunk.title,
+      summary: chunk.summary,
+      concepts: chunk.concept_ids.flatMap((conceptId) => {
+        const name = conceptNames.get(conceptId);
+        return name ? [name] : [];
+      }),
+    });
+
+    if (matches.length === 5) {
+      break;
+    }
+  }
+
+  return matches;
 }
 
 export function validateDocumentEmbeddings(

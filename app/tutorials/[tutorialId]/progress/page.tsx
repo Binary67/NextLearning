@@ -1,4 +1,10 @@
+import Link from "next/link";
+
 import { isTutorialId } from "@/lib/document-storage";
+import {
+  summarizeGuidedProgress,
+} from "@/lib/guided-progress";
+import { readGuidedProgress } from "@/lib/guided-progress-store";
 import { summarizeLearningProgress } from "@/lib/learning-progress";
 import type {
   ConceptLearningState,
@@ -65,6 +71,11 @@ export default async function TutorialProgressPage({
   const sessions = learningState.sessions;
   const resume = learningState.resume;
   const summary = summarizeLearningProgress(model, learningState, now);
+  const guidedProgress = await readGuidedProgress(tutorialId, model);
+  const guidedSummary = summarizeGuidedProgress(
+    model,
+    guidedProgress,
+  );
   const rows: ConceptProgressRow[] = model.concepts.map((concept) => {
     const state = conceptStates[concept.id] ?? null;
 
@@ -81,6 +92,15 @@ export default async function TutorialProgressPage({
   );
   const resumePage = resume
     ? model.pages.find((page) => page.page_index === resume.pageIndex)
+    : null;
+  const guidedCursor = guidedProgress.cursor;
+  const guidedCursorPage = guidedCursor
+    ? model.pages[guidedCursor.pageIndex - 1]
+    : null;
+  const guidedCursorChunk = guidedCursor
+    ? guidedCursorPage?.chunks.find(
+        (chunk) => chunk.id === guidedCursor.chunkId,
+      )
     : null;
   const lastSession =
     sessions.length > 0 ? sessions[sessions.length - 1] : null;
@@ -101,6 +121,56 @@ export default async function TutorialProgressPage({
             what is due for review.
           </p>
         </header>
+
+        <section
+          className={styles.section}
+          aria-labelledby="guided-progress-title"
+        >
+          <div className={styles.guidedHeading}>
+            <div>
+              <h2 id="guided-progress-title">Guided reading</h2>
+              <p>
+                {guidedSummary.completedChunks} of{" "}
+                {guidedSummary.totalChunks} sections explained
+              </p>
+            </div>
+            <strong>{guidedSummary.percentage}%</strong>
+          </div>
+          <div
+            className={styles.guidedTrack}
+            role="progressbar"
+            aria-label="Guided reading completion"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={guidedSummary.percentage}
+          >
+            <span
+              style={{ width: `${guidedSummary.percentage}%` }}
+            />
+          </div>
+          <div className={styles.guidedFooter}>
+            <p>
+              {guidedCursor
+                ? `Continue on page ${
+                    guidedCursorPage?.page_label ??
+                    guidedCursor.pageIndex
+                  }${guidedCursorChunk ? `: ${guidedCursorChunk.title}` : ""}`
+                : guidedSummary.totalChunks > 0 &&
+                    guidedSummary.completedChunks ===
+                      guidedSummary.totalChunks
+                  ? "Guided reading complete"
+                  : "Start guided reading from the beginning"}
+            </p>
+            <Link
+              className={styles.continueLink}
+              href={`/tutorials/${encodeURIComponent(
+                tutorialId,
+              )}`}
+            >
+              {guidedCursor ? "Continue reading" : "Open guided reading"}
+            </Link>
+          </div>
+        </section>
 
         <section className={styles.section} aria-label="Mastery breakdown">
           <dl className={styles.summaryGrid}>
@@ -152,8 +222,13 @@ export default async function TutorialProgressPage({
           tutorialId={tutorialId}
           rows={rows}
           resumePosition={
-            resume
-              ? `Page ${resumePage?.page_label ?? resume.pageIndex}`
+            guidedCursor
+              ? `Page ${
+                  guidedCursorPage?.page_label ??
+                  guidedCursor.pageIndex
+                }`
+              : resume
+                ? `Page ${resumePage?.page_label ?? resume.pageIndex}`
               : "None"
           }
           lastStudiedAt={lastSession?.endedAt ?? null}

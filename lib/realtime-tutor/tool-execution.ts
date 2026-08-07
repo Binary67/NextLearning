@@ -53,6 +53,11 @@ export async function sendToolOutputs(
             : null,
           recordLearningAttempt: (attempt) =>
             recordLearningAttempt(runtime, attempt),
+          findDocumentTopics: (query) =>
+            searchDocumentTopics(
+              runtime.optionsRef.current.documentId!,
+              query,
+            ),
         },
       );
     } catch (reason) {
@@ -77,4 +82,39 @@ export async function sendToolOutputs(
       "conversation.item.added",
     );
   }
+}
+
+async function searchDocumentTopics(
+  documentId: string,
+  query: string,
+) {
+  const response = await fetch(
+    `/api/tutorials/${documentId}/topics`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    },
+  );
+  const result = (await response.json()) as {
+    matches?: Array<{
+      page_index: number;
+      page_label: string;
+      title: string;
+      summary: string;
+      concepts: string[];
+    }>;
+    message?: string;
+  };
+
+  if (!response.ok || !result.matches) {
+    throw new Error(
+      result.message ??
+        "Document topic search is temporarily unavailable.",
+    );
+  }
+
+  return result.matches;
 }

@@ -109,15 +109,12 @@ export function TutorSidebar({
 }) {
   const guidedMode = tutorMode === "guided";
   const reviewMode = tutorMode === "review";
-  const structuredMode = guidedMode || reviewMode;
   const activeLearningMode =
     guidedMode && guidedTutorMode === "learning";
   const tutorStatus = renderTutorStatus({
     status,
     tutorError,
-    structuredMode,
     reviewMode,
-    guidedMode,
     activeLearningMode,
     guidedTutorMode,
     guidedProgress,
@@ -133,7 +130,6 @@ export function TutorSidebar({
   const sessionAction = renderSessionAction({
     status,
     reviewMode,
-    guidedMode,
     guidedTutorMode,
     hasDocument,
     hasReviewTarget,
@@ -277,7 +273,7 @@ export function TutorSidebar({
         onOpen={onOpenTranscript}
       />
 
-      {(!structuredMode || selection) && !guidedSessionActive ? (
+      {selection && !guidedSessionActive ? (
         <RelatedPagesCard
           selection={selection}
           model={documentModel}
@@ -292,9 +288,7 @@ export function TutorSidebar({
 function renderTutorStatus({
   status,
   tutorError,
-  structuredMode,
   reviewMode,
-  guidedMode,
   activeLearningMode,
   guidedTutorMode,
   guidedProgress,
@@ -309,9 +303,7 @@ function renderTutorStatus({
 }: {
   status: RealtimeTutorStatus;
   tutorError: string;
-  structuredMode: boolean;
   reviewMode: boolean;
-  guidedMode: boolean;
   activeLearningMode: boolean;
   guidedTutorMode: GuidedTutorMode;
   guidedProgress: GuidedSegmentProgress | null;
@@ -327,11 +319,9 @@ function renderTutorStatus({
   if (status === "connecting") {
     return (
       <TurnState eyebrow="Connecting">
-        {structuredMode
-          ? `Connecting and preparing this ${
-              reviewMode ? "review" : "page"
-            }…`
-          : "Connecting…"}
+        {`Connecting and preparing this ${
+          reviewMode ? "review" : "page"
+        }…`}
       </TurnState>
     );
   }
@@ -370,9 +360,7 @@ function renderTutorStatus({
         ? "Speaking…"
         : reviewMode || activeLearningMode
           ? "Tutoring…"
-          : guidedMode
-            ? "Explaining…"
-            : "Thinking…";
+          : "Explaining…";
 
       return <TurnState eyebrow="Tutor">{activity}</TurnState>;
     }
@@ -394,11 +382,11 @@ function renderTutorStatus({
 
   return (
     <TurnState eyebrow="Ready">
-      {guidedMode
-        ? guidedTutorMode === "reading"
+      {reviewMode
+        ? pdfInstruction
+        : guidedTutorMode === "reading"
           ? "Read this paper with section-by-section explanations"
-          : "Learn this paper step by step"
-        : pdfInstruction}
+          : "Learn this paper step by step"}
     </TurnState>
   );
 }

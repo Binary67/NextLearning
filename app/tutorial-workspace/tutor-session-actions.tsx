@@ -40,7 +40,6 @@ export function AskButton({
 export function renderSessionAction({
   status,
   reviewMode,
-  guidedMode,
   guidedTutorMode,
   hasDocument,
   hasReviewTarget,
@@ -49,7 +48,6 @@ export function renderSessionAction({
 }: {
   status: RealtimeTutorStatus;
   reviewMode: boolean;
-  guidedMode: boolean;
   guidedTutorMode: GuidedTutorMode;
   hasDocument: boolean;
   hasReviewTarget: boolean;
@@ -65,11 +63,9 @@ export function renderSessionAction({
       >
         {reviewMode
           ? "Starting review…"
-          : guidedMode
-            ? guidedTutorMode === "reading"
-              ? "Starting guided reading…"
-              : "Starting active learning…"
-            : "Starting…"}
+          : guidedTutorMode === "reading"
+            ? "Starting guided reading…"
+            : "Starting active learning…"}
       </button>
     );
   }
@@ -89,20 +85,16 @@ export function renderSessionAction({
 
   let startLabel = reviewMode
     ? "Start review"
-    : guidedMode
-      ? guidedTutorMode === "reading"
-        ? "Start guided reading"
-        : "Start active learning"
-      : "Start tutor";
+    : guidedTutorMode === "reading"
+      ? "Start guided reading"
+      : "Start active learning";
 
   if (status === "ended") {
     startLabel = reviewMode
       ? "Review again"
-      : guidedMode
-        ? guidedTutorMode === "reading"
-          ? "Start guided reading again"
-          : "Start active learning again"
-        : "Start new session";
+      : guidedTutorMode === "reading"
+        ? "Start guided reading again"
+        : "Start active learning again";
   }
 
   return (

@@ -2,6 +2,7 @@ import type {
   DocumentModel,
   TextSelectionContext,
 } from "@/lib/document-model";
+import type { DocumentTopicMatch } from "@/lib/document-embeddings";
 import type { DocumentSelection } from "@/lib/document-selection";
 import {
   FIND_DOCUMENT_TOPICS_TOOL_NAME,
@@ -35,6 +36,9 @@ type RealtimeTutorToolContext = {
   recordLearningAttempt: (
     attempt: ValidatedLearningAttempt,
   ) => Promise<unknown>;
+  findDocumentTopics: (
+    query: string,
+  ) => Promise<DocumentTopicMatch[]>;
 };
 
 export const realtimeTutorTools = [
@@ -66,7 +70,10 @@ export async function executeRealtimeTutorTool(
       );
     }
     case FIND_DOCUMENT_TOPICS_TOOL_NAME:
-      return findDocumentTopics(context.documentModel, argumentsJson);
+      return findDocumentTopics(
+        argumentsJson,
+        context.findDocumentTopics,
+      );
     case GET_PAGE_CONTEXT_TOOL_NAME:
       return getPageContext(
         context.documentModel,

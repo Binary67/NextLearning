@@ -10,20 +10,24 @@ import {
 } from "@/lib/azure-openai-response";
 import {
   documentModelJsonSchema,
-  type DocumentModel,
+  type GeneratedDocumentModel,
   validateGeneratedDocumentModel,
-  validateDocumentModel,
 } from "@/lib/document-model";
-import { addDocumentHighlightBounds } from "@/lib/document-highlights";
+import type { GeneratedDocumentBatch } from "@/lib/document-batches";
 
 const DOCUMENT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 
-export async function generateDocumentModel(
+export async function generateDocumentBatch(
   fileData: Buffer,
   fileName: string,
   documentId: string,
   sourcePageCount: number,
-): Promise<DocumentModel> {
+  batchIndex: number,
+  startPage: number,
+  endPage: number,
+  inputStartPage: number,
+  inputEndPage: number,
+): Promise<GeneratedDocumentBatch> {
   const encodedFile = fileData.toString("base64");
 
   return retryAzureOpenAIGeneration(async () => {
@@ -36,20 +40,40 @@ export async function generateDocumentModel(
       },
       {
         type: "input_text",
-        text: buildDocumentModelPrompt(documentId, sourcePageCount),
+        text: buildDocumentBatchPrompt(
+          documentId,
+          sourcePageCount,
+          startPage,
+          endPage,
+          inputStartPage,
+          inputEndPage,
+        ),
       },
     ]);
 
     try {
-      const generatedModel = validateGeneratedDocumentModel(
+      const generatedModel = validateGeneratedBatch(
         JSON.parse(outputText) as unknown,
         documentId,
+        sourcePageCount,
+        startPage,
+        endPage,
       );
-      const model = await addDocumentHighlightBounds(
-        fileData,
-        generatedModel,
-      );
-      return validateDocumentModel(model, documentId);
+
+      return {
+        schema_version: generatedModel.schema_version,
+        document_id: documentId,
+        batch_index: batchIndex,
+        start_page: startPage,
+        end_page: endPage,
+        title: generatedModel.title,
+        summary: generatedModel.pages
+          .flatMap((page) => page.chunks.map((chunk) => chunk.summary))
+          .join(" "),
+        pages: generatedModel.pages.slice(startPage - 1, endPage),
+        concepts: generatedModel.concepts,
+        connections: generatedModel.connections,
+      };
     } catch (error) {
       throw new InvalidAzureOpenAIContentError(
         "Azure OpenAI returned a document model that could not be grounded in the PDF.",
@@ -109,11 +133,18 @@ async function requestStructuredGeneration(content: object[]) {
   );
 }
 
-function buildDocumentModelPrompt(
+function buildDocumentBatchPrompt(
   documentId: string,
   sourcePageCount: number,
+  startPage: number,
+  endPage: number,
+  inputStartPage: number,
+  inputEndPage: number,
 ) {
-  return `Review the complete PDF once, then create a compact document model for an interactive reading tutor.
+  return `Create one page batch for an interactive reading tutor.
+
+The attached PDF contains original document pages ${inputStartPage} through ${inputEndPage}. Its first attached page is original PDF page ${inputStartPage}.
+Analyze original PDF pages ${startPage} through ${endPage}. Pages outside that owned range are boundary context only. Use them to understand continued sections, paragraphs, figures, and tables, but do not return page records or concept occurrences for context-only pages.
 
 Document rules:
 - Set schema_version to 4.
@@ -121,19 +152,19 @@ Document rules:
 - Set page_count to ${sourcePageCount} exactly.
 - Use 1-based PDF order for page_index.
 - Use the printed page number for page_label when visible; otherwise use page_index as a string.
-- Create exactly one pages record for every PDF page in PDF order.
+- Create exactly one pages record for each owned original PDF page from ${startPage} through ${endPage}, in order. Return no other pages.
 - Give substantive pages between one and 20 chunks in the document's reading order. Use an empty chunks array only when a page contains no instructional content.
 - Make each chunk one teaching segment: normally one paragraph, or a few consecutive sentences when a long paragraph contains clearly separable claims. Do not combine independent paragraphs.
 - Give each chunk the exact section heading in section_title. Use "Abstract" for an abstract and the nearest enclosing heading when a section continues across pages.
 - Copy the segment's source wording from the PDF into source_text. Do not summarize, rewrite, complete, or combine non-consecutive source text. Keep source_text at or below 8000 characters.
-- Give chunks globally unique lowercase kebab-case IDs beginning with "chunk:", concise teaching-focus titles, one-to-three-sentence summaries, and between one and 12 concept_ids.
+- Give chunks globally unique lowercase kebab-case IDs beginning with "chunk:p<page-index>-", concise teaching-focus titles, one-to-three-sentence summaries, and between one and 12 concept_ids.
 - Create a separate chunk for an instructional figure, table, or equation when it needs its own explanation. Use its exact caption and nearby introducing text as source_text.
 - Do not create chunks for document titles, author lists, affiliations, email addresses, page numbers, running headers, or other publication layout unless that material itself has instructional value.
-- Return no more than 400 chunks across the document.
+- Return no more than 200 chunks in this batch.
 
 Concept rules:
 - Give each concept a stable lowercase kebab-case ID beginning with "concept:".
-- Return no more than 120 concepts and no more than 400 connections.
+- Return no more than 120 concepts and no more than 200 connections in this batch.
 - Merge aliases and repeated explanations into one concept.
 - Keep definitions short and grounded in this document.
 - Give every concept between one and 40 meaningful occurrences.
@@ -149,4 +180,51 @@ Connection rules:
 - Keep every occurrence and connection confidence between 0 and 1 inclusive.
 
 Do not create learner prompts, assessments, progress, timing, or realtime behavior.`;
+}
+
+function validateGeneratedBatch(
+  value: unknown,
+  documentId: string,
+  sourcePageCount: number,
+  startPage: number,
+  endPage: number,
+) {
+  if (
+    !isRecord(value) ||
+    value.page_count !== sourcePageCount ||
+    !Array.isArray(value.pages) ||
+    value.pages.length !== endPage - startPage + 1 ||
+    value.pages.some(
+      (page, index) =>
+        !isRecord(page) || page.page_index !== startPage + index,
+    )
+  ) {
+    throw new Error("Azure OpenAI returned an invalid document batch.");
+  }
+
+  const returnedPages = new Map(
+    value.pages.map((page) => [
+      (page as { page_index: number }).page_index,
+      page,
+    ]),
+  );
+  const pages = Array.from({ length: sourcePageCount }, (_, index) => {
+    const pageIndex = index + 1;
+    return (
+      returnedPages.get(pageIndex) ?? {
+        page_index: pageIndex,
+        page_label: String(pageIndex),
+        chunks: [],
+      }
+    );
+  });
+
+  return validateGeneratedDocumentModel(
+    { ...value, pages } as GeneratedDocumentModel,
+    documentId,
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

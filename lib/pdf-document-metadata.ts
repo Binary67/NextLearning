@@ -1,13 +1,18 @@
-export async function readPdfPageCount(fileData: Buffer) {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const loadingTask = getDocument({
-    data: new Uint8Array(fileData),
-  });
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
-  try {
-    const document = await loadingTask.promise;
-    return document.numPages;
-  } finally {
-    await loadingTask.destroy();
+const execFileAsync = promisify(execFile);
+
+export async function readPdfPageCount(filePath: string) {
+  const { stdout } = await execFileAsync("pdfinfo", [filePath], {
+    maxBuffer: 1024 * 1024,
+  });
+  const match = stdout.match(/^Pages:\s+(\d+)$/m);
+  const pageCount = match ? Number(match[1]) : 0;
+
+  if (!Number.isInteger(pageCount) || pageCount < 1) {
+    throw new Error("The PDF page count could not be read.");
   }
+
+  return pageCount;
 }

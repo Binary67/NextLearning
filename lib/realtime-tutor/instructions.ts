@@ -44,15 +44,11 @@ ${
     ? "- Follow application-requested diagnostics and retrieval checkpoints when they are supplied."
     : "- This is guided reading. Explain each segment directly. Never initiate a diagnostic, retrieval checkpoint, quiz, or other understanding question. The learner may still ask questions."
 }`
-      : mode === "review"
-        ? `This is a concept-focused review session. The application supplies one authoritative active-page image, one active chunk, and one active concept.
+      : `This is a concept-focused review session. The application supplies one authoritative active-page image, one active chunk, and one active concept.
 - Begin with retrieval, not a fresh explanation.
 - Evaluate answers only against the named concept, active chunk, and supplied document evidence.
 - A miss receives one hint and one retry. After the retry, give corrective feedback and stop regardless of the result.
-- Never advance to another concept or page yourself.`
-        : `This is a read-and-ask session. The learner chooses a region of the PDF and asks a spoken question. The application supplies the selected image, extracted selection text when available, and the selected page.
-- Answer the learner's exact question first.
-- Treat the active selection as the primary document evidence for the question.`;
+- Never advance to another concept or page yourself.`;
   const learningAttemptPolicy =
     activeLearning || mode === "review"
       ? `

@@ -16,7 +16,6 @@ type NewTutorialButtonProps = {
 };
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
-const MAX_PDF_SIZE = 10 * BYTES_PER_MEGABYTE;
 
 export function NewTutorialButton({
   variant = "primary",
@@ -28,8 +27,7 @@ export function NewTutorialButton({
   const [error, setError] = useState("");
   const pendingFileIsValid =
     pendingFile !== null &&
-    isPdf(pendingFile) &&
-    pendingFile.size <= MAX_PDF_SIZE;
+    isPdf(pendingFile);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -58,11 +56,6 @@ export function NewTutorialButton({
       return;
     }
 
-    if (file.size > MAX_PDF_SIZE) {
-      setError("The document must be 10 MB or smaller.");
-      return;
-    }
-
     setError("");
   }
 
@@ -75,11 +68,13 @@ export function NewTutorialButton({
     setError("");
 
     try {
-      const formData = new FormData();
-      formData.append("file", pendingFile);
       const response = await fetch("/api/tutorials", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/pdf",
+          "X-Document-Name": encodeURIComponent(pendingFile.name),
+        },
+        body: pendingFile,
       });
 
       const data = (await response.json()) as {

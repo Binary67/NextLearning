@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { createWriteStream, promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { after } from "next/server";
 
 import {
@@ -8,9 +13,6 @@ import {
 import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
   isContentLengthOverLimit,
-  isMultipartFormDataContentType,
-  readRequestBytesWithLimit,
-  RequestBodyTooLargeError,
 } from "@/lib/request-body-size";
 import {
   listTutorials,
@@ -20,8 +22,6 @@ import { hasActiveTutorials } from "@/lib/tutorial-status";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
 
 export const runtime = "nodejs";
-
-const MAX_MULTIPART_REQUEST_SIZE = 11 * 1024 * 1024;
 
 export async function GET() {
   const tutorials = await listTutorials();
@@ -36,9 +36,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type");
 
-  if (!isMultipartFormDataContentType(contentType)) {
+  if (contentType?.split(";", 1)[0].toLowerCase() !== "application/pdf") {
     return Response.json(
-      { message: "The upload must use multipart form data." },
+      { message: "Only PDF files are supported." },
       { status: 415 },
     );
   }
@@ -46,71 +46,60 @@ export async function POST(request: Request) {
   if (
     isContentLengthOverLimit(
       request.headers.get("content-length"),
-      MAX_MULTIPART_REQUEST_SIZE,
+      MAX_DOCUMENT_SIZE,
     )
   ) {
     return Response.json(
-      { message: "The document must be 10 MB or smaller." },
+      { message: "The document is too large to store." },
       { status: 413 },
     );
   }
 
-  let requestBytes: Uint8Array;
+  const documentName = readDocumentName(
+    request.headers.get("x-document-name"),
+  );
 
-  try {
-    requestBytes = await readRequestBytesWithLimit(
-      request,
-      MAX_MULTIPART_REQUEST_SIZE,
-    );
-  } catch (error) {
-    if (error instanceof RequestBodyTooLargeError) {
-      return Response.json(
-        { message: "The document must be 10 MB or smaller." },
-        { status: 413 },
-      );
-    }
-
-    throw error;
-  }
-
-  const formData = await new Response(
-    new Uint8Array(requestBytes),
-    {
-      headers: {
-        "Content-Type": contentType!,
-      },
-    },
-  ).formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File)) {
+  if (!documentName) {
     return Response.json(
       { message: "Choose a PDF file to upload." },
       { status: 400 },
     );
   }
 
-  if (!isPdf(file)) {
+  if (!documentName.toLowerCase().endsWith(".pdf")) {
     return Response.json(
       { message: "Only PDF files are supported." },
       { status: 415 },
     );
   }
 
-  if (file.size > MAX_DOCUMENT_SIZE) {
+  if (!request.body) {
     return Response.json(
-      { message: "The document must be 10 MB or smaller." },
-      { status: 413 },
+      { message: "Choose a PDF file to upload." },
+      { status: 400 },
     );
   }
 
   const tutorialId = randomUUID();
-  const fileData = Buffer.from(await file.arrayBuffer());
+  const uploadDirectory = await fs.mkdtemp(
+    path.join(tmpdir(), "nextlearning-upload-"),
+  );
+  const uploadPath = path.join(uploadDirectory, "source.pdf");
   let sourcePageCount: number;
 
   try {
-    sourcePageCount = await readPdfPageCount(fileData);
+    await streamUploadToFile(request.body, uploadPath);
+    sourcePageCount = await readPdfPageCount(uploadPath);
   } catch (error) {
+    await fs.rm(uploadDirectory, { force: true, recursive: true });
+
+    if (error instanceof DocumentTooLargeError) {
+      return Response.json(
+        { message: "The document is too large to store." },
+        { status: 413 },
+      );
+    }
+
     console.error("PDF validation failed:", error);
     return Response.json(
       { message: "The PDF could not be read." },
@@ -118,12 +107,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const tutorial = await createQueuedTutorial(
-    file.name,
-    fileData,
-    tutorialId,
-    sourcePageCount,
-  );
+  let tutorial: Awaited<ReturnType<typeof createQueuedTutorial>>;
+
+  try {
+    tutorial = await createQueuedTutorial(
+      documentName,
+      uploadPath,
+      tutorialId,
+      sourcePageCount,
+    );
+  } finally {
+    await fs.rm(uploadDirectory, { force: true, recursive: true });
+  }
+
   after(runTutorialQueue);
 
   return Response.json(
@@ -132,8 +128,44 @@ export async function POST(request: Request) {
   );
 }
 
-function isPdf(file: File) {
-  const extension = file.name.split(".").pop()?.toLowerCase();
+class DocumentTooLargeError extends Error {}
 
-  return extension === "pdf" && file.type === "application/pdf";
+async function streamUploadToFile(
+  body: ReadableStream<Uint8Array>,
+  filePath: string,
+) {
+  let byteLength = 0;
+  const sizeGuard = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      byteLength += chunk.byteLength;
+
+      if (byteLength > MAX_DOCUMENT_SIZE) {
+        callback(new DocumentTooLargeError());
+        return;
+      }
+
+      callback(null, chunk);
+    },
+  });
+
+  await pipeline(
+    Readable.fromWeb(
+      body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+    ),
+    sizeGuard,
+    createWriteStream(filePath, { flags: "wx" }),
+  );
+}
+
+function readDocumentName(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const name = decodeURIComponent(value).trim();
+    return name && path.basename(name) === name ? name : null;
+  } catch {
+    return null;
+  }
 }

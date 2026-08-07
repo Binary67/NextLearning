@@ -47,9 +47,7 @@ function validateDocumentModelValue(
     value.pages.length !== value.page_count ||
     !Array.isArray(value.concepts) ||
     value.concepts.length === 0 ||
-    value.concepts.length > 120 ||
-    !Array.isArray(value.connections) ||
-    value.connections.length > 400
+    !Array.isArray(value.connections)
   ) {
     throw new Error("The generated document model has invalid metadata.");
   }
@@ -113,7 +111,7 @@ function validatePages(
     }
   }
 
-  if (chunkCount === 0 || chunkCount > 400) {
+  if (chunkCount === 0) {
     throw new Error("The generated document model has invalid page chunks.");
   }
 
@@ -160,8 +158,7 @@ function validateConcepts(
       !isNonEmptyString(concept.name) ||
       !isNonEmptyString(concept.definition) ||
       !Array.isArray(concept.occurrences) ||
-      concept.occurrences.length === 0 ||
-      concept.occurrences.length > 40
+      concept.occurrences.length === 0
     ) {
       throw new Error("The generated document model has an invalid concept.");
     }
@@ -261,7 +258,6 @@ function validateConnections(
       ) ||
       !Array.isArray(connection.relevant_pages) ||
       connection.relevant_pages.length === 0 ||
-      connection.relevant_pages.length > 20 ||
       !connection.relevant_pages.every(
         (page) => isPositiveInteger(page) && page <= pageCount,
       ) ||

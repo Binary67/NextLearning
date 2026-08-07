@@ -2,6 +2,8 @@ import { TutorialWorkspace } from "@/app/tutorial-workspace";
 import { isTutorialId } from "@/lib/document-storage";
 import type { LearningState } from "@/lib/learning-state";
 import { readLearningState } from "@/lib/learning-state-store";
+import { readStoredGuidedProgressIfAvailable } from "@/lib/guided-progress-store";
+import type { GuidedReadingProgress } from "@/lib/guided-progress";
 import {
   type PreparedTutorial,
   readPreparedTutorial,
@@ -29,6 +31,7 @@ export default async function TutorialPage({
   let initialLearningStateError = "";
   let prepared: PreparedTutorial | null = null;
   let learningState: LearningState | null = null;
+  let guidedProgress: GuidedReadingProgress | null = null;
 
   if (isTutorialId(tutorialId)) {
     try {
@@ -36,10 +39,13 @@ export default async function TutorialPage({
 
       if (prepared) {
         try {
-          learningState = await readLearningState(
-            tutorialId,
-            prepared.model,
-          );
+          [learningState, guidedProgress] = await Promise.all([
+            readLearningState(tutorialId, prepared.model),
+            readStoredGuidedProgressIfAvailable(
+              tutorialId,
+              prepared.model,
+            ),
+          ]);
         } catch (error) {
           console.error("Initial learning state could not be loaded:", error);
           initialLearningStateError =
@@ -82,6 +88,7 @@ export default async function TutorialPage({
             }
           : null
       }
+      initialGuidedProgress={guidedProgress}
       initialDocumentError={initialDocumentError}
       initialLearningStateError={initialLearningStateError}
     />

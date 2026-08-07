@@ -13,7 +13,7 @@ export const LEARNING_STATUSES = [
   "reviewing",
   "mastered",
 ] as const;
-export const SESSION_MODES = ["read", "guided", "review"] as const;
+export const SESSION_MODES = ["guided", "review"] as const;
 
 const HOUR_MS = 60 * 60 * 1000;
 

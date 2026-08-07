@@ -22,7 +22,7 @@ export type ConceptLearningState = {
 
 export type LearningSession = {
   id: string;
-  mode: "read" | "guided" | "review";
+  mode: "guided" | "review";
   startedAt: string;
   endedAt: string;
   conceptsPracticed: string[];

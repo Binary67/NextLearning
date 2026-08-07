@@ -196,7 +196,7 @@ describe("learning-state validation", () => {
       validateSessionReferences(
         {
           id: sessionId,
-          mode: "read",
+          mode: "guided",
           startedAt: "2026-08-05T09:00:00.000Z",
           endedAt: "2026-08-05T09:20:00.000Z",
           conceptsPracticed: ["concept:missing"],

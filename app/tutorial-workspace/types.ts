@@ -1,5 +1,6 @@
 import type { TutorialResponse } from "@/lib/tutorial";
 import type { DocumentModel } from "@/lib/document-model";
+import type { GuidedReadingProgress } from "@/lib/guided-progress";
 
 export type Modal =
   | "transcript"
@@ -23,7 +24,7 @@ export type InitialLearningState = {
   >;
 };
 
-export type TutorMode = "read" | "guided" | "review";
+export type TutorMode = "guided" | "review";
 
 export type TutorialWorkspaceProps = {
   tutorialId: string;
@@ -31,6 +32,7 @@ export type TutorialWorkspaceProps = {
   initialTutorial: TutorialResponse | null;
   initialModel: DocumentModel | null;
   initialLearningState: InitialLearningState | null;
+  initialGuidedProgress: GuidedReadingProgress | null;
   initialDocumentError: string;
   initialLearningStateError: string;
 };
