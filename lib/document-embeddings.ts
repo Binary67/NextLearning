@@ -8,6 +8,8 @@ import {
   type DocumentChunk,
   type DocumentModel,
   type TextSelectionContext,
+  getDocumentChunkSourceText,
+  getDocumentChunksForSourcePage,
 } from "@/lib/document-model";
 
 export const DOCUMENT_EMBEDDINGS_SCHEMA_VERSION = 1;
@@ -107,9 +109,9 @@ export async function findTextSelectionContext(
   selectionText: string,
   signal?: AbortSignal,
 ): Promise<TextSelectionContext | null> {
-  const page = model.pages[pageIndex - 1];
+  const pageChunks = getDocumentChunksForSourcePage(model, pageIndex);
 
-  if (!page?.chunks.length) {
+  if (pageChunks.length === 0) {
     return null;
   }
 
@@ -143,11 +145,11 @@ export async function findTextSelectionContext(
   const bm25Scores = scoreChunksWithBm25(
     selectionText,
     allChunks,
-    page.chunks,
+    pageChunks,
     conceptNames,
   );
   const highestBm25Score = Math.max(0, ...bm25Scores.values());
-  const rankedChunks: RankedChunk[] = page.chunks.map((chunk) => ({
+  const rankedChunks: RankedChunk[] = pageChunks.map((chunk) => ({
     chunk,
     embeddingSimilarity: dotProduct(
       queryEmbedding,
@@ -515,7 +517,7 @@ function buildChunkSearchText(
     .map((conceptId) => conceptNames.get(conceptId) ?? "")
     .join(" ");
 
-  return `${chunk.section_title}\n${chunk.title}\n${chunk.source_text}\n${chunk.summary}\n${concepts}`;
+  return `${chunk.section_title}\n${chunk.title}\n${getDocumentChunkSourceText(chunk)}\n${chunk.summary}\n${concepts}`;
 }
 
 function normalizeEmbedding(value: number[]) {

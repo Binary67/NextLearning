@@ -54,10 +54,10 @@ export function getGuidedSegmentContext(
 export function formatGuidedSegmentContext(
   context: GuidedSegmentContext,
 ) {
-  return `Previous document segments:
+  return `Previous page lessons:
 ${formatContextItems(context.previous_segments)}
 
-Upcoming document segments:
+Upcoming page lessons:
 ${formatContextItems(context.upcoming_segments)}`;
 }
 

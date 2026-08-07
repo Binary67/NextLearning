@@ -131,7 +131,7 @@ export default async function TutorialProgressPage({
               <h2 id="guided-progress-title">Guided reading</h2>
               <p>
                 {guidedSummary.completedChunks} of{" "}
-                {guidedSummary.totalChunks} sections explained
+                {guidedSummary.totalChunks} page lessons explained
               </p>
             </div>
             <strong>{guidedSummary.percentage}%</strong>

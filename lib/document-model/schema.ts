@@ -10,18 +10,40 @@ const documentChunkJsonSchema = {
   properties: {
     id: { type: "string" },
     section_title: { type: "string" },
-    source_text: { type: "string" },
+    sources: {
+      type: "array",
+      description:
+        "One to four ordered source spans from the owning page and, only for a continuation, its immediately previous page.",
+      items: {
+        type: "object",
+        properties: {
+          page_index: { type: "integer" },
+          source_text: {
+            type: "string",
+            description:
+              "An exact non-empty PDF passage of at most 8000 characters.",
+          },
+        },
+        required: ["page_index", "source_text"],
+        additionalProperties: false,
+      },
+    },
     title: { type: "string" },
-    summary: { type: "string" },
+    summary: {
+      type: "string",
+      description:
+        "A non-empty grounded summary of at most 1600 characters.",
+    },
     concept_ids: {
       type: "array",
+      description: "One to twelve unique concept IDs.",
       items: { type: "string" },
     },
   },
   required: [
     "id",
     "section_title",
-    "source_text",
+    "sources",
     "title",
     "summary",
     "concept_ids",
@@ -48,6 +70,8 @@ export const documentModelJsonSchema = {
           page_label: { type: "string" },
           chunks: {
             type: "array",
+            description:
+              "At most three coherent page lessons in reading order.",
             items: documentChunkJsonSchema,
           },
         },

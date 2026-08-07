@@ -49,6 +49,32 @@ describe("generateDocumentBatch", () => {
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(timeout).toHaveBeenCalledWith(15 * 60 * 1000);
+    const requestBody = JSON.parse(
+      fetchMock.mock.calls[0][1]?.body as string,
+    );
+    const prompt = requestBody.input[0].content[1].text as string;
+    const chunkSchema =
+      requestBody.text.format.schema.properties.pages.items.properties
+        .chunks;
+    expect(prompt).toContain(
+      "Normally give each substantive page one chunk",
+    );
+    expect(prompt).toContain(
+      "Multiple sources may use the same page",
+    );
+    expect(prompt).toContain(
+      "Assign the complete paragraph to the next page's chunk",
+    );
+    expect(prompt).toContain(
+      "previous-page fragment followed by the owning-page fragment",
+    );
+    expect(chunkSchema.description).toContain("At most three");
+    expect(
+      chunkSchema.items.properties.sources.description,
+    ).toContain("One to four");
+    expect(
+      chunkSchema.items.properties.concept_ids.description,
+    ).toContain("One to twelve");
 
     timeoutController.abort(timeoutError);
 

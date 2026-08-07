@@ -1,13 +1,15 @@
-import type {
-  DocumentChunk,
-  DocumentChunkSummary,
-  DocumentConcept,
-  DocumentMapSummary,
-  DocumentModel,
-  OccurrenceRole,
-  SelectionGrounding,
-  SelectionRelatedPage,
-  TextSelectionContext,
+import {
+  getDocumentChunkSourceText,
+  getDocumentChunksForSourcePage,
+  type DocumentChunk,
+  type DocumentChunkSummary,
+  type DocumentConcept,
+  type DocumentMapSummary,
+  type DocumentModel,
+  type OccurrenceRole,
+  type SelectionGrounding,
+  type SelectionRelatedPage,
+  type TextSelectionContext,
 } from "@/lib/document-model/types";
 
 type ChunkTokens = {
@@ -83,9 +85,11 @@ export function buildTextSelectionContext(
   selectedChunk: DocumentChunk,
   selectionText: string,
 ): TextSelectionContext | null {
-  const page = model.pages[pageIndex - 1];
-
-  if (!page?.chunks.some((chunk) => chunk.id === selectedChunk.id)) {
+  if (
+    !getDocumentChunksForSourcePage(model, pageIndex).some(
+      (chunk) => chunk.id === selectedChunk.id,
+    )
+  ) {
     return null;
   }
 
@@ -222,6 +226,10 @@ function findRelatedPages(
     }
 
     for (const chunk of page.chunks) {
+      if (chunk.id === selectedChunk.id) {
+        continue;
+      }
+
       const sharedConceptIds = chunk.concept_ids.filter((conceptId) =>
         selectedConceptIds.has(conceptId),
       );
@@ -362,7 +370,7 @@ function getChunkTokens(
         .map((conceptId) => conceptNamesById.get(conceptId) ?? "")
         .join(" "),
     ),
-    source: tokenize(chunk.source_text),
+    source: tokenize(getDocumentChunkSourceText(chunk)),
     summary: tokenize(chunk.summary),
   };
 }

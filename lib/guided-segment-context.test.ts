@@ -45,7 +45,7 @@ describe("getGuidedSegmentContext", () => {
 
 function createModel(pages: DocumentChunk[][]): DocumentModel {
   return {
-    schema_version: 4,
+    schema_version: 5,
     document_id: "document",
     title: "Document",
     page_count: pages.length,
@@ -63,11 +63,16 @@ function createChunk(name: string): DocumentChunk {
   return {
     id: `chunk:${name}`,
     section_title: `Section ${name}`,
-    source_text: `Source ${name}`,
+    sources: [
+      {
+        page_index: 1,
+        source_text: `Source ${name}`,
+        highlight_bounds: [],
+      },
+    ],
     title: `Title ${name}`,
     summary: `Summary ${name}`,
     concept_ids: [],
-    highlight_bounds: [],
   };
 }
 

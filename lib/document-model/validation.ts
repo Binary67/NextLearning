@@ -81,28 +81,89 @@ function validatePages(
       page.page_index !== index + 1 ||
       !isNonEmptyString(page.page_label) ||
       !Array.isArray(page.chunks) ||
-      page.chunks.length > 20
+      page.chunks.length > 3
     ) {
       throw new Error("The generated document model has an invalid page.");
     }
 
     pageLabels.set(page.page_index, page.page_label);
 
-    for (const chunk of page.chunks) {
-      if (
-        !isRecord(chunk) ||
-        !isChunkId(chunk.id) ||
-        chunkIds.has(chunk.id) ||
-        !isNonEmptyString(chunk.section_title) ||
-        !isSourceText(chunk.source_text) ||
-        !isNonEmptyString(chunk.title) ||
-        !isSourceSummary(chunk.summary) ||
-        !isStringArray(chunk.concept_ids, 1, 12) ||
-        (requireHighlightBounds &&
-          !isHighlightBounds(chunk.highlight_bounds))
-      ) {
-        throw new Error(
-          "The generated document model has an invalid page chunk.",
+    for (const [chunkIndex, chunk] of page.chunks.entries()) {
+      if (!isRecord(chunk)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "the chunk must be an object",
+        );
+      }
+
+      if (!isChunkId(chunk.id)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "id must be a lowercase kebab-case chunk ID",
+        );
+      }
+
+      if (chunkIds.has(chunk.id)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "id is duplicated",
+        );
+      }
+
+      if (!isNonEmptyString(chunk.section_title)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "section_title must be a non-empty string",
+        );
+      }
+
+      const sourcesError = getChunkSourcesError(
+        chunk.sources,
+        page.page_index,
+        requireHighlightBounds,
+      );
+
+      if (sourcesError) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          sourcesError,
+        );
+      }
+
+      if (!isNonEmptyString(chunk.title)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "title must be a non-empty string",
+        );
+      }
+
+      if (!isSourceSummary(chunk.summary)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "summary must contain 1 to 1600 characters",
+        );
+      }
+
+      if (!isStringArray(chunk.concept_ids, 1, 12)) {
+        throwInvalidPageChunk(
+          page.page_index,
+          chunkIndex,
+          chunk,
+          "concept_ids must contain 1 to 12 unique concept IDs",
         );
       }
 
@@ -116,6 +177,69 @@ function validatePages(
   }
 
   return pageLabels;
+}
+
+function getChunkSourcesError(
+  value: unknown,
+  ownerPageIndex: number,
+  requireHighlightBounds: boolean,
+) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 4) {
+    return "sources must contain 1 to 4 ordered source spans";
+  }
+
+  let reachedOwnerPage = false;
+
+  for (const [sourceIndex, source] of value.entries()) {
+    if (!isRecord(source)) {
+      return `source ${sourceIndex + 1} must be an object`;
+    }
+
+    if (
+      !isPositiveInteger(source.page_index) ||
+      (source.page_index !== ownerPageIndex &&
+        source.page_index !== ownerPageIndex - 1)
+    ) {
+      return `source ${sourceIndex + 1} must belong to page ${ownerPageIndex} or its immediately previous page`;
+    }
+
+    if (source.page_index === ownerPageIndex) {
+      reachedOwnerPage = true;
+    } else if (reachedOwnerPage) {
+      return "all previous-page sources must come before owning-page sources";
+    }
+
+    if (!isSourceText(source.source_text)) {
+      return `source ${sourceIndex + 1} text must contain 1 to 8000 characters`;
+    }
+
+    if (
+      requireHighlightBounds &&
+      !isHighlightBounds(source.highlight_bounds)
+    ) {
+      return `source ${sourceIndex + 1} must have valid PDF highlight bounds`;
+    }
+  }
+
+  return reachedOwnerPage
+    ? null
+    : `sources must include owning page ${ownerPageIndex}`;
+}
+
+function throwInvalidPageChunk(
+  pageIndex: number,
+  chunkIndex: number,
+  chunk: unknown,
+  reason: string,
+): never {
+  const chunkLabel =
+    isRecord(chunk) && typeof chunk.id === "string"
+      ? JSON.stringify(chunk.id)
+      : `#${chunkIndex + 1}`;
+
+  throw new Error(
+    `The generated document model has an invalid page chunk on page ${pageIndex} (${chunkLabel}): ${reason}.`,
+  );
 }
 
 function isHighlightBounds(value: unknown): value is SelectionBounds[] {

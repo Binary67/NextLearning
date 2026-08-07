@@ -25,25 +25,30 @@ export async function addDocumentHighlightBounds(
   return {
     ...model,
     pages: model.pages.map((page) => {
-      const textRegions = textRegionsByPage[page.page_index - 1] ?? [];
-
       return {
         ...page,
         chunks: page.chunks.map((chunk) => {
-          const highlightBounds = findDocumentHighlightBounds(
-            textRegions,
-            chunk.source_text,
-          );
-
-          if (!highlightBounds) {
-            throw new Error(
-              `Chunk ${chunk.id} could not be uniquely anchored on PDF page ${page.page_index}.`,
-            );
-          }
-
           return {
             ...chunk,
-            highlight_bounds: highlightBounds,
+            sources: chunk.sources.map((source) => {
+              const textRegions =
+                textRegionsByPage[source.page_index - 1] ?? [];
+              const highlightBounds = findDocumentHighlightBounds(
+                textRegions,
+                source.source_text,
+              );
+
+              if (!highlightBounds) {
+                throw new Error(
+                  `Chunk ${chunk.id} could not be uniquely anchored on PDF page ${source.page_index}.`,
+                );
+              }
+
+              return {
+                ...source,
+                highlight_bounds: highlightBounds,
+              };
+            }),
           };
         }),
       };

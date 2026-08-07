@@ -223,7 +223,7 @@ function attempt(
 }
 
 const model: DocumentModel = {
-  schema_version: 4,
+  schema_version: 5,
   document_id: tutorialId,
   title: "Test tutorial",
   page_count: 2,
@@ -235,9 +235,14 @@ const model: DocumentModel = {
         {
           id: "chunk:alpha",
           section_title: "Alpha",
-          source_text: "Alpha text",
-          highlight_bounds: [
-            { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+          sources: [
+            {
+              page_index: 1,
+              source_text: "Alpha text",
+              highlight_bounds: [
+                { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+              ],
+            },
           ],
           title: "Alpha",
           summary: "Alpha summary",
@@ -252,9 +257,14 @@ const model: DocumentModel = {
         {
           id: "chunk:beta",
           section_title: "Beta",
-          source_text: "Beta text",
-          highlight_bounds: [
-            { x: 0.1, y: 0.2, width: 0.2, height: 0.05 },
+          sources: [
+            {
+              page_index: 2,
+              source_text: "Beta text",
+              highlight_bounds: [
+                { x: 0.1, y: 0.2, width: 0.2, height: 0.05 },
+              ],
+            },
           ],
           title: "Beta",
           summary: "Beta summary",

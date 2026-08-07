@@ -1,11 +1,6 @@
 import { createHash } from "node:crypto";
 
-import {
-  DOCUMENT_STORAGE_SCHEMA_VERSION,
-  type DocumentBatch,
-  type DocumentMap,
-  type GeneratedDocumentBatch,
-} from "@/lib/document-batches";
+import type { GeneratedDocumentBatch } from "@/lib/document-batches";
 import { addDocumentHighlightBounds } from "@/lib/document-highlights";
 import {
   type DocumentConcept,
@@ -89,43 +84,10 @@ export async function consolidateDocumentBatches(
     concepts: [...canonicalConcepts.values()],
     connections,
   };
-  const model = validateDocumentModel(
+  return validateDocumentModel(
     await addDocumentHighlightBounds(fileData, generatedModel),
     documentId,
   );
-  const batchRanges = orderedBatches.map(
-    ({ batch_index, start_page, end_page }) => ({
-      batch_index,
-      start_page,
-      end_page,
-    }),
-  );
-  const map: DocumentMap = {
-    storage_schema_version: DOCUMENT_STORAGE_SCHEMA_VERSION,
-    schema_version: model.schema_version,
-    document_id: model.document_id,
-    title: model.title,
-    page_count: model.page_count,
-    chunk_count: model.pages.reduce(
-      (count, page) => count + page.chunks.length,
-      0,
-    ),
-    batches: batchRanges,
-    concepts: model.concepts,
-    connections: model.connections,
-  };
-  const batches: DocumentBatch[] = batchRanges.map((range) => ({
-    schema_version: DOCUMENT_STORAGE_SCHEMA_VERSION,
-    document_id: documentId,
-    ...range,
-    summary: orderedBatches[range.batch_index - 1].summary,
-    pages: model.pages.slice(range.start_page - 1, range.end_page),
-  }));
-
-  return {
-    map,
-    batches,
-  };
 }
 
 function normalizeConceptName(name: string) {

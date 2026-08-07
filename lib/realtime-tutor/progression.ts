@@ -1,4 +1,8 @@
-import type { DocumentModel } from "@/lib/document-model";
+import {
+  getDocumentChunkHighlightBounds,
+  getDocumentChunkSourceText,
+  type DocumentModel,
+} from "@/lib/document-model";
 import type {
   CheckpointSelection,
   LearningLoopState,
@@ -34,8 +38,8 @@ export function selectGuidedSegment(
     pageIndex,
     sectionTitle: segment.section_title,
     title: segment.title,
-    sourceText: segment.source_text,
-    highlightBounds: segment.highlight_bounds,
+    sourceText: getDocumentChunkSourceText(segment),
+    highlightBounds: getDocumentChunkHighlightBounds(segment, pageIndex),
     chunkId: segment.id,
     conceptName: null,
     learningPhase: null,

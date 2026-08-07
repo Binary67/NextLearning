@@ -4,7 +4,12 @@ export {
   buildTextSelectionContext,
   summarizeDocumentModel,
 } from "@/lib/document-model/selection";
-export { DOCUMENT_MODEL_SCHEMA_VERSION } from "@/lib/document-model/types";
+export {
+  DOCUMENT_MODEL_SCHEMA_VERSION,
+  getDocumentChunkHighlightBounds,
+  getDocumentChunkSourceText,
+  getDocumentChunksForSourcePage,
+} from "@/lib/document-model/types";
 export type {
   ConceptOccurrence,
   ConceptRelationship,
@@ -15,10 +20,12 @@ export type {
   DocumentMapSummary,
   DocumentModel,
   DocumentPage,
+  DocumentSource,
   Explicitness,
   GeneratedDocumentChunk,
   GeneratedDocumentModel,
   GeneratedDocumentPage,
+  GeneratedDocumentSource,
   OccurrenceRole,
   SelectionGrounding,
   SelectionRelatedPage,

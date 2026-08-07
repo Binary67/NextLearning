@@ -79,7 +79,7 @@ export function updateGuidedProgress(
   );
 
   if (chunkIndex < 0) {
-    throw new Error("The guided-reading section is unavailable.");
+    throw new Error("The guided page lesson is unavailable.");
   }
 
   if (event.type === "segment_started") {

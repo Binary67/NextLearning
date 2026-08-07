@@ -60,8 +60,8 @@ export function GuidedProgressCard({
             {review
               ? "Focused review of the saved source passage"
               : progress.segmentCount > 0
-                ? `Part ${progress.segmentNumber} of ${progress.segmentCount} on this page`
-                : "This page has no prepared teaching segments."}
+                ? `Lesson ${progress.segmentNumber} of ${progress.segmentCount} on this page`
+                : "This page has no prepared lessons."}
           </p>
         </>
       ) : (
@@ -69,8 +69,8 @@ export function GuidedProgressCard({
           {review
             ? "Start the review when you are ready to answer by voice."
             : guidedTutorMode === "reading"
-              ? "Start guided reading to hear the first section explained."
-              : "Start active learning to begin with the first teaching segment."}
+              ? "Start guided reading to hear the first page lesson."
+              : "Start active learning with the first page lesson."}
         </p>
       )}
       {review && progress?.segmentComplete ? (

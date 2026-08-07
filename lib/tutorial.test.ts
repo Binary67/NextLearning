@@ -425,12 +425,23 @@ function tutorial(id: string, updatedAt: string): StoredTutorial {
     sourcePageCount: 1,
     status: "ready",
     error: null,
+    preparation: {
+      phase: "complete",
+      batches: [
+        {
+          batch_index: 1,
+          start_page: 1,
+          end_page: 1,
+          status: "complete",
+        },
+      ],
+    },
   };
 }
 
 function model(documentId: string, title: string): DocumentModel {
   return {
-    schema_version: 4,
+    schema_version: 5,
     document_id: documentId,
     title,
     page_count: 1,
@@ -442,9 +453,14 @@ function model(documentId: string, title: string): DocumentModel {
           {
             id: "chunk:one",
             section_title: "One",
-            source_text: "Source text for the first concept.",
-            highlight_bounds: [
-              { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
+            sources: [
+              {
+                page_index: 1,
+                source_text: "Source text for the first concept.",
+                highlight_bounds: [
+                  { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
+                ],
+              },
             ],
             title: "One",
             summary: "Summary for the first concept.",

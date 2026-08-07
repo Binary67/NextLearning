@@ -9,7 +9,7 @@ import {
 import type { DocumentModel } from "@/lib/document-model";
 
 const model: DocumentModel = {
-  schema_version: 4,
+  schema_version: 5,
   document_id: "document-id",
   title: "Document",
   page_count: 1,
@@ -21,9 +21,14 @@ const model: DocumentModel = {
         {
           id: "chunk:first",
           section_title: "Section",
-          source_text: "Source text",
-          highlight_bounds: [
-            { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+          sources: [
+            {
+              page_index: 1,
+              source_text: "Source text",
+              highlight_bounds: [
+                { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+              ],
+            },
           ],
           title: "First",
           summary: "Summary",
@@ -161,6 +166,66 @@ describe("document embeddings", () => {
           embedding: [0.6, 0.8],
         },
       ],
+    });
+  });
+
+  it("matches a carried paragraph from its previous source page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            data: [{ index: 0, embedding: [1, 0] }],
+          }),
+        ),
+      ),
+    );
+    const carriedModel: DocumentModel = {
+      ...model,
+      page_count: 2,
+      pages: [
+        {
+          page_index: 1,
+          page_label: "1",
+          chunks: [],
+        },
+        {
+          page_index: 2,
+          page_label: "2",
+          chunks: [
+            {
+              ...model.pages[0].chunks[0],
+              sources: [
+                {
+                  page_index: 1,
+                  source_text: "A paragraph begins on page one",
+                  highlight_bounds: [
+                    { x: 0.1, y: 0.8, width: 0.5, height: 0.05 },
+                  ],
+                },
+                {
+                  page_index: 2,
+                  source_text: "and concludes on page two.",
+                  highlight_bounds: [
+                    { x: 0.1, y: 0.1, width: 0.4, height: 0.05 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    await expect(
+      findTextSelectionContext(
+        carriedModel,
+        documentEmbeddings,
+        1,
+        "A paragraph begins on page one",
+      ),
+    ).resolves.toMatchObject({
+      selected_chunk: { id: "chunk:first" },
     });
   });
 });

@@ -3,26 +3,18 @@ import {
   retryAzureOpenAIRateLimits,
 } from "@/lib/azure-openai-generation-retry";
 import { generateDocumentEmbeddings } from "@/lib/document-embeddings";
-import {
-  createDocumentPreparation,
-  type DocumentPreparation,
-} from "@/lib/document-batches";
+import type { DocumentPreparation } from "@/lib/document-batches";
 import { consolidateDocumentBatches } from "@/lib/document-consolidation";
 import {
   documentFilePath,
   listStoredTutorials,
   markTutorialPrepared,
-  readDocumentBatch,
   readDocumentFile,
-  readDocumentMap,
-  readDocumentPreparation,
   readGeneratedDocumentBatch,
   type StoredTutorial,
   updateStoredTutorial,
-  writeDocumentBatch,
   writeDocumentEmbeddingBatch,
-  writeDocumentMap,
-  writeDocumentPreparation,
+  writeDocumentModel,
   writeGeneratedDocumentBatch,
 } from "@/lib/document-storage";
 import { readPdfBatch } from "@/lib/pdf-document-batches";
@@ -110,21 +102,15 @@ async function readNextQueuedTutorial() {
 }
 
 async function prepareTutorial(queuedTutorial: StoredTutorial) {
-  const tutorial = await updateStoredTutorial(queuedTutorial, {
+  let tutorial = await updateStoredTutorial(queuedTutorial, {
     status: "processing",
     error: null,
   });
   let stage = "reading the source document";
 
   try {
-    let preparation =
-      (await readDocumentPreparation(tutorial.id)) ??
-      createDocumentPreparation(
-        tutorial.id,
-        tutorial.sourcePageCount,
-      );
-    preparation = resetInterruptedBatch(preparation);
-    await writeDocumentPreparation(tutorial.id, preparation);
+    const preparation = resetInterruptedBatch(tutorial.preparation);
+    tutorial = await updateStoredTutorial(tutorial, { preparation });
 
     stage = "document batch analysis";
     for (const batch of preparation.batches) {
@@ -133,7 +119,7 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
       }
 
       batch.status = "processing";
-      await writeDocumentPreparation(tutorial.id, preparation);
+      tutorial = await updateStoredTutorial(tutorial, { preparation });
       const pdfBatch = await readPdfBatch(
         documentFilePath(tutorial.id),
         batch.start_page,
@@ -155,12 +141,12 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
       );
       await writeGeneratedDocumentBatch(tutorial.id, generatedBatch);
       batch.status = "complete";
-      await writeDocumentPreparation(tutorial.id, preparation);
+      tutorial = await updateStoredTutorial(tutorial, { preparation });
     }
 
     stage = "document consolidation";
     preparation.phase = "consolidating";
-    await writeDocumentPreparation(tutorial.id, preparation);
+    tutorial = await updateStoredTutorial(tutorial, { preparation });
     const generatedBatches = await Promise.all(
       preparation.batches.map(({ batch_index }) =>
         readGeneratedDocumentBatch(tutorial.id, batch_index),
@@ -171,59 +157,38 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
       throw new Error("A generated document batch is missing.");
     }
 
-    const consolidated = await consolidateDocumentBatches(
+    const model = await consolidateDocumentBatches(
       await readDocumentFile(tutorial.id),
       tutorial.id,
       tutorial.sourcePageCount,
       generatedBatches.filter((batch) => batch !== null),
     );
-    await Promise.all([
-      writeDocumentMap(tutorial.id, consolidated.map),
-      ...consolidated.batches.map((batch) =>
-        writeDocumentBatch(tutorial.id, batch),
-      ),
-    ]);
+    await writeDocumentModel(tutorial.id, model);
 
     stage = "embedding generation";
     preparation.phase = "embedding";
-    await writeDocumentPreparation(tutorial.id, preparation);
-    const map = await readDocumentMap(tutorial.id);
+    tutorial = await updateStoredTutorial(tutorial, { preparation });
 
-    if (!map) {
-      throw new Error("The consolidated document map is missing.");
-    }
-
-    for (const batchRange of map.batches) {
-      const batch = await readDocumentBatch(
-        tutorial.id,
-        batchRange.batch_index,
-      );
-
-      if (!batch) {
-        throw new Error("A consolidated document batch is missing.");
-      }
-
+    for (const batchRange of preparation.batches) {
       const embeddings = await retryAzureOpenAIRateLimits(() =>
         generateDocumentEmbeddings({
-          schema_version: map.schema_version,
-          document_id: map.document_id,
-          title: map.title,
-          page_count: map.page_count,
-          pages: batch.pages,
-          concepts: map.concepts,
-          connections: map.connections,
+          ...model,
+          pages: model.pages.slice(
+            batchRange.start_page - 1,
+            batchRange.end_page,
+          ),
         }),
       );
       await writeDocumentEmbeddingBatch(
         tutorial.id,
-        batch.batch_index,
+        batchRange.batch_index,
         embeddings,
       );
     }
 
     preparation.phase = "complete";
-    await writeDocumentPreparation(tutorial.id, preparation);
-    await markTutorialPrepared(tutorial, map.title);
+    tutorial = await updateStoredTutorial(tutorial, { preparation });
+    await markTutorialPrepared(tutorial, model.title);
   } catch (error) {
     console.error(
       `Document ${tutorial.id} preparation failed during ${stage}:`,
@@ -236,7 +201,9 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
   }
 }
 
-function resetInterruptedBatch(preparation: DocumentPreparation) {
+function resetInterruptedBatch(
+  preparation: DocumentPreparation,
+): DocumentPreparation {
   return {
     ...preparation,
     phase: "analyzing" as const,

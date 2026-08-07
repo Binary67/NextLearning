@@ -5,9 +5,7 @@ import { Readable } from "node:stream";
 
 import type { DocumentEmbeddings } from "@/lib/document-embeddings";
 import {
-  assembleDocumentModel,
-  type DocumentBatch,
-  type DocumentMap,
+  createDocumentPreparation,
   type DocumentPreparation,
   type GeneratedDocumentBatch,
 } from "@/lib/document-batches";
@@ -30,22 +28,24 @@ export type StoredTutorial = {
   sourcePageCount: number;
   status: TutorialStatus;
   error: string | null;
+  preparation: DocumentPreparation;
+};
+
+type StoredProgress = {
+  guided: unknown | null;
+  learning: unknown | null;
 };
 
 const tutorialsDirectory = path.join(process.cwd(), "data", "tutorials");
 const tutorialMetadataFileName = "tutorial.json";
 const documentFileName = "source.pdf";
-const preparationFileName = "preparation.json";
-const documentMapFileName = "document-map.json";
-const guidedProgressFileName = "guided-progress.json";
-const batchesDirectoryName = "batches";
+const documentModelFileName = "document.json";
+const progressFileName = "progress.json";
 const generatedBatchesDirectoryName = "generated-batches";
 const embeddingsDirectoryName = "embeddings";
-const learningStateFileName = "learning-state.json";
 const tutorialIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const learningStateUpdates = new Map<string, Promise<void>>();
-const guidedProgressUpdates = new Map<string, Promise<void>>();
+const progressUpdates = new Map<string, Promise<void>>();
 
 export function isTutorialId(value: string) {
   return tutorialIdPattern.test(value);
@@ -139,36 +139,32 @@ export function streamDocumentFile(
 export async function readDocumentModel(
   tutorialId: string,
 ): Promise<DocumentModel | null> {
-  const map = await readDocumentMap(tutorialId);
-
-  if (!map) {
-    return null;
-  }
-
-  const batches = await Promise.all(
-    map.batches.map(({ batch_index }) =>
-      readDocumentBatch(tutorialId, batch_index),
-    ),
+  return readJsonFile<DocumentModel>(
+    tutorialFilePath(tutorialId, documentModelFileName),
   );
+}
 
-  if (batches.some((batch) => batch === null)) {
-    return null;
-  }
-
-  return assembleDocumentModel(map, batches as DocumentBatch[]);
+export function writeDocumentModel(
+  tutorialId: string,
+  model: DocumentModel,
+) {
+  return writeJsonFileAtomically(
+    tutorialFilePath(tutorialId, documentModelFileName),
+    model,
+  );
 }
 
 export async function readDocumentEmbeddings(
   tutorialId: string,
 ): Promise<DocumentEmbeddings | null> {
-  const map = await readDocumentMap(tutorialId);
+  const tutorial = await readStoredTutorial(tutorialId);
 
-  if (!map) {
+  if (!tutorial) {
     return null;
   }
 
   const batches = await Promise.all(
-    map.batches.map(({ batch_index }) =>
+    tutorial.preparation.batches.map(({ batch_index }) =>
       readDocumentEmbeddingBatch(tutorialId, batch_index),
     ),
   );
@@ -200,35 +196,6 @@ export async function readDocumentEmbeddings(
   };
 }
 
-export function readDocumentPreparation(tutorialId: string) {
-  return readJsonFile<DocumentPreparation>(
-    tutorialFilePath(tutorialId, preparationFileName),
-  );
-}
-
-export function writeDocumentPreparation(
-  tutorialId: string,
-  preparation: DocumentPreparation,
-) {
-  return writeJsonFileAtomically(
-    tutorialFilePath(tutorialId, preparationFileName),
-    preparation,
-  );
-}
-
-export function readDocumentMap(tutorialId: string) {
-  return readJsonFile<DocumentMap>(
-    tutorialFilePath(tutorialId, documentMapFileName),
-  );
-}
-
-export function writeDocumentMap(tutorialId: string, map: DocumentMap) {
-  return writeJsonFileAtomically(
-    tutorialFilePath(tutorialId, documentMapFileName),
-    map,
-  );
-}
-
 export function readGeneratedDocumentBatch(
   tutorialId: string,
   batchIndex: number,
@@ -245,27 +212,6 @@ export function writeGeneratedDocumentBatch(
   return writeBatchFile(
     tutorialId,
     generatedBatchesDirectoryName,
-    batch.batch_index,
-    batch,
-  );
-}
-
-export function readDocumentBatch(
-  tutorialId: string,
-  batchIndex: number,
-) {
-  return readJsonFile<DocumentBatch>(
-    batchFilePath(tutorialId, batchesDirectoryName, batchIndex),
-  );
-}
-
-export function writeDocumentBatch(
-  tutorialId: string,
-  batch: DocumentBatch,
-) {
-  return writeBatchFile(
-    tutorialId,
-    batchesDirectoryName,
     batch.batch_index,
     batch,
   );
@@ -296,97 +242,99 @@ export function writeDocumentEmbeddingBatch(
 export function readStoredLearningState(
   tutorialId: string,
 ): Promise<unknown | null> {
-  return readJsonFile<unknown>(
-    tutorialFilePath(tutorialId, learningStateFileName),
-  );
+  return readStoredProgressValue(tutorialId, "learning");
 }
 
 export function readStoredGuidedProgress(
   tutorialId: string,
 ): Promise<unknown | null> {
-  return readJsonFile<unknown>(
-    tutorialFilePath(tutorialId, guidedProgressFileName),
-  );
+  return readStoredProgressValue(tutorialId, "guided");
 }
 
 export function updateStoredGuidedProgress<T>(
   tutorialId: string,
   update: (stored: unknown | null) => T | Promise<T>,
 ): Promise<T> {
-  return updateSerializedJsonFile(
-    guidedProgressUpdates,
-    tutorialId,
-    guidedProgressFileName,
-    update,
+  return updateStoredProgress(tutorialId, "guided", update);
+}
+
+export function updateStoredLearningState<T>(
+  tutorialId: string,
+  update: (stored: unknown | null) => T | Promise<T>,
+): Promise<T> {
+  return updateStoredProgress(tutorialId, "learning", update);
+}
+
+async function updateStoredProgress<T>(
+  tutorialId: string,
+  key: keyof StoredProgress,
+  update: (stored: unknown | null) => T | Promise<T>,
+): Promise<T> {
+  const previous = progressUpdates.get(tutorialId) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const turn = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => turn);
+
+  progressUpdates.set(tutorialId, queued);
+  await previous;
+
+  try {
+    const progress =
+      (await readStoredProgress(tutorialId)) ?? emptyStoredProgress();
+    const updated = await update(progress[key]);
+    await writeJsonFileAtomically(
+      tutorialFilePath(tutorialId, progressFileName),
+      { ...progress, [key]: updated },
+    );
+    return updated;
+  } finally {
+    release();
+
+    if (progressUpdates.get(tutorialId) === queued) {
+      progressUpdates.delete(tutorialId);
+    }
+  }
+}
+
+async function readStoredProgressValue(
+  tutorialId: string,
+  key: keyof StoredProgress,
+) {
+  return (await readStoredProgress(tutorialId))?.[key] ?? null;
+}
+
+async function readStoredProgress(
+  tutorialId: string,
+): Promise<StoredProgress | null> {
+  const value = await readJsonFile<unknown>(
+    tutorialFilePath(tutorialId, progressFileName),
   );
+
+  if (value === null) {
+    return null;
+  }
+
+  if (
+    !isRecord(value) ||
+    !("guided" in value) ||
+    !("learning" in value)
+  ) {
+    throw new Error("The saved tutorial progress is invalid.");
+  }
+
+  return {
+    guided: value.guided,
+    learning: value.learning,
+  };
 }
 
-export async function updateStoredLearningState<T>(
-  tutorialId: string,
-  update: (stored: unknown | null) => T | Promise<T>,
-): Promise<T> {
-  const previous = learningStateUpdates.get(tutorialId) ?? Promise.resolve();
-  let release: () => void = () => {};
-  const turn = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const queued = previous.then(() => turn);
-
-  learningStateUpdates.set(tutorialId, queued);
-  await previous;
-
-  try {
-    const updated = await update(
-      await readStoredLearningState(tutorialId),
-    );
-    await writeJsonFileAtomically(
-      tutorialFilePath(tutorialId, learningStateFileName),
-      updated,
-    );
-    return updated;
-  } finally {
-    release();
-
-    if (learningStateUpdates.get(tutorialId) === queued) {
-      learningStateUpdates.delete(tutorialId);
-    }
-  }
-}
-
-async function updateSerializedJsonFile<T>(
-  updates: Map<string, Promise<void>>,
-  tutorialId: string,
-  fileName: string,
-  update: (stored: unknown | null) => T | Promise<T>,
-): Promise<T> {
-  const previous = updates.get(tutorialId) ?? Promise.resolve();
-  let release: () => void = () => {};
-  const turn = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const queued = previous.then(() => turn);
-
-  updates.set(tutorialId, queued);
-  await previous;
-
-  try {
-    const updated = await update(
-      await readJsonFile<unknown>(
-        tutorialFilePath(tutorialId, fileName),
-      ),
-    );
-    await writeJsonFileAtomically(
-      tutorialFilePath(tutorialId, fileName),
-      updated,
-    );
-    return updated;
-  } finally {
-    release();
-
-    if (updates.get(tutorialId) === queued) {
-      updates.delete(tutorialId);
-    }
-  }
+function emptyStoredProgress(): StoredProgress {
+  return {
+    guided: null,
+    learning: null,
+  };
 }
 
 export async function hasDocumentEmbeddings(tutorialId: string) {
@@ -435,6 +383,7 @@ export async function createQueuedTutorial(
     sourcePageCount,
     status: "queued",
     error: null,
+    preparation: createDocumentPreparation(sourcePageCount),
   };
 
   await fs.mkdir(tutorialDirectory(tutorialId), { recursive: true });
@@ -457,7 +406,10 @@ export async function createQueuedTutorial(
 export async function updateStoredTutorial(
   tutorial: StoredTutorial,
   updates: Partial<
-    Pick<StoredTutorial, "error" | "status" | "title">
+    Pick<
+      StoredTutorial,
+      "error" | "preparation" | "status" | "title"
+    >
   >,
 ) {
   const updatedTutorial: StoredTutorial = {
@@ -559,4 +511,8 @@ function isMissingFileError(error: unknown) {
     "code" in error &&
     (error as NodeJS.ErrnoException).code === "ENOENT"
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

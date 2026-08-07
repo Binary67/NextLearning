@@ -8,7 +8,7 @@ import {
 } from "@/lib/learning-checkpoints";
 
 const model: DocumentModel = {
-  schema_version: 4,
+  schema_version: 5,
   document_id: "tutorial:one",
   title: "Learning loops",
   page_count: 1,
@@ -20,9 +20,14 @@ const model: DocumentModel = {
         {
           id: "chunk:one",
           section_title: "Core ideas",
-          source_text: "A source passage.",
-          highlight_bounds: [
-            { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+          sources: [
+            {
+              page_index: 1,
+              source_text: "A source passage.",
+              highlight_bounds: [
+                { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+              ],
+            },
           ],
           title: "The active chunk",
           summary: "A summary.",

@@ -96,7 +96,7 @@ describe("guided reading progress", () => {
 });
 
 const model: DocumentModel = {
-  schema_version: 4,
+  schema_version: 5,
   document_id: tutorialId,
   title: "Document",
   page_count: 3,
@@ -125,17 +125,22 @@ function chunk(id: string) {
   return {
     id,
     section_title: "Section",
-    source_text: "Source",
+    sources: [
+      {
+        page_index: 1,
+        source_text: "Source",
+        highlight_bounds: [
+          {
+            x: 0,
+            y: 0,
+            width: 0.5,
+            height: 0.1,
+          },
+        ],
+      },
+    ],
     title: id,
     summary: "Summary",
     concept_ids: [],
-    highlight_bounds: [
-      {
-        x: 0,
-        y: 0,
-        width: 0.5,
-        height: 0.1,
-      },
-    ],
   };
 }

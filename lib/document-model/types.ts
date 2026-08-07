@@ -1,6 +1,6 @@
 import type { SelectionBounds } from "@/lib/document-selection";
 
-export const DOCUMENT_MODEL_SCHEMA_VERSION = 4;
+export const DOCUMENT_MODEL_SCHEMA_VERSION = 5;
 
 export const occurrenceRoles = [
   "introduced",
@@ -31,17 +31,26 @@ export type OccurrenceRole = (typeof occurrenceRoles)[number];
 export type Explicitness = (typeof explicitnessValues)[number];
 export type ConceptRelationship = (typeof relationshipValues)[number];
 
+export type GeneratedDocumentSource = {
+  page_index: number;
+  source_text: string;
+};
+
+export type DocumentSource = GeneratedDocumentSource & {
+  highlight_bounds: SelectionBounds[];
+};
+
 export type GeneratedDocumentChunk = {
   id: string;
   section_title: string;
-  source_text: string;
+  sources: GeneratedDocumentSource[];
   title: string;
   summary: string;
   concept_ids: string[];
 };
 
-export type DocumentChunk = GeneratedDocumentChunk & {
-  highlight_bounds: SelectionBounds[];
+export type DocumentChunk = Omit<GeneratedDocumentChunk, "sources"> & {
+  sources: DocumentSource[];
 };
 
 export type GeneratedDocumentPage = {
@@ -94,10 +103,7 @@ export type GeneratedDocumentModel = Omit<DocumentModel, "pages"> & {
   pages: GeneratedDocumentPage[];
 };
 
-export type DocumentChunkSummary = Omit<
-  DocumentChunk,
-  "source_text" | "highlight_bounds"
->;
+export type DocumentChunkSummary = Omit<DocumentChunk, "sources">;
 
 export type DocumentMapSummary = {
   page_count: number;
@@ -137,3 +143,29 @@ export type SelectionGrounding = {
   related_chunks: SelectionRelatedPage[];
   text_selection: TextSelectionContext | null;
 };
+
+export function getDocumentChunkSourceText(
+  chunk: GeneratedDocumentChunk,
+) {
+  return chunk.sources.map((source) => source.source_text).join("\n\n");
+}
+
+export function getDocumentChunkHighlightBounds(
+  chunk: DocumentChunk,
+  pageIndex: number,
+) {
+  return chunk.sources
+    .filter((source) => source.page_index === pageIndex)
+    .flatMap((source) => source.highlight_bounds);
+}
+
+export function getDocumentChunksForSourcePage(
+  model: DocumentModel,
+  pageIndex: number,
+) {
+  return model.pages.flatMap((page) =>
+    page.chunks.filter((chunk) =>
+      chunk.sources.some((source) => source.page_index === pageIndex),
+    ),
+  );
+}

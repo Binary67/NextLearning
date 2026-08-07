@@ -217,8 +217,8 @@ export function TutorSidebar({
             </div>
             <p className="guided-tutor-mode-description">
               {guidedTutorMode === "reading"
-                ? "Explain each section without testing me."
-                : "Explain each section and check my understanding."}
+                ? "Teach the document page by page without testing me."
+                : "Teach the document page by page and check my understanding."}
             </p>
           </>
         ) : null}
@@ -385,8 +385,8 @@ function renderTutorStatus({
       {reviewMode
         ? pdfInstruction
         : guidedTutorMode === "reading"
-          ? "Read this paper with section-by-section explanations"
-          : "Learn this paper step by step"}
+          ? "Read this document with page-by-page explanations"
+          : "Learn this document page by page"}
     </TurnState>
   );
 }

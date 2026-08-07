@@ -387,8 +387,8 @@ async function explainGuidedSegment(
                 {
                   type: "input_text",
                   text: checkpoint
-                    ? "Begin the application-requested diagnostic for the active guided segment. This is not a learner question."
-                    : "Explain the active guided segment identified in the response instructions. This is an application-generated lesson step, not a learner question.",
+                    ? "Begin the application-requested diagnostic for the active page lesson. This is not a learner question."
+                    : "Explain the active page lesson identified in the response instructions. This is an application-generated lesson step, not a learner question.",
                 },
               ],
             },
