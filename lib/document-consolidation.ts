@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import {
-  buildDocumentTopicIndex,
   DOCUMENT_STORAGE_SCHEMA_VERSION,
   type DocumentBatch,
   type DocumentMap,
@@ -126,7 +125,6 @@ export async function consolidateDocumentBatches(
   return {
     map,
     batches,
-    topicIndex: buildDocumentTopicIndex(map, batches),
   };
 }
 

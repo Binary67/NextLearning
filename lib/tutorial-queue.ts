@@ -23,7 +23,6 @@ import {
   writeDocumentEmbeddingBatch,
   writeDocumentMap,
   writeDocumentPreparation,
-  writeDocumentTopicIndex,
   writeGeneratedDocumentBatch,
 } from "@/lib/document-storage";
 import { readPdfBatch } from "@/lib/pdf-document-batches";
@@ -180,7 +179,6 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
     );
     await Promise.all([
       writeDocumentMap(tutorial.id, consolidated.map),
-      writeDocumentTopicIndex(tutorial.id, consolidated.topicIndex),
       ...consolidated.batches.map((batch) =>
         writeDocumentBatch(tutorial.id, batch),
       ),

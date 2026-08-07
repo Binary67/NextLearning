@@ -9,7 +9,6 @@ import {
   type DocumentBatch,
   type DocumentMap,
   type DocumentPreparation,
-  type DocumentTopicIndex,
   type GeneratedDocumentBatch,
 } from "@/lib/document-batches";
 import type { DocumentModel } from "@/lib/document-model";
@@ -38,7 +37,6 @@ const tutorialMetadataFileName = "tutorial.json";
 const documentFileName = "source.pdf";
 const preparationFileName = "preparation.json";
 const documentMapFileName = "document-map.json";
-const topicIndexFileName = "topic-index.json";
 const guidedProgressFileName = "guided-progress.json";
 const batchesDirectoryName = "batches";
 const generatedBatchesDirectoryName = "generated-batches";
@@ -228,22 +226,6 @@ export function writeDocumentMap(tutorialId: string, map: DocumentMap) {
   return writeJsonFileAtomically(
     tutorialFilePath(tutorialId, documentMapFileName),
     map,
-  );
-}
-
-export function readDocumentTopicIndex(tutorialId: string) {
-  return readJsonFile<DocumentTopicIndex>(
-    tutorialFilePath(tutorialId, topicIndexFileName),
-  );
-}
-
-export function writeDocumentTopicIndex(
-  tutorialId: string,
-  index: DocumentTopicIndex,
-) {
-  return writeJsonFileAtomically(
-    tutorialFilePath(tutorialId, topicIndexFileName),
-    index,
   );
 }
 

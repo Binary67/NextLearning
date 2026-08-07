@@ -51,21 +51,6 @@ export type DocumentMap = Omit<DocumentModel, "pages"> & {
   batches: DocumentBatchRange[];
 };
 
-export type DocumentTopicIndex = {
-  schema_version: number;
-  document_id: string;
-  topics: Array<{
-    chunk_id: string;
-    batch_index: number;
-    page_index: number;
-    page_label: string;
-    section_title: string;
-    title: string;
-    summary: string;
-    concept_ids: string[];
-  }>;
-};
-
 export function createDocumentPreparation(
   documentId: string,
   pageCount: number,
@@ -92,30 +77,6 @@ export function createDocumentPreparation(
     page_count: pageCount,
     batch_size: DOCUMENT_BATCH_SIZE,
     batches,
-  };
-}
-
-export function buildDocumentTopicIndex(
-  map: DocumentMap,
-  batches: DocumentBatch[],
-): DocumentTopicIndex {
-  return {
-    schema_version: DOCUMENT_STORAGE_SCHEMA_VERSION,
-    document_id: map.document_id,
-    topics: batches.flatMap((batch) =>
-      batch.pages.flatMap((page) =>
-        page.chunks.map((chunk) => ({
-          chunk_id: chunk.id,
-          batch_index: batch.batch_index,
-          page_index: page.page_index,
-          page_label: page.page_label,
-          section_title: chunk.section_title,
-          title: chunk.title,
-          summary: chunk.summary,
-          concept_ids: chunk.concept_ids,
-        })),
-      ),
-    ),
   };
 }
 
