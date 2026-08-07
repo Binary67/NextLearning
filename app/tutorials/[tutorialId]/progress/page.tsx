@@ -71,6 +71,7 @@ export default async function TutorialProgressPage({
   const sessions = learningState.sessions;
   const resume = learningState.resume;
   const summary = summarizeLearningProgress(model, learningState, now);
+  const hasConceptPractice = summary.practiced > 0;
   const guidedProgress = await readGuidedProgress(tutorialId, model);
   const guidedSummary = summarizeGuidedProgress(
     model,
@@ -117,21 +118,26 @@ export default async function TutorialProgressPage({
           </p>
           <h1 id="progress-title">Progress</h1>
           <p>
-            See what you have practiced, what needs attention, and
-            what is due for review.
+            Track completed page lessons separately from concepts
+            practiced through questions.
           </p>
         </header>
 
         <section
-          className={styles.section}
+          className={`${styles.section} ${styles.trackCard}`}
           aria-labelledby="guided-progress-title"
         >
           <div className={styles.guidedHeading}>
             <div>
               <h2 id="guided-progress-title">Guided reading</h2>
+              <p className={styles.trackDescription}>
+                Tracks page lessons completed in Guided Reading or
+                Active Learning. Completing a lesson does not mark its
+                concepts as practiced.
+              </p>
               <p>
                 {guidedSummary.completedChunks} of{" "}
-                {guidedSummary.totalChunks} page lessons explained
+                {guidedSummary.totalChunks} page lessons completed
               </p>
             </div>
             <strong>{guidedSummary.percentage}%</strong>
@@ -139,7 +145,7 @@ export default async function TutorialProgressPage({
           <div
             className={styles.guidedTrack}
             role="progressbar"
-            aria-label="Guided reading completion"
+            aria-label="Page lesson completion"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={guidedSummary.percentage}
@@ -172,68 +178,115 @@ export default async function TutorialProgressPage({
           </div>
         </section>
 
-        <section className={styles.section} aria-label="Mastery breakdown">
-          <dl className={styles.summaryGrid}>
+        <section
+          className={`${styles.section} ${styles.trackCard}`}
+          aria-labelledby="active-learning-title"
+        >
+          <div className={styles.activeHeading}>
             <div>
-              <dt>Mastered</dt>
-              <dd>{summary.mastered}</dd>
+              <h2 id="active-learning-title">Active learning</h2>
+              <p className={styles.trackDescription}>
+                Tracks concepts you practice by answering questions in
+                Active Learning or Review.
+              </p>
+              <p className={styles.activeCount}>
+                {summary.practiced} of {summary.total} concepts practiced
+              </p>
             </div>
-            <div>
-              <dt>Reviewing</dt>
-              <dd>{summary.reviewing}</dd>
-            </div>
-            <div>
-              <dt>Learning</dt>
-              <dd>{summary.learning}</dd>
-            </div>
-            <div>
-              <dt>Not practiced</dt>
-              <dd>{summary.notPracticed}</dd>
-            </div>
-          </dl>
-        </section>
+            <Link
+              className={styles.continueLink}
+              href={`/tutorials/${encodeURIComponent(tutorialId)}`}
+            >
+              {hasConceptPractice
+                ? "Continue active learning"
+                : "Start active learning"}
+            </Link>
+          </div>
 
-        <section className={styles.section}>
-          <h2>Needs attention</h2>
-          {weakRows.length === 0 ? (
-            <p className={styles.emptyState}>
-              No weak points identified.
-            </p>
-          ) : (
-            <ul className={styles.weakList}>
-              {weakRows.map((row) => (
-                <li key={row.concept.id} className={styles.weakItem}>
-                  <h3>{row.concept.name}</h3>
-                  <p className={styles.weakMeta}>
-                    Last result: {getResultLabel(row.state.lastResult)}
+          {hasConceptPractice ? (
+            <>
+              <dl
+                className={styles.summaryGrid}
+                aria-label="Active learning mastery breakdown"
+              >
+                <div>
+                  <dt>Mastered</dt>
+                  <dd>{summary.mastered}</dd>
+                </div>
+                <div>
+                  <dt>Reviewing</dt>
+                  <dd>{summary.reviewing}</dd>
+                </div>
+                <div>
+                  <dt>Learning</dt>
+                  <dd>{summary.learning}</dd>
+                </div>
+                <div>
+                  <dt>Not practiced</dt>
+                  <dd>{summary.notPracticed}</dd>
+                </div>
+              </dl>
+
+              <section
+                className={styles.activeSubsection}
+                aria-labelledby="needs-attention-title"
+              >
+                <h3 id="needs-attention-title">Needs attention</h3>
+                {weakRows.length === 0 ? (
+                  <p className={styles.emptyState}>
+                    No practiced concepts currently need attention.
                   </p>
-                  {row.state.misconception && (
-                    <p className={styles.misconceptionText}>
-                      {row.state.misconception}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+                ) : (
+                  <ul className={styles.weakList}>
+                    {weakRows.map((row) => (
+                      <li
+                        key={row.concept.id}
+                        className={styles.weakItem}
+                      >
+                        <h4>{row.concept.name}</h4>
+                        <p className={styles.weakMeta}>
+                          Last result:{" "}
+                          {getResultLabel(row.state.lastResult)}
+                        </p>
+                        {row.state.misconception && (
+                          <p className={styles.misconceptionText}>
+                            {row.state.misconception}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          ) : (
+            <div className={styles.learningEmptyState}>
+              <strong>No concepts practiced yet</strong>
+              <p>
+                {summary.total} concepts are available to practice.
+                Answer questions in Active Learning to begin measuring
+                your understanding.
+              </p>
+            </div>
           )}
-        </section>
 
-        <ProgressDetails
-          tutorialId={tutorialId}
-          rows={rows}
-          resumePosition={
-            guidedCursor
-              ? `Page ${
-                  guidedCursorPage?.page_label ??
-                  guidedCursor.pageIndex
-                }`
-              : resume
-                ? `Page ${resumePage?.page_label ?? resume.pageIndex}`
-              : "None"
-          }
-          lastStudiedAt={lastSession?.endedAt ?? null}
-          sessionCount={sessions.length}
-        />
+          <ProgressDetails
+            tutorialId={tutorialId}
+            rows={rows}
+            resumePosition={
+              guidedCursor
+                ? `Page ${
+                    guidedCursorPage?.page_label ??
+                    guidedCursor.pageIndex
+                  }`
+                : resume
+                  ? `Page ${resumePage?.page_label ?? resume.pageIndex}`
+                : "None"
+            }
+            lastStudiedAt={lastSession?.endedAt ?? null}
+            sessionCount={sessions.length}
+          />
+        </section>
       </section>
     </main>
   );

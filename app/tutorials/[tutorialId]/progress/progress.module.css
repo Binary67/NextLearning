@@ -51,7 +51,9 @@
   margin-top: 40px;
 }
 
-.section h2 {
+.section h2,
+.conceptSection h3,
+.activeSubsection h3 {
   margin: 0;
   color: var(--ink);
   font-size: 1.15rem;
@@ -59,8 +61,16 @@
   letter-spacing: -0.025em;
 }
 
+.trackCard {
+  padding: 26px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
 .guidedHeading,
-.guidedFooter {
+.guidedFooter,
+.activeHeading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -68,15 +78,28 @@
 }
 
 .guidedHeading p,
-.guidedFooter p {
+.guidedFooter p,
+.activeCount {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 0.82rem;
 }
 
+.trackDescription {
+  max-width: 610px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
 .guidedHeading strong {
   color: var(--blue-deep);
   font-size: 1.4rem;
+}
+
+.guidedHeading {
+  align-items: flex-start;
 }
 
 .guidedTrack {
@@ -100,6 +123,7 @@
 
 .continueLink {
   display: inline-flex;
+  flex: 0 0 auto;
   min-height: 34px;
   align-items: center;
   justify-content: center;
@@ -112,15 +136,40 @@
   text-decoration: none;
 }
 
+.activeHeading {
+  align-items: flex-start;
+}
+
+.learningEmptyState {
+  padding: 20px 22px;
+  margin-top: 24px;
+  border: 1px solid rgba(0, 122, 255, 0.16);
+  border-radius: 14px;
+  background: var(--soft-blue);
+}
+
+.learningEmptyState strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.learningEmptyState p {
+  max-width: 620px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   padding: 22px 26px;
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 17px;
-  background: var(--surface);
+  margin: 24px 0 0;
+  border-radius: 14px;
+  background: var(--background);
 }
 
 .summaryGrid div {
@@ -157,7 +206,7 @@
   background: var(--surface);
 }
 
-.weakItem h3 {
+.weakItem h4 {
   margin: 0;
   color: var(--ink);
   font-size: 0.95rem;
@@ -181,8 +230,66 @@
   line-height: 1.5;
 }
 
+.activeSubsection,
+.conceptSection {
+  padding-top: 28px;
+  margin-top: 28px;
+  border-top: 1px solid var(--hairline);
+}
+
+.conceptHeading {
+  display: grid;
+  gap: 18px;
+}
+
+.conceptHeading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.conceptFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conceptFilters button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.conceptFilters button:hover {
+  border-color: rgba(0, 122, 255, 0.35);
+  color: var(--blue-deep);
+}
+
+.conceptFilters button[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+}
+
+.filterEmptyState {
+  padding: 20px;
+  margin: 16px 0 0;
+  border-radius: 12px;
+  background: var(--background);
+  color: var(--muted);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
 .tableScroll {
-  margin-top: 16px;
+  margin-top: 18px;
   overflow-x: auto;
 }
 
@@ -233,7 +340,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   padding-top: 28px;
-  margin: 44px 0 0;
+  margin: 32px 0 0;
   border-top: 1px solid var(--hairline);
 }
 
@@ -320,6 +427,14 @@
   .guidedFooter {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .activeHeading {
+    flex-direction: column;
+  }
+
+  .trackCard {
+    padding: 22px 20px;
   }
 
   .footerStats {
