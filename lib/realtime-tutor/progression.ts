@@ -1,5 +1,4 @@
 import {
-  getDocumentChunkHighlightBounds,
   getDocumentChunkSourceText,
   type DocumentModel,
 } from "@/lib/document-model";
@@ -39,7 +38,6 @@ export function selectGuidedSegment(
     sectionTitle: segment.section_title,
     title: segment.title,
     sourceText: getDocumentChunkSourceText(segment),
-    highlightBounds: getDocumentChunkHighlightBounds(segment, pageIndex),
     chunkId: segment.id,
     conceptName: null,
     learningPhase: null,
@@ -70,7 +68,6 @@ export function setEmptyGuidedPage(
     sectionTitle: "",
     title: "No instructional content on this page",
     sourceText: "",
-    highlightBounds: [],
     chunkId: null,
     conceptName: null,
     learningPhase: null,

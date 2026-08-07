@@ -34,7 +34,9 @@ export function DocumentPanel({
   reviewMode,
   guidedSessionActive,
   pageNavigationDisabled,
+  tutorPageIndex,
   onChangePage,
+  onReturnToTutor,
   onSelectionChange,
   onDownload,
   onTutorialQueued,
@@ -53,7 +55,9 @@ export function DocumentPanel({
   reviewMode: boolean;
   guidedSessionActive: boolean;
   pageNavigationDisabled: boolean;
+  tutorPageIndex: number | null;
   onChangePage: (pageIndex: number) => void;
+  onReturnToTutor: () => void;
   onSelectionChange: (selection: DocumentSelection | null) => void;
   onDownload: () => void;
   onTutorialQueued: (tutorial: TutorialResponse) => void;
@@ -193,6 +197,16 @@ export function DocumentPanel({
               <div className="pdf-selection-context">
                 <ScanText size={15} aria-hidden="true" />
                 <strong>{pdfInstruction}</strong>
+                {tutorPageIndex !== null &&
+                  currentPage !== tutorPageIndex && (
+                    <button
+                      className="pdf-return-to-tutor-button"
+                      type="button"
+                      onClick={onReturnToTutor}
+                    >
+                      Return to tutor · page {tutorPageIndex}
+                    </button>
+                  )}
                 {selection && (
                   <button
                     className="icon-button pdf-clear-selection-button"

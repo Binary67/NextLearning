@@ -11,6 +11,10 @@ import {
 } from "@/app/learning-settings";
 import type { DocumentSelection } from "@/lib/document-selection";
 import {
+  getDocumentChunkHighlightBounds,
+  type DocumentChunk,
+} from "@/lib/document-model";
+import {
   type GuidedTutorMode,
   useRealtimeTutor,
 } from "@/lib/use-realtime-tutor";
@@ -51,12 +55,10 @@ export function TutorialWorkspace({
     registerSettings,
     showToast,
   } = useApplicationShell();
-  const initialResume = initialModel
+  const initialGuidedResume = initialModel
     ? getValidResume(
         initialModel,
-        initialGuidedProgress
-          ? initialGuidedProgress.cursor
-          : (initialLearningState?.resume ?? null),
+        initialGuidedProgress?.cursor ?? null,
       )
     : null;
   const initialReviewTarget =
@@ -73,10 +75,15 @@ export function TutorialWorkspace({
   const [guidedTutorMode, setGuidedTutorMode] =
     useState<GuidedTutorMode>("learning");
   const [currentPage, setCurrentPage] = useState(
-    initialReviewTarget?.pageIndex ?? initialResume?.pageIndex ?? 1,
+    initialReviewTarget?.pageIndex ??
+      initialGuidedResume?.pageIndex ??
+      1,
+  );
+  const [resumePageIndex, setResumePageIndex] = useState(
+    initialGuidedResume?.pageIndex ?? 1,
   );
   const [resumeChunkId, setResumeChunkId] = useState<string | null>(
-    initialResume?.chunkId ?? null,
+    initialGuidedResume?.chunkId ?? null,
   );
   const [learningStateError, setLearningStateError] = useState(
     initialLearningStateError,
@@ -133,10 +140,21 @@ export function TutorialWorkspace({
     realtimeTutor.isSubmittingUserTurn ||
     realtimeTutor.isReplayingTutorAudio;
   const pageCount = initialModel?.page_count ?? 0;
-  const guidedProgress =
-    realtimeTutor.guidedSegmentProgress?.pageIndex === currentPage
-      ? realtimeTutor.guidedSegmentProgress
+  const guidedProgress = realtimeTutor.guidedSegmentProgress;
+  const tutorPageIndex =
+    guidedMode && guidedProgress ? guidedProgress.pageIndex : null;
+  const activeGuidedChunk: DocumentChunk | null =
+    guidedProgress?.chunkId && initialModel
+      ? (initialModel.pages[
+          guidedProgress.pageIndex - 1
+        ].chunks.find(
+          (chunk) => chunk.id === guidedProgress.chunkId,
+        ) ?? null)
       : null;
+  const currentResumePageIndex =
+    guidedMode && guidedProgress
+      ? guidedProgress.pageIndex
+      : resumePageIndex;
   const currentResumeChunkId =
     guidedMode && guidedProgress?.chunkId
       ? guidedProgress.chunkId
@@ -154,8 +172,11 @@ export function TutorialWorkspace({
     learnerTurnPrompt = `Press ${raiseHandShortcutLabel} to ask about the selection`;
   }
   const tutorHighlightBounds =
-    realtimeTutor.status === "connected"
-      ? guidedProgress?.highlightBounds ?? []
+    realtimeTutor.status === "connected" && activeGuidedChunk
+      ? getDocumentChunkHighlightBounds(
+          activeGuidedChunk,
+          currentPage,
+        )
       : [];
   const guidedTurnBusy =
     realtimeTutor.isTutorResponding ||
@@ -188,7 +209,7 @@ export function TutorialWorkspace({
   useLearningResumePersistence({
     tutorialId,
     documentModel: initialModel,
-    currentPage,
+    currentPage: currentResumePageIndex,
     chunkId: currentResumeChunkId,
     reviewMode,
     initialResume: initialLearningState?.resume ?? null,
@@ -270,19 +291,22 @@ export function TutorialWorkspace({
       pageIndex < 1 ||
       pageIndex > pageCount ||
       reviewMode ||
-      realtimeTutor.status === "connecting" ||
-      Boolean(guidedProgress?.learningPhase)
+      realtimeTutor.status === "connecting"
     ) {
       return;
     }
 
     setCurrentPage(pageIndex);
-    setResumeChunkId(null);
     setSelection(null);
+  }
 
-    if (realtimeTutor.status === "connected") {
-      void realtimeTutor.explainPage(pageIndex);
+  function returnToTutor() {
+    if (!tutorPageIndex) {
+      return;
     }
+
+    setCurrentPage(tutorPageIndex);
+    setSelection(null);
   }
 
   function downloadDocument() {
@@ -330,8 +354,10 @@ export function TutorialWorkspace({
       return;
     }
 
+    setCurrentPage(resumePageIndex);
+    setSelection(null);
     void realtimeTutor.startGuided(
-      currentPage,
+      resumePageIndex,
       resumeChunkId,
       guidedTutorMode,
     );
@@ -342,18 +368,25 @@ export function TutorialWorkspace({
       return;
     }
 
+    setSelection(null);
+
     if (guidedProgress.pageComplete) {
-      if (currentPage < pageCount) {
-        changePage(currentPage + 1);
+      if (guidedProgress.pageIndex < pageCount) {
+        setCurrentPage(guidedProgress.pageIndex + 1);
+        void realtimeTutor.explainPage(
+          guidedProgress.pageIndex + 1,
+        );
       }
       return;
     }
 
+    setCurrentPage(guidedProgress.pageIndex);
     void realtimeTutor.continueGuided();
   }
 
   function endSession() {
     if (guidedMode && guidedProgress?.chunkId) {
+      setResumePageIndex(guidedProgress.pageIndex);
       setResumeChunkId(guidedProgress.chunkId);
     }
 
@@ -378,10 +411,11 @@ export function TutorialWorkspace({
           reviewMode={reviewMode}
           guidedSessionActive={guidedSessionActive}
           pageNavigationDisabled={
-            realtimeTutor.status === "connecting" ||
-            Boolean(guidedProgress?.learningPhase)
+            realtimeTutor.status === "connecting"
           }
+          tutorPageIndex={tutorPageIndex}
           onChangePage={changePage}
+          onReturnToTutor={returnToTutor}
           onSelectionChange={setSelection}
           onDownload={downloadDocument}
           onTutorialQueued={(tutorial) => {
@@ -409,7 +443,10 @@ export function TutorialWorkspace({
           relatedPagesStatus={relatedPagesStatus}
           documentModel={initialModel}
           guidedProgress={guidedProgress}
-          hasNextPage={currentPage < pageCount}
+          hasNextPage={
+            (guidedProgress?.pageIndex ?? resumePageIndex) <
+            pageCount
+          }
           learnerCanAsk={learnerCanAsk}
           learnerTurnPrompt={learnerTurnPrompt}
           pdfInstruction={pdfInstruction}

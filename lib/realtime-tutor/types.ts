@@ -4,10 +4,7 @@ import type {
   DocumentModel,
   TextSelectionContext,
 } from "@/lib/document-model";
-import type {
-  DocumentSelection,
-  SelectionBounds,
-} from "@/lib/document-selection";
+import type { DocumentSelection } from "@/lib/document-selection";
 import type {
   CheckpointSelection,
   LearningLoopState,
@@ -31,7 +28,6 @@ export type GuidedSegmentProgress = {
   sectionTitle: string;
   title: string;
   sourceText: string;
-  highlightBounds: SelectionBounds[];
   conceptName: string | null;
   learningPhase: LearningLoopState["phase"] | null;
   attemptNumber: LearningLoopState["attemptNumber"] | null;

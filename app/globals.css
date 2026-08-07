@@ -632,6 +632,24 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
+.pdf-return-to-tutor-button {
+  min-height: 26px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+  border: 1px solid rgba(0, 102, 214, 0.2);
+  border-radius: 8px;
+  background: var(--soft-blue);
+  color: var(--blue-deep);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pdf-return-to-tutor-button:hover {
+  border-color: rgba(0, 102, 214, 0.35);
+}
+
 .pdf-clear-selection-button {
   width: 26px;
   height: 26px;
