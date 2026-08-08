@@ -10,9 +10,15 @@ import {
   mutateLearningState,
   readLearningState,
 } from "@/lib/learning-state-store";
+import {
+  readRequestTextWithLimit,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body-size";
 import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
+
+const MAX_RESUME_UPDATE_BYTES = 100 * 1024;
 
 type LearningStateRouteContext = {
   params: Promise<{ tutorialId: string }>;
@@ -79,8 +85,16 @@ export async function PATCH(
 
 async function readJson(request: Request) {
   try {
-    return (await request.json()) as unknown;
-  } catch {
+    const requestText = await readRequestTextWithLimit(
+      request,
+      MAX_RESUME_UPDATE_BYTES,
+    );
+    return JSON.parse(requestText) as unknown;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      throw error;
+    }
+
     throw new LearningStateInputError("A JSON body is required.");
   }
 }
@@ -93,6 +107,13 @@ function tutorialNotFoundResponse() {
 }
 
 function learningStateErrorResponse(error: unknown) {
+  if (error instanceof RequestBodyTooLargeError) {
+    return Response.json(
+      { message: "The learning-state resume update is too large." },
+      { status: 413 },
+    );
+  }
+
   if (error instanceof LearningStateInputError) {
     return Response.json({ message: error.message }, { status: 400 });
   }
