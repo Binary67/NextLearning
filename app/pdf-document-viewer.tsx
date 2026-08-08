@@ -12,6 +12,15 @@ import type {
   SelectionBounds,
 } from "@/lib/document-selection";
 import { loadPdfDocument } from "@/lib/pdf-page-renderer";
+import {
+  createPdfTextRegion,
+  type PdfTextRegion,
+} from "@/lib/pdf-text-regions";
+
+import {
+  createHighlightBoundsSignature,
+  findFirstVisualHighlight,
+} from "./pdf-document-viewer-helpers";
 
 type PdfDocumentViewerProps = {
   documentId: string;
@@ -31,10 +40,6 @@ type PageSize = {
 type PagePoint = {
   x: number;
   y: number;
-};
-
-type TextRegion = SelectionBounds & {
-  text: string;
 };
 
 type PdfRenderTask = {
@@ -58,14 +63,27 @@ export function PdfDocumentViewer({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<PdfRenderTask | null>(null);
+  const renderedPageKeyRef = useRef<string | null>(null);
+  const handledHighlightSignatureRef = useRef<string | null>(null);
   const dragStartRef = useRef<PagePoint | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
-  const [textRegions, setTextRegions] = useState<TextRegion[]>([]);
+  const [renderedPageKey, setRenderedPageKey] = useState<string | null>(null);
+  const [textRegions, setTextRegions] = useState<PdfTextRegion[]>([]);
   const [draftBounds, setDraftBounds] = useState<SelectionBounds | null>(
     null,
   );
   const [error, setError] = useState("");
+  const pageKey = JSON.stringify([documentId, documentUrl, pageIndex]);
+  const highlightSignature = createHighlightBoundsSignature(
+    pageIndex,
+    tutorHighlightBounds,
+  );
+  const firstHighlight = findFirstVisualHighlight(tutorHighlightBounds);
+  const firstHighlightTop = firstHighlight?.y;
+  const firstHighlightHeight = firstHighlight?.height;
+  const isCurrentPageRendered = renderedPageKey === pageKey;
+  const visiblePageSize = isCurrentPageRendered ? pageSize : null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -97,9 +115,18 @@ export function PdfDocumentViewer({
 
     async function renderPage() {
       setError("");
-      setPageSize(null);
-      setTextRegions([]);
-      setDraftBounds(null);
+
+      if (renderedPageKeyRef.current !== pageKey) {
+        renderedPageKeyRef.current = null;
+        canvasElement.width = 0;
+        canvasElement.height = 0;
+        canvasElement.style.width = "";
+        canvasElement.style.height = "";
+        setRenderedPageKey(null);
+        setPageSize(null);
+        setTextRegions([]);
+        setDraftBounds(null);
+      }
 
       try {
         const pendingRenderTask = renderTaskRef.current;
@@ -129,14 +156,13 @@ export function PdfDocumentViewer({
         const scale = availableWidth / initialViewport.width;
         const viewport = page.getViewport({ scale });
         const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const stagingCanvas = document.createElement("canvas");
 
-        canvasElement.width = Math.floor(viewport.width * outputScale);
-        canvasElement.height = Math.floor(viewport.height * outputScale);
-        canvasElement.style.width = `${Math.floor(viewport.width)}px`;
-        canvasElement.style.height = `${Math.floor(viewport.height)}px`;
+        stagingCanvas.width = Math.floor(viewport.width * outputScale);
+        stagingCanvas.height = Math.floor(viewport.height * outputScale);
 
         const pageRenderTask = page.render({
-          canvas: canvasElement,
+          canvas: stagingCanvas,
           viewport,
           transform:
             outputScale === 1
@@ -147,7 +173,7 @@ export function PdfDocumentViewer({
         renderTask = pageRenderTask;
         renderTaskRef.current = pageRenderTask;
 
-        const [textItems, pdfModule] = await Promise.all([
+        const [textItems] = await Promise.all([
           (async () => {
             const reader = page.streamTextContent().getReader();
             const items: Awaited<
@@ -168,7 +194,6 @@ export function PdfDocumentViewer({
               reader.releaseLock();
             }
           })(),
-          import("pdfjs-dist/webpack.mjs"),
           pageRenderTask.promise,
         ]);
 
@@ -181,31 +206,40 @@ export function PdfDocumentViewer({
         }
 
         const pageTextRegions = textItems.flatMap((item) => {
-          if (!("str" in item) || !item.str.trim()) {
+          if (!("str" in item)) {
             return [];
           }
 
-          const transform = pdfModule.Util.transform(
-            viewport.transform,
-            item.transform,
-          );
-          const height = Math.hypot(transform[2], transform[3]);
+          const region = createPdfTextRegion({
+            text: item.str,
+            itemTransform: item.transform,
+            itemWidth: item.width,
+            viewportTransform: viewport.transform,
+            viewportWidth: viewport.width,
+            viewportHeight: viewport.height,
+            viewportScale: viewport.scale,
+          });
 
-          return [
-            {
-              x: transform[4] / viewport.width,
-              y: (transform[5] - height) / viewport.height,
-              width: (item.width * viewport.scale) / viewport.width,
-              height: height / viewport.height,
-              text: item.str,
-            },
-          ];
+          return region ? [region] : [];
         });
+        const context = canvasElement.getContext("2d");
+
+        if (!context) {
+          throw new Error("The PDF page could not be rendered.");
+        }
+
+        canvasElement.width = stagingCanvas.width;
+        canvasElement.height = stagingCanvas.height;
+        canvasElement.style.width = `${Math.floor(viewport.width)}px`;
+        canvasElement.style.height = `${Math.floor(viewport.height)}px`;
+        context.drawImage(stagingCanvas, 0, 0);
+        renderedPageKeyRef.current = pageKey;
         setTextRegions(pageTextRegions);
         setPageSize({
           width: viewport.width,
           height: viewport.height,
         });
+        setRenderedPageKey(pageKey);
       } catch (reason) {
         if (active) {
           setError(
@@ -223,14 +257,25 @@ export function PdfDocumentViewer({
       active = false;
       renderTask?.cancel();
     };
-  }, [containerWidth, documentId, documentUrl, pageIndex]);
+  }, [containerWidth, documentId, documentUrl, pageIndex, pageKey]);
 
   useEffect(() => {
-    const firstHighlight = tutorHighlightBounds[0];
     const container = containerRef.current;
     const surface = surfaceRef.current;
 
-    if (!firstHighlight || !container || !surface) {
+    if (handledHighlightSignatureRef.current === highlightSignature) {
+      return;
+    }
+
+    if (
+      firstHighlightTop === undefined ||
+      firstHighlightHeight === undefined
+    ) {
+      handledHighlightSignatureRef.current = highlightSignature;
+      return;
+    }
+
+    if (!isCurrentPageRendered || !container || !surface) {
       return;
     }
 
@@ -240,16 +285,22 @@ export function PdfDocumentViewer({
       surfaceRect.top -
       containerRect.top +
       container.scrollTop +
-      (firstHighlight.y + firstHighlight.height / 2) * surfaceRect.height;
+      (firstHighlightTop + firstHighlightHeight / 2) * surfaceRect.height;
 
     container.scrollTop = Math.max(
       0,
       highlightCenter - container.clientHeight / 2,
     );
-  }, [tutorHighlightBounds]);
+    handledHighlightSignatureRef.current = highlightSignature;
+  }, [
+    firstHighlightHeight,
+    firstHighlightTop,
+    highlightSignature,
+    isCurrentPageRendered,
+  ]);
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || !pageSize) {
+    if (event.button !== 0 || !visiblePageSize) {
       return;
     }
 
@@ -350,10 +401,10 @@ export function PdfDocumentViewer({
           ref={surfaceRef}
           className="pdf-page-surface selectable"
           style={
-            pageSize
+            visiblePageSize
               ? {
-                  width: pageSize.width,
-                  height: pageSize.height,
+                  width: visiblePageSize.width,
+                  height: visiblePageSize.height,
                 }
               : undefined
           }
@@ -365,8 +416,8 @@ export function PdfDocumentViewer({
             setDraftBounds(null);
           }}
         >
-          <canvas ref={canvasRef} />
-          {pageSize &&
+          <canvas ref={canvasRef} hidden={!isCurrentPageRendered} />
+          {visiblePageSize &&
             tutorHighlightBounds.map((bounds, index) => (
               <span
                 className="pdf-tutor-highlight"
@@ -380,7 +431,7 @@ export function PdfDocumentViewer({
                 key={`${bounds.x}:${bounds.y}:${index}`}
               />
             ))}
-          {pageSize && visibleBounds && (
+          {visiblePageSize && visibleBounds && (
             <span
               className={`pdf-user-selection${
                 draftBounds ? " drawing" : ""
@@ -410,7 +461,7 @@ function getBounds(start: PagePoint, end: PagePoint): SelectionBounds {
 }
 
 function extractSelectedText(
-  textRegions: TextRegion[],
+  textRegions: PdfTextRegion[],
   selection: SelectionBounds,
 ) {
   return textRegions
