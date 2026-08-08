@@ -31,9 +31,12 @@ const routeContext = {
   params: Promise.resolve({ tutorialId }),
 };
 const validInput = {
-  learnerQuestion: "Why does the signal split?",
-  confusionSummary: "The learner is mixing up the paths.",
-  learningGoal: "Explain how the paths differ.",
+  request: {
+    origin: "tutor",
+    learnerQuestion: "Why does the signal split?",
+    confusionSummary: "The learner is mixing up the paths.",
+    learningGoal: "Explain how the paths differ.",
+  },
   pageIndex: 2,
   chunkId: "chunk:p2-paths",
   selectionText: null,

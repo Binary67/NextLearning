@@ -151,10 +151,6 @@ export function TutorialWorkspace({
     setWorkspaceSelection({ learningVisualStatus, view });
   }
 
-  const visibleWorkspaceView =
-    learningVisualStatus === "idle"
-      ? "document"
-      : workspaceSelection.view;
   const sessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
@@ -469,10 +465,24 @@ export function TutorialWorkspace({
             realtimeTutor.status === "connecting"
           }
           learningVisualState={realtimeTutor.learningVisualState}
-          activeWorkspaceView={visibleWorkspaceView}
+          visualCreationEnabled={
+            realtimeTutor.status === "connected"
+          }
+          visualSessionStarting={
+            realtimeTutor.status === "connecting"
+          }
+          visualSessionStartEnabled={
+            !sessionActive &&
+            (!reviewMode || initialReviewTarget !== null)
+          }
+          activeWorkspaceView={workspaceSelection.view}
           onChangePage={changePage}
           onChangeHighlightedPage={changeHighlightedPage}
           onReturnToHighlight={returnToHighlight}
+          onCreateVisual={() =>
+            void realtimeTutor.createLearningVisual(currentPage)
+          }
+          onStartTutor={startTutor}
           onSelectionChange={setSelection}
           onDownload={downloadDocument}
           onTutorialQueued={(tutorial) => {

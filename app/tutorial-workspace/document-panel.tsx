@@ -6,6 +6,7 @@ import {
   FileText,
   LogOut,
   ScanText,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -46,10 +47,15 @@ export function DocumentPanel({
   guidedSessionActive,
   pageNavigationDisabled,
   learningVisualState,
+  visualCreationEnabled,
+  visualSessionStarting,
+  visualSessionStartEnabled,
   activeWorkspaceView,
   onChangePage,
   onChangeHighlightedPage,
   onReturnToHighlight,
+  onCreateVisual,
+  onStartTutor,
   onSelectionChange,
   onDownload,
   onTutorialQueued,
@@ -71,10 +77,15 @@ export function DocumentPanel({
   guidedSessionActive: boolean;
   pageNavigationDisabled: boolean;
   learningVisualState: LearningVisualState;
+  visualCreationEnabled: boolean;
+  visualSessionStarting: boolean;
+  visualSessionStartEnabled: boolean;
   activeWorkspaceView: WorkspaceView;
   onChangePage: (pageIndex: number) => void;
   onChangeHighlightedPage: (pageIndex: number) => void;
   onReturnToHighlight: () => void;
+  onCreateVisual: () => void;
+  onStartTutor: () => void;
   onSelectionChange: (selection: DocumentSelection | null) => void;
   onDownload: () => void;
   onTutorialQueued: (tutorial: TutorialResponse) => void;
@@ -87,7 +98,7 @@ export function DocumentPanel({
   const documentPanelId = `${tabIdPrefix}-document-panel`;
   const visualTabId = `${tabIdPrefix}-visual-tab`;
   const visualPanelId = `${tabIdPrefix}-visual-panel`;
-  const showVisualWorkspace = learningVisualState.status !== "idle";
+  const showWorkspaceTabs = Boolean(tutorial && documentModel);
   const earliestHighlightedPage = highlightedSourcePages[0] ?? null;
   const previousHighlightedPage = getAdjacentHighlightedPage(
     highlightedSourcePages,
@@ -195,7 +206,7 @@ export function DocumentPanel({
           </div>
         </header>
 
-        {showVisualWorkspace && (
+        {showWorkspaceTabs && (
           <div
             className="workspace-tabs"
             role="tablist"
@@ -234,10 +245,10 @@ export function DocumentPanel({
         <div
           id={documentPanelId}
           className="workspace-panel"
-          role={showVisualWorkspace ? "tabpanel" : undefined}
-          aria-labelledby={showVisualWorkspace ? documentTabId : undefined}
+          role={showWorkspaceTabs ? "tabpanel" : undefined}
+          aria-labelledby={showWorkspaceTabs ? documentTabId : undefined}
           hidden={
-            showVisualWorkspace && activeWorkspaceView !== "document"
+            showWorkspaceTabs && activeWorkspaceView !== "document"
           }
         >
           {documentError ? (
@@ -376,7 +387,7 @@ export function DocumentPanel({
           )}
         </div>
 
-        {showVisualWorkspace && (
+        {showWorkspaceTabs && (
           <div
             id={visualPanelId}
             className="workspace-panel"
@@ -385,7 +396,15 @@ export function DocumentPanel({
             hidden={activeWorkspaceView !== "visual"}
           >
             <div className="visual-workspace">
-              <VisualWorkspaceContent state={learningVisualState} />
+              <VisualWorkspaceContent
+                state={learningVisualState}
+                hasSelection={selection !== null}
+                creationEnabled={visualCreationEnabled}
+                sessionStarting={visualSessionStarting}
+                sessionStartEnabled={visualSessionStartEnabled}
+                onCreate={onCreateVisual}
+                onStartTutor={onStartTutor}
+              />
             </div>
           </div>
         )}
@@ -429,8 +448,20 @@ function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
 
 function VisualWorkspaceContent({
   state,
+  hasSelection,
+  creationEnabled,
+  sessionStarting,
+  sessionStartEnabled,
+  onCreate,
+  onStartTutor,
 }: {
   state: LearningVisualState;
+  hasSelection: boolean;
+  creationEnabled: boolean;
+  sessionStarting: boolean;
+  sessionStartEnabled: boolean;
+  onCreate: () => void;
+  onStartTutor: () => void;
 }) {
   if (state.status === "generating") {
     return (
@@ -451,6 +482,11 @@ function VisualWorkspaceContent({
         <p>Learning visual unavailable</p>
         <h3>The visual could not be shown</h3>
         <span>{state.message}</span>
+        <CreateVisualButton
+          label="Try again"
+          enabled={creationEnabled}
+          onCreate={onCreate}
+        />
       </div>
     );
   }
@@ -465,7 +501,58 @@ function VisualWorkspaceContent({
     );
   }
 
-  return null;
+  let actionLabel = "Start tutor session";
+  let actionEnabled = sessionStartEnabled;
+  let onAction = onStartTutor;
+
+  if (creationEnabled) {
+    actionLabel = hasSelection
+      ? "Create visual from selection"
+      : "Create visual";
+    actionEnabled = true;
+    onAction = onCreate;
+  } else if (sessionStarting) {
+    actionLabel = "Starting tutor…";
+  }
+
+  return (
+    <div className="visual-workspace-state visual-workspace-empty">
+      <span className="visual-empty-icon" aria-hidden="true">
+        <Sparkles size={22} />
+      </span>
+      <h3>Visualize this page</h3>
+      <span>
+        Create an interactive explanation from the current page or
+        selected text.
+      </span>
+      <CreateVisualButton
+        label={actionLabel}
+        enabled={actionEnabled}
+        onCreate={onAction}
+      />
+    </div>
+  );
+}
+
+function CreateVisualButton({
+  label,
+  enabled,
+  onCreate,
+}: {
+  label: string;
+  enabled: boolean;
+  onCreate: () => void;
+}) {
+  return (
+    <button
+      className="primary-button visual-create-button"
+      type="button"
+      onClick={onCreate}
+      disabled={!enabled}
+    >
+      {label}
+    </button>
+  );
 }
 
 function DocumentState({

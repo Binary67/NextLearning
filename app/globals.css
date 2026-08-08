@@ -863,9 +863,40 @@ summary:focus-visible {
   font-size: 1.05rem;
 }
 
-.visual-workspace-state > span:not(.visual-loading-indicator) {
+.visual-workspace-state
+  > span:not(.visual-loading-indicator):not(.visual-empty-icon) {
   margin-top: 12px;
   line-height: 1.5;
+}
+
+.visual-workspace-empty {
+  width: min(380px, calc(100% - 32px));
+  padding: 34px 30px;
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(24, 39, 63, 0.06);
+}
+
+.visual-workspace-empty h3 {
+  font-size: 1.15rem;
+  letter-spacing: -0.015em;
+}
+
+.visual-empty-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 18px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--soft-blue);
+  color: var(--blue);
+}
+
+.visual-create-button {
+  min-height: 42px;
+  justify-self: center;
+  padding-inline: 18px;
+  margin-top: 20px;
 }
 
 .visual-loading-indicator {

@@ -8,9 +8,12 @@ import {
 } from "@/lib/learning-visual/validation";
 
 const validInput = {
-  learnerQuestion: "Why does the signal split?",
-  confusionSummary: "The learner is mixing up the two paths.",
-  learningGoal: "Explain how the paths differ.",
+  request: {
+    origin: "tutor",
+    learnerQuestion: "Why does the signal split?",
+    confusionSummary: "The learner is mixing up the two paths.",
+    learningGoal: "Explain how the paths differ.",
+  },
   pageIndex: 2,
   chunkId: "chunk:p2-paths",
   selectionText: "the signal follows two paths",
@@ -23,17 +26,47 @@ describe("learning-visual input validation", () => {
     expect(
       parseLearningVisualGenerationInput({
         ...validInput,
-        learnerQuestion: "  Why does the signal split?  ",
+        request: {
+          ...validInput.request,
+          learnerQuestion: "  Why does the signal split?  ",
+        },
       }),
     ).toEqual(validInput);
+  });
+
+  it("accepts a learner request without tutor-supplied context", () => {
+    expect(
+      parseLearningVisualGenerationInput({
+        ...validInput,
+        request: { origin: "learner" },
+      }),
+    ).toMatchObject({
+      request: { origin: "learner" },
+    });
   });
 
   it.each([
     ["an extra property", { ...validInput, extra: true }],
     ["a zero page index", { ...validInput, pageIndex: 0 }],
-    ["an empty question", { ...validInput, learnerQuestion: " " }],
-    ["an insecure image URL", { ...validInput, pageImageUrl: "http://example.com/page.png" }],
-    ["an unknown explanation style", { ...validInput, explanationStyle: "brief" }],
+    [
+      "an empty question",
+      {
+        ...validInput,
+        request: { ...validInput.request, learnerQuestion: " " },
+      },
+    ],
+    [
+      "tutor context on a learner request",
+      { ...validInput, request: { ...validInput.request, origin: "learner" } },
+    ],
+    [
+      "an insecure image URL",
+      { ...validInput, pageImageUrl: "http://example.com/page.png" },
+    ],
+    [
+      "an unknown explanation style",
+      { ...validInput, explanationStyle: "brief" },
+    ],
   ])("rejects %s", (_description, input) => {
     expect(() => parseLearningVisualGenerationInput(input)).toThrow(
       LearningVisualInputError,

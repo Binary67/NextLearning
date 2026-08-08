@@ -32,15 +32,25 @@ export type LearningVisual = {
   altText: string;
 };
 
-export type LearningVisualGenerationInput = {
-  learnerQuestion: string;
-  confusionSummary: string;
-  learningGoal: string;
+type LearningVisualPageContext = {
   pageIndex: number;
   chunkId: string | null;
   selectionText: string | null;
   pageImageUrl: string;
   explanationStyle: ExplanationStyle;
+};
+
+export type LearningVisualRequest =
+  | {
+      origin: "tutor";
+      learnerQuestion: string;
+      confusionSummary: string;
+      learningGoal: string;
+    }
+  | { origin: "learner" };
+
+export type LearningVisualGenerationInput = LearningVisualPageContext & {
+  request: LearningVisualRequest;
 };
 
 export const MAX_LEARNING_VISUAL_REQUEST_BYTES = 5 * 1024 * 1024;

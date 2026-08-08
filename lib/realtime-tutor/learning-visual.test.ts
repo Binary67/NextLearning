@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderPdfPageImage } from "@/lib/pdf-page-renderer";
 import { createRealtimeResponseState } from "@/lib/realtime-response-state";
-import { createLearningVisual } from "@/lib/realtime-tutor/learning-visual";
+import {
+  createLearnerRequestedLearningVisual,
+  createLearningVisual,
+} from "@/lib/realtime-tutor/learning-visual";
 import { buildTutorInstructions } from "@/lib/realtime-tutor/instructions";
 import {
   endSession,
@@ -142,14 +145,17 @@ describe("create_learning_visual tool", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          learnerQuestion: toolArguments.learnerQuestion,
-          confusionSummary: toolArguments.confusionSummary,
-          learningGoal: toolArguments.learningGoal,
           pageIndex: 2,
           chunkId: "chunk-2",
           selectionText: "selected source",
           pageImageUrl: "data:image/jpeg;base64,page-image",
           explanationStyle: "technical",
+          request: {
+            origin: "tutor",
+            learnerQuestion: toolArguments.learnerQuestion,
+            confusionSummary: toolArguments.confusionSummary,
+            learningGoal: toolArguments.learningGoal,
+          },
         }),
       }),
     );
@@ -168,6 +174,32 @@ describe("create_learning_visual tool", () => {
       status: "ready",
       visual,
     });
+  });
+
+  it("creates a learner-requested visual without invented confusion context", async () => {
+    const runtime = createRuntime();
+    vi.mocked(renderPdfPageImage).mockResolvedValue({
+      imageUrl: "data:image/jpeg;base64,page-image",
+      width: 1400,
+      height: 1800,
+    });
+    vi.mocked(fetch).mockResolvedValue(response(true, visual));
+
+    await createLearnerRequestedLearningVisual(runtime, 2);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/tutorials/tutorial-1/learning-visuals",
+      expect.objectContaining({
+        body: JSON.stringify({
+          pageIndex: 2,
+          chunkId: null,
+          selectionText: "selected source",
+          pageImageUrl: "data:image/jpeg;base64,page-image",
+          explanationStyle: "technical",
+          request: { origin: "learner" },
+        }),
+      }),
+    );
   });
 
   it("replaces the previous visual with the next request", async () => {

@@ -13,10 +13,37 @@ export async function createLearningVisual(
   runtime: RealtimeTutorRuntime,
   toolArguments: CreateLearningVisualArguments,
 ) {
+  const visual = await requestLearningVisual(runtime, () =>
+    buildTutorLearningVisualInput(runtime, toolArguments),
+  );
+
+  return {
+    status: "ready" as const,
+    visual_id: visual.id,
+    title: visual.title,
+    strategy: visual.strategy,
+    narration_cues: visual.narrationCues,
+  };
+}
+
+export async function createLearnerRequestedLearningVisual(
+  runtime: RealtimeTutorRuntime,
+  pageIndex: number,
+) {
+  await requestLearningVisual(runtime, async () => ({
+    ...(await buildLearningVisualPageContext(runtime, pageIndex)),
+    request: { origin: "learner" },
+  }));
+}
+
+async function requestLearningVisual(
+  runtime: RealtimeTutorRuntime,
+  buildInput: () => Promise<LearningVisualGenerationInput>,
+) {
   runtime.setLearningVisualState({ status: "generating" });
 
   try {
-    const input = await buildLearningVisualInput(runtime, toolArguments);
+    const input = await buildInput();
     const tutorialId = runtime.optionsRef.current.documentId!;
     const response = await fetch(
       `/api/tutorials/${tutorialId}/learning-visuals`,
@@ -42,14 +69,7 @@ export async function createLearningVisual(
 
     const visual = result as LearningVisual;
     runtime.setLearningVisualState({ status: "ready", visual });
-
-    return {
-      status: "ready" as const,
-      visual_id: visual.id,
-      title: visual.title,
-      strategy: visual.strategy,
-      narration_cues: visual.narrationCues,
-    };
+    return visual;
   } catch (reason) {
     const message = getErrorMessage(
       reason,
@@ -61,19 +81,14 @@ export async function createLearningVisual(
   }
 }
 
-async function buildLearningVisualInput(
+async function buildTutorLearningVisualInput(
   runtime: RealtimeTutorRuntime,
   toolArguments: CreateLearningVisualArguments,
 ): Promise<LearningVisualGenerationInput> {
-  const {
-    documentId,
-    documentModel,
-    selection,
-    explanationStyle,
-  } = runtime.optionsRef.current;
+  const { documentModel } = runtime.optionsRef.current;
   const activePage = runtime.activePageContextItemRef.current;
 
-  if (!documentId || !documentModel || !activePage) {
+  if (!documentModel || !activePage) {
     throw new Error("The active PDF page context is unavailable.");
   }
 
@@ -89,22 +104,51 @@ async function buildLearningVisualInput(
     guidedSegment.segmentIndex !== null
       ? (page.chunks[guidedSegment.segmentIndex]?.id ?? null)
       : null;
+
+  return {
+    ...(await buildLearningVisualPageContext(
+      runtime,
+      activePage.pageIndex,
+      chunkId,
+    )),
+    request: {
+      origin: "tutor",
+      learnerQuestion: toolArguments.learnerQuestion,
+      confusionSummary: toolArguments.confusionSummary,
+      learningGoal: toolArguments.learningGoal,
+    },
+  };
+}
+
+async function buildLearningVisualPageContext(
+  runtime: RealtimeTutorRuntime,
+  pageIndex: number,
+  chunkId: string | null = null,
+) {
+  const {
+    documentId,
+    documentModel,
+    selection,
+    explanationStyle,
+  } = runtime.optionsRef.current;
+
+  if (!documentId || !documentModel?.pages[pageIndex - 1]) {
+    throw new Error("The requested PDF page is unavailable.");
+  }
+
   const selectionText =
-    selection?.page_index === activePage.pageIndex && selection.text
+    selection?.page_index === pageIndex && selection.text
       ? selection.text
       : null;
   const pageImage = await renderPdfPageImage(
     documentId,
     `/api/tutorials/${documentId}/file`,
-    activePage.pageIndex,
+    pageIndex,
     MAXIMUM_PAGE_IMAGE_DATA_URL_BYTES,
   );
 
   return {
-    learnerQuestion: toolArguments.learnerQuestion,
-    confusionSummary: toolArguments.confusionSummary,
-    learningGoal: toolArguments.learningGoal,
-    pageIndex: activePage.pageIndex,
+    pageIndex,
     chunkId,
     selectionText,
     pageImageUrl: pageImage.imageUrl,

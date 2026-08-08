@@ -3,13 +3,12 @@ import {
   MAX_LEARNING_VISUAL_PAGE_IMAGE_URL_LENGTH,
   type LearningVisualCue,
   type LearningVisualGenerationInput,
+  type LearningVisualRequest,
   type LearningVisualStrategy,
 } from "@/lib/learning-visual/types";
 
 const INPUT_KEYS = [
-  "learnerQuestion",
-  "confusionSummary",
-  "learningGoal",
+  "request",
   "pageIndex",
   "chunkId",
   "selectionText",
@@ -59,20 +58,10 @@ export function parseLearningVisualGenerationInput(
   value: unknown,
 ): LearningVisualGenerationInput {
   if (!isExactRecord(value, INPUT_KEYS)) {
-    throw new LearningVisualInputError(
-      "A valid learning-visual request is required.",
-    );
+    throw invalidInput();
   }
 
-  const learnerQuestion = readInputText(
-    value.learnerQuestion,
-    4_000,
-  );
-  const confusionSummary = readInputText(
-    value.confusionSummary,
-    4_000,
-  );
-  const learningGoal = readInputText(value.learningGoal, 2_000);
+  const request = parseLearningVisualRequest(value.request);
   const chunkId = readNullableInputText(value.chunkId, 200);
   const selectionText = readNullableInputText(
     value.selectionText,
@@ -82,32 +71,61 @@ export function parseLearningVisualGenerationInput(
     value.pageImageUrl,
     MAX_LEARNING_VISUAL_PAGE_IMAGE_URL_LENGTH,
   );
+  const explanationStyle = value.explanationStyle;
 
   if (
-    learnerQuestion === null ||
-    confusionSummary === null ||
-    learningGoal === null ||
     chunkId === undefined ||
     selectionText === undefined ||
     !isPositiveInteger(value.pageIndex) ||
     !isPageImageUrl(pageImageUrl) ||
-    (value.explanationStyle !== "plain" &&
-      value.explanationStyle !== "technical")
+    (explanationStyle !== "plain" &&
+      explanationStyle !== "technical")
   ) {
-    throw new LearningVisualInputError(
-      "A valid learning-visual request is required.",
-    );
+    throw invalidInput();
   }
 
   return {
-    learnerQuestion,
-    confusionSummary,
-    learningGoal,
+    request,
     pageIndex: value.pageIndex,
     chunkId,
     selectionText,
     pageImageUrl,
-    explanationStyle: value.explanationStyle,
+    explanationStyle,
+  };
+}
+
+function parseLearningVisualRequest(
+  value: unknown,
+): LearningVisualRequest {
+  if (isExactRecord(value, ["origin"]) && value.origin === "learner") {
+    return { origin: "learner" };
+  }
+
+  if (
+    !isExactRecord(value, [
+      "origin",
+      "learnerQuestion",
+      "confusionSummary",
+      "learningGoal",
+    ]) ||
+    value.origin !== "tutor"
+  ) {
+    throw invalidInput();
+  }
+
+  const learnerQuestion = readInputText(value.learnerQuestion, 4_000);
+  const confusionSummary = readInputText(value.confusionSummary, 4_000);
+  const learningGoal = readInputText(value.learningGoal, 2_000);
+
+  if (!learnerQuestion || !confusionSummary || !learningGoal) {
+    throw invalidInput();
+  }
+
+  return {
+    origin: "tutor",
+    learnerQuestion,
+    confusionSummary,
+    learningGoal,
   };
 }
 
@@ -354,6 +372,12 @@ function isExactRecord<const T extends readonly string[]>(
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function invalidInput() {
+  return new LearningVisualInputError(
+    "A valid learning-visual request is required.",
+  );
 }
 
 function invalidOutput() {

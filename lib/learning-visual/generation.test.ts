@@ -9,9 +9,12 @@ import type { LearningVisualGenerationInput } from "@/lib/learning-visual/types"
 import { InvalidLearningVisualOutputError } from "@/lib/learning-visual/validation";
 
 const input: LearningVisualGenerationInput = {
-  learnerQuestion: "Why are there two paths?",
-  confusionSummary: "The learner sees one signal but two outcomes.",
-  learningGoal: "Connect the split to the two outcomes.",
+  request: {
+    origin: "tutor",
+    learnerQuestion: "Why are there two paths?",
+    confusionSummary: "The learner sees one signal but two outcomes.",
+    learningGoal: "Connect the split to the two outcomes.",
+  },
   pageIndex: 2,
   chunkId: "chunk:p2-split",
   selectionText: "the signal divides",

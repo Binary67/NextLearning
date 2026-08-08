@@ -19,6 +19,9 @@ import {
   endSession,
   resetSession,
 } from "@/lib/realtime-tutor/lifecycle";
+import {
+  createLearnerRequestedLearningVisual,
+} from "@/lib/realtime-tutor/learning-visual";
 import { useRealtimeTutorRuntime } from "@/lib/realtime-tutor/runtime";
 import { handleServerEvent as processServerEvent } from "@/lib/realtime-tutor/server-events";
 import { startSession as connectSession } from "@/lib/realtime-tutor/session";
@@ -145,6 +148,14 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     return changeAudioOutputDevice(runtime, deviceId);
   }
 
+  async function createLearningVisual(pageIndex: number) {
+    try {
+      await createLearnerRequestedLearningVisual(runtime, pageIndex);
+    } catch {
+      // The visual state contains the user-facing error.
+    }
+  }
+
   async function end() {
     await endSession(runtime);
   }
@@ -179,6 +190,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     replayTutorAudio,
     selectAudioInputDevice,
     selectAudioOutputDevice,
+    createLearningVisual,
     end,
     reset,
   };
