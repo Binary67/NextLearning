@@ -14,6 +14,7 @@ import {
   validateGeneratedDocumentModel,
 } from "@/lib/document-model";
 import type { GeneratedDocumentBatch } from "@/lib/document-batches";
+import { addDocumentHighlightBounds } from "@/lib/document-highlights";
 
 const DOCUMENT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -59,6 +60,11 @@ export async function generateDocumentBatch(
         startPage,
         endPage,
       );
+      await addDocumentHighlightBounds(
+        fileData,
+        generatedModel,
+        inputStartPage,
+      );
 
       return {
         schema_version: generatedModel.schema_version,
@@ -72,8 +78,9 @@ export async function generateDocumentBatch(
         connections: generatedModel.connections,
       };
     } catch (error) {
+      const reason = error instanceof Error ? ` ${error.message}` : "";
       throw new InvalidAzureOpenAIContentError(
-        "Azure OpenAI returned a document model that could not be grounded in the PDF.",
+        `Azure OpenAI returned a document model that could not be grounded in the PDF.${reason}`,
         error,
       );
     }

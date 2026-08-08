@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateDocumentBatch } from "@/lib/tutorial-generation";
 
+const { getDocument } = vi.hoisted(() => ({
+  getDocument: vi.fn(),
+}));
+
+vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({ getDocument }));
+
 describe("generateDocumentBatch", () => {
   beforeEach(() => {
     vi.stubEnv("AZURE_OPENAI_ENDPOINT", "https://azure.example");
@@ -81,4 +87,163 @@ describe("generateDocumentBatch", () => {
     await expect(request).rejects.toBe(timeoutError);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("retries a generated batch whose sources do not ground in the attached PDF", async () => {
+    mockPdfPages(["Boundary context", "Grounded source text"]);
+    const invalidOutput = createGeneratedBatchOutput(
+      "Invented source text",
+    );
+    const validOutput = createGeneratedBatchOutput(
+      "Grounded source text",
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(streamedOutput(invalidOutput))
+      .mockResolvedValueOnce(streamedOutput(validOutput));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateDocumentBatch(
+      Buffer.from("pdf"),
+      "document.pdf",
+      "document-id",
+      3,
+      1,
+      3,
+      3,
+      2,
+      3,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(result.pages[0].chunks[0].sources[0]).toEqual({
+      page_index: 3,
+      source_text: "Grounded source text",
+    });
+  });
+
+  it("wraps final grounding failures with precise source details", async () => {
+    mockPdfPages(["Grounded source text"]);
+    const output = createGeneratedBatchOutput("Invented source text", 1);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockImplementation(async () =>
+        streamedOutput(output),
+      ),
+    );
+
+    await expect(
+      generateDocumentBatch(
+        Buffer.from("pdf"),
+        "document.pdf",
+        "document-id",
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+      ),
+    ).rejects.toThrow(
+      'Chunk chunk:p1-grounding, source 1, PDF page 1: source token "invented" is missing from the PDF page.',
+    );
+  });
 });
+
+function createGeneratedBatchOutput(sourceText: string, pageIndex = 3) {
+  return {
+    schema_version: 5,
+    document_id: "document-id",
+    title: "Document",
+    page_count: pageIndex,
+    pages: [
+      {
+        page_index: pageIndex,
+        page_label: String(pageIndex),
+        chunks: [
+          {
+            id: `chunk:p${pageIndex}-grounding`,
+            section_title: "Section",
+            sources: [
+              {
+                page_index: pageIndex,
+                source_text: sourceText,
+              },
+            ],
+            title: "Grounding",
+            summary: "A grounded teaching chunk.",
+            concept_ids: ["concept:grounding"],
+          },
+        ],
+      },
+    ],
+    concepts: [
+      {
+        id: "concept:grounding",
+        name: "Grounding",
+        definition: "Source text verified against a PDF.",
+        occurrences: [
+          {
+            page_index: pageIndex,
+            page_label: String(pageIndex),
+            role: "explained",
+            explicitness: "explicit",
+            confidence: 1,
+          },
+        ],
+      },
+    ],
+    connections: [],
+  };
+}
+
+function mockPdfPages(pageTexts: string[]) {
+  getDocument.mockReturnValue({
+    promise: Promise.resolve({
+      numPages: pageTexts.length,
+      getPage: vi.fn().mockImplementation(async (pageIndex: number) => ({
+        getViewport: () => ({
+          width: 100,
+          height: 100,
+          scale: 1,
+          transform: [1, 0, 0, 1, 0, 0],
+        }),
+        getTextContent: () =>
+          Promise.resolve({
+            items: [
+              {
+                str: pageTexts[pageIndex - 1],
+                transform: [1, 0, 0, 1, 10, 70],
+                width: 80,
+              },
+            ],
+          }),
+      })),
+    }),
+    destroy: vi.fn().mockResolvedValue(undefined),
+  });
+}
+
+function streamedOutput(output: object) {
+  const event = {
+    type: "response.completed",
+    response: {
+      status: "completed",
+      output: [
+        {
+          content: [
+            {
+              type: "output_text",
+              text: JSON.stringify(output),
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  return new Response(`data: ${JSON.stringify(event)}\n\n`, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
