@@ -3,6 +3,7 @@ import {
   readAzureOpenAIEmbeddingConfiguration,
 } from "@/lib/azure-openai-generation-retry";
 import { readAzureOpenAIResponseError } from "@/lib/azure-openai-response";
+import type { DocumentBatchRange } from "@/lib/document-batches";
 import {
   buildTextSelectionContext,
   type DocumentChunk,
@@ -23,6 +24,11 @@ export type DocumentEmbeddings = {
     chunk_id: string;
     embedding: number[];
   }>;
+};
+
+export type DocumentEmbeddingBatch = {
+  batch_index: number;
+  embeddings: DocumentEmbeddings;
 };
 
 type EmbeddingResponse = {
@@ -79,27 +85,60 @@ const STOP_WORDS = new Set([
 export async function generateDocumentEmbeddings(
   model: DocumentModel,
 ): Promise<DocumentEmbeddings> {
-  const chunks = getDocumentChunks(model);
-  const conceptNames = getConceptNames(model);
+  const preparedChunks = prepareDocumentEmbeddingChunks(model);
   const { deployment, embeddings } = await requestEmbeddings(
-    chunks.map((chunk) => buildChunkSearchText(chunk, conceptNames)),
+    preparedChunks.map(({ searchText }) => searchText),
   );
-  const dimensions = embeddings[0]?.length;
 
-  if (!dimensions) {
-    throw new Error("Azure OpenAI returned no document embeddings.");
-  }
-
-  return {
-    schema_version: DOCUMENT_EMBEDDINGS_SCHEMA_VERSION,
-    document_id: model.document_id,
+  return buildDocumentEmbeddings(
+    model,
+    preparedChunks.map(({ chunk }) => chunk),
     deployment,
-    dimensions,
-    chunks: chunks.map((chunk, index) => ({
-      chunk_id: chunk.id,
-      embedding: embeddings[index],
-    })),
-  };
+    getEmbeddingDimensions(embeddings),
+    embeddings,
+  );
+}
+
+export async function generateDocumentEmbeddingBatches(
+  model: DocumentModel,
+  batchRanges: readonly DocumentBatchRange[],
+): Promise<DocumentEmbeddingBatch[]> {
+  const preparedChunks = prepareDocumentEmbeddingChunks(model);
+  const preparedChunksByRange = batchRanges.map((range) =>
+    preparedChunks.filter(
+      ({ pageIndex }) =>
+        pageIndex >= range.start_page && pageIndex <= range.end_page,
+    ),
+  );
+  const preparedChunksInRangeOrder = preparedChunksByRange.flat();
+  const { deployment, embeddings } = await requestEmbeddings(
+    preparedChunksInRangeOrder.map(({ searchText }) => searchText),
+  );
+  const dimensions = getEmbeddingDimensions(embeddings);
+
+  let embeddingIndex = 0;
+
+  return batchRanges.map((range, rangeIndex) => {
+    const chunks = preparedChunksByRange[rangeIndex].map(
+      ({ chunk }) => chunk,
+    );
+    const batchEmbeddings = embeddings.slice(
+      embeddingIndex,
+      embeddingIndex + chunks.length,
+    );
+    embeddingIndex += chunks.length;
+
+    return {
+      batch_index: range.batch_index,
+      embeddings: buildDocumentEmbeddings(
+        model,
+        chunks,
+        deployment,
+        dimensions,
+        batchEmbeddings,
+      ),
+    };
+  });
 }
 
 export async function findTextSelectionContext(
@@ -565,6 +604,47 @@ function countTerms(tokens: string[]) {
 
 function getDocumentChunks(model: DocumentModel) {
   return model.pages.flatMap((page) => page.chunks);
+}
+
+function prepareDocumentEmbeddingChunks(model: DocumentModel) {
+  const conceptNames = getConceptNames(model);
+
+  return model.pages.flatMap((page) =>
+    page.chunks.map((chunk) => ({
+      chunk,
+      pageIndex: page.page_index,
+      searchText: buildChunkSearchText(chunk, conceptNames),
+    })),
+  );
+}
+
+function getEmbeddingDimensions(embeddings: number[][]) {
+  const dimensions = embeddings[0]?.length;
+
+  if (!dimensions) {
+    throw new Error("Azure OpenAI returned no document embeddings.");
+  }
+
+  return dimensions;
+}
+
+function buildDocumentEmbeddings(
+  model: DocumentModel,
+  chunks: DocumentChunk[],
+  deployment: string,
+  dimensions: number,
+  embeddings: number[][],
+): DocumentEmbeddings {
+  return {
+    schema_version: DOCUMENT_EMBEDDINGS_SCHEMA_VERSION,
+    document_id: model.document_id,
+    deployment,
+    dimensions,
+    chunks: chunks.map((chunk, index) => ({
+      chunk_id: chunk.id,
+      embedding: embeddings[index],
+    })),
+  };
 }
 
 function getConceptNames(model: DocumentModel) {
