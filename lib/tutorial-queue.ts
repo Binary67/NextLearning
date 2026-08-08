@@ -2,7 +2,7 @@ import {
   MissingAzureOpenAIConfigurationError,
   retryAzureOpenAIRateLimits,
 } from "@/lib/azure-openai-generation-retry";
-import { generateDocumentEmbeddings } from "@/lib/document-embeddings";
+import { generateDocumentEmbeddingBatches } from "@/lib/document-embeddings";
 import type { DocumentPreparation } from "@/lib/document-batches";
 import { consolidateDocumentBatches } from "@/lib/document-consolidation";
 import {
@@ -17,7 +17,7 @@ import {
   writeDocumentModel,
   writeGeneratedDocumentBatch,
 } from "@/lib/document-storage";
-import { readPdfBatch } from "@/lib/pdf-document-batches";
+import { openPdfBatchReader } from "@/lib/pdf-document-batches";
 import { generateDocumentBatch } from "@/lib/tutorial-generation";
 
 type TutorialQueueState = {
@@ -60,45 +60,40 @@ export function runTutorialQueue() {
 }
 
 async function drainTutorialQueue() {
-  if (!queueState.recovered) {
-    await requeueInterruptedTutorials();
-    queueState.recovered = true;
-  }
-
   do {
     queueState.drainRequested = false;
+    let tutorials = (await listStoredTutorials()).sort(
+      (left, right) =>
+        Date.parse(left.createdAt) - Date.parse(right.createdAt),
+    );
 
-    while (true) {
-      const tutorial = await readNextQueuedTutorial();
+    if (!queueState.recovered) {
+      tutorials = await requeueInterruptedTutorials(tutorials);
+      queueState.recovered = true;
+    }
 
-      if (!tutorial) {
-        break;
+    for (const tutorial of tutorials) {
+      if (tutorial.status !== "queued") {
+        continue;
       }
-
       await prepareTutorial(tutorial);
     }
   } while (queueState.drainRequested);
 }
 
-async function requeueInterruptedTutorials() {
-  const tutorials = await listStoredTutorials();
+function requeueInterruptedTutorials(tutorials: StoredTutorial[]) {
+  return Promise.all(
+    tutorials.map((tutorial) => {
+      if (tutorial.status !== "processing") {
+        return tutorial;
+      }
 
-  await Promise.all(
-    tutorials
-      .filter((tutorial) => tutorial.status === "processing")
-      .map((tutorial) =>
-        updateStoredTutorial(tutorial, {
-          status: "queued",
-          error: null,
-        }),
-      ),
+      return updateStoredTutorial(tutorial, {
+        status: "queued",
+        error: null,
+      });
+    }),
   );
-}
-
-async function readNextQueuedTutorial() {
-  const tutorials = await listStoredTutorials();
-
-  return tutorials.find((tutorial) => tutorial.status === "queued") ?? null;
 }
 
 async function prepareTutorial(queuedTutorial: StoredTutorial) {
@@ -113,42 +108,16 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
     tutorial = await updateStoredTutorial(tutorial, { preparation });
 
     stage = "document batch analysis";
-    for (const batch of preparation.batches) {
-      if (batch.status === "complete") {
-        continue;
-      }
-
-      batch.status = "processing";
-      tutorial = await updateStoredTutorial(tutorial, { preparation });
-      const pdfBatch = await readPdfBatch(
-        documentFilePath(tutorial.id),
-        batch.start_page,
-        batch.end_page,
-        tutorial.sourcePageCount,
-      );
-      const generatedBatch = await retryAzureOpenAIRateLimits(() =>
-        generateDocumentBatch(
-          pdfBatch.fileData,
-          tutorial.documentName,
-          tutorial.id,
-          tutorial.sourcePageCount,
-          batch.batch_index,
-          batch.start_page,
-          batch.end_page,
-          pdfBatch.inputStartPage,
-          pdfBatch.inputEndPage,
-        ),
-      );
-      await writeGeneratedDocumentBatch(tutorial.id, generatedBatch);
-      batch.status = "complete";
-      tutorial = await updateStoredTutorial(tutorial, { preparation });
-    }
+    tutorial = await analyzeDocumentBatches(tutorial, preparation);
 
     stage = "document consolidation";
     preparation.phase = "consolidating";
     tutorial = await updateStoredTutorial(tutorial, { preparation });
+    const batchRanges = [...preparation.batches].sort(
+      (left, right) => left.batch_index - right.batch_index,
+    );
     const generatedBatches = await Promise.all(
-      preparation.batches.map(({ batch_index }) =>
+      batchRanges.map(({ batch_index }) =>
         readGeneratedDocumentBatch(tutorial.id, batch_index),
       ),
     );
@@ -169,19 +138,13 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
     preparation.phase = "embedding";
     tutorial = await updateStoredTutorial(tutorial, { preparation });
 
-    for (const batchRange of preparation.batches) {
-      const embeddings = await retryAzureOpenAIRateLimits(() =>
-        generateDocumentEmbeddings({
-          ...model,
-          pages: model.pages.slice(
-            batchRange.start_page - 1,
-            batchRange.end_page,
-          ),
-        }),
-      );
+    const embeddingBatches = await retryAzureOpenAIRateLimits(() =>
+      generateDocumentEmbeddingBatches(model, batchRanges),
+    );
+    for (const { batch_index, embeddings } of embeddingBatches) {
       await writeDocumentEmbeddingBatch(
         tutorial.id,
-        batchRange.batch_index,
+        batch_index,
         embeddings,
       );
     }
@@ -198,6 +161,100 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
       status: "failed",
       error: getPreparationFailureMessage(error),
     });
+  }
+}
+
+async function analyzeDocumentBatches(
+  initialTutorial: StoredTutorial,
+  preparation: DocumentPreparation,
+) {
+  let tutorial = initialTutorial;
+  let progressWriteQueue = Promise.resolve();
+  let nextBatchIndex = 0;
+  const workerState: { failure: { error: unknown } | null } = {
+    failure: null,
+  };
+  const pendingBatches = preparation.batches.filter(
+    (batch) => batch.status !== "complete",
+  );
+
+  if (pendingBatches.length === 0) {
+    return tutorial;
+  }
+
+  const reader = await openPdfBatchReader(
+    documentFilePath(tutorial.id),
+    tutorial.sourcePageCount,
+  );
+
+  function writeBatchStatus(
+    batch: DocumentPreparation["batches"][number],
+    status: "processing" | "complete",
+  ) {
+    const write = progressWriteQueue.then(async () => {
+      batch.status = status;
+      tutorial = await updateStoredTutorial(tutorial, {
+        preparation,
+      });
+    });
+    progressWriteQueue = write.catch(() => undefined);
+    return write;
+  }
+
+  async function processBatch(
+    batch: DocumentPreparation["batches"][number],
+  ) {
+    await writeBatchStatus(batch, "processing");
+    const pdfBatch = await reader.readBatch(batch);
+    const generatedBatch = await retryAzureOpenAIRateLimits(() =>
+      generateDocumentBatch(
+        pdfBatch.fileData,
+        tutorial.documentName,
+        tutorial.id,
+        tutorial.sourcePageCount,
+        batch.batch_index,
+        batch.start_page,
+        batch.end_page,
+        pdfBatch.inputStartPage,
+        pdfBatch.inputEndPage,
+      ),
+    );
+    await writeGeneratedDocumentBatch(tutorial.id, generatedBatch);
+    await writeBatchStatus(batch, "complete");
+  }
+
+  async function runWorker() {
+    while (workerState.failure === null) {
+      const batch = pendingBatches[nextBatchIndex];
+      nextBatchIndex += 1;
+
+      if (!batch) {
+        return;
+      }
+
+      try {
+        await processBatch(batch);
+      } catch (error) {
+        workerState.failure ??= { error };
+      }
+    }
+  }
+
+  try {
+    await Promise.all(
+      Array.from(
+        { length: Math.min(2, pendingBatches.length) },
+        () => runWorker(),
+      ),
+    );
+
+    if (workerState.failure !== null) {
+      throw workerState.failure.error;
+    }
+
+    return tutorial;
+  } finally {
+    await reader.close();
   }
 }
 
