@@ -686,7 +686,32 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.pdf-return-to-tutor-button {
+.pdf-highlighted-source-label {
+  flex: 0 0 auto;
+  color: var(--blue-deep);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pdf-highlighted-page-controls {
+  display: flex;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid rgba(0, 102, 214, 0.2);
+  border-radius: 9px;
+  background: var(--soft-blue);
+}
+
+.pdf-highlighted-page-controls .icon-button.small {
+  width: 24px;
+  height: 24px;
+}
+
+.pdf-return-to-highlight-button {
   min-height: 26px;
   flex: 0 0 auto;
   padding: 0 9px;
@@ -700,7 +725,7 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.pdf-return-to-tutor-button:hover {
+.pdf-return-to-highlight-button:hover {
   border-color: rgba(0, 102, 214, 0.35);
 }
 

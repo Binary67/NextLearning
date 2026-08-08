@@ -24,6 +24,10 @@ import type { TutorialResponse } from "@/lib/tutorial";
 import type { LearningVisualState } from "@/lib/use-realtime-tutor";
 
 import { LearningVisualFrame } from "./learning-visual-frame";
+import {
+  formatHighlightedSourcePages,
+  getAdjacentHighlightedPage,
+} from "./highlighted-pages";
 
 export type WorkspaceView = "document" | "visual";
 
@@ -35,16 +39,17 @@ export function DocumentPanel({
   pageCount,
   selection,
   tutorHighlightBounds,
+  highlightedSourcePages,
   pdfInstruction,
   modeLabel,
   reviewMode,
   guidedSessionActive,
   pageNavigationDisabled,
-  tutorPageIndex,
   learningVisualState,
   activeWorkspaceView,
   onChangePage,
-  onReturnToTutor,
+  onChangeHighlightedPage,
+  onReturnToHighlight,
   onSelectionChange,
   onDownload,
   onTutorialQueued,
@@ -59,16 +64,17 @@ export function DocumentPanel({
   pageCount: number;
   selection: DocumentSelection | null;
   tutorHighlightBounds: SelectionBounds[];
+  highlightedSourcePages: number[];
   pdfInstruction: string;
   modeLabel: string;
   reviewMode: boolean;
   guidedSessionActive: boolean;
   pageNavigationDisabled: boolean;
-  tutorPageIndex: number | null;
   learningVisualState: LearningVisualState;
   activeWorkspaceView: WorkspaceView;
   onChangePage: (pageIndex: number) => void;
-  onReturnToTutor: () => void;
+  onChangeHighlightedPage: (pageIndex: number) => void;
+  onReturnToHighlight: () => void;
   onSelectionChange: (selection: DocumentSelection | null) => void;
   onDownload: () => void;
   onTutorialQueued: (tutorial: TutorialResponse) => void;
@@ -82,6 +88,26 @@ export function DocumentPanel({
   const visualTabId = `${tabIdPrefix}-visual-tab`;
   const visualPanelId = `${tabIdPrefix}-visual-panel`;
   const showVisualWorkspace = learningVisualState.status !== "idle";
+  const earliestHighlightedPage = highlightedSourcePages[0] ?? null;
+  const previousHighlightedPage = getAdjacentHighlightedPage(
+    highlightedSourcePages,
+    currentPage,
+    "previous",
+  );
+  const nextHighlightedPage = getAdjacentHighlightedPage(
+    highlightedSourcePages,
+    currentPage,
+    "next",
+  );
+  const highlightedSourceLabel = formatHighlightedSourcePages(
+    highlightedSourcePages,
+  );
+
+  function goToHighlightedPage(pageIndex: number | null) {
+    if (pageIndex !== null) {
+      onChangeHighlightedPage(pageIndex);
+    }
+  }
 
   return (
     <section className="lesson-card">
@@ -262,14 +288,56 @@ export function DocumentPanel({
                   <div className="pdf-selection-context">
                     <ScanText size={15} aria-hidden="true" />
                     <strong>{pdfInstruction}</strong>
-                    {tutorPageIndex !== null &&
-                      currentPage !== tutorPageIndex && (
+                    {highlightedSourcePages.length > 0 && (
+                      <span className="pdf-highlighted-source-label">
+                        {highlightedSourceLabel}
+                      </span>
+                    )}
+                    {highlightedSourcePages.length > 1 && (
+                      <div
+                        className="pdf-highlighted-page-controls"
+                        role="group"
+                        aria-label="Highlighted source pages"
+                      >
                         <button
-                          className="pdf-return-to-tutor-button"
+                          className="icon-button small"
                           type="button"
-                          onClick={onReturnToTutor}
+                          onClick={() =>
+                            goToHighlightedPage(previousHighlightedPage)
+                          }
+                          disabled={
+                            previousHighlightedPage === null ||
+                            pageNavigationDisabled
+                          }
+                          aria-label="Previous highlighted page"
                         >
-                          Return to tutor · page {tutorPageIndex}
+                          <ChevronLeft size={15} />
+                        </button>
+                        <button
+                          className="icon-button small"
+                          type="button"
+                          onClick={() =>
+                            goToHighlightedPage(nextHighlightedPage)
+                          }
+                          disabled={
+                            nextHighlightedPage === null ||
+                            pageNavigationDisabled
+                          }
+                          aria-label="Next highlighted page"
+                        >
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    )}
+                    {earliestHighlightedPage !== null &&
+                      currentPage !== earliestHighlightedPage && (
+                        <button
+                          className="pdf-return-to-highlight-button"
+                          type="button"
+                          onClick={onReturnToHighlight}
+                        >
+                          Return to first highlighted page · page{" "}
+                          {earliestHighlightedPage}
                         </button>
                       )}
                     {selection && (

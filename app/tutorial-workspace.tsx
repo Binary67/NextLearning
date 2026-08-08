@@ -27,6 +27,7 @@ import {
   DocumentPanel,
   type WorkspaceView,
 } from "./tutorial-workspace/document-panel";
+import { getHighlightedSourcePages } from "./tutorial-workspace/highlighted-pages";
 import {
   findInitialReviewTarget,
   getInitialReviewError,
@@ -82,6 +83,8 @@ export function TutorialWorkspace({
       initialGuidedResume?.pageIndex ??
       1,
   );
+  const [openedHighlightedChunkId, setOpenedHighlightedChunkId] =
+    useState<string | null>(null);
   const [resumePageIndex, setResumePageIndex] = useState(
     initialGuidedResume?.pageIndex ?? 1,
   );
@@ -169,16 +172,27 @@ export function TutorialWorkspace({
     realtimeTutor.isReplayingTutorAudio;
   const pageCount = initialModel?.page_count ?? 0;
   const guidedProgress = realtimeTutor.guidedSegmentProgress;
-  const tutorPageIndex =
-    guidedMode && guidedProgress ? guidedProgress.pageIndex : null;
-  const activeGuidedChunk: DocumentChunk | null =
-    guidedProgress?.chunkId && initialModel
+  const activeTeachingChunkId = guidedProgress?.chunkId ?? null;
+  const activeTeachingChunk: DocumentChunk | null =
+    activeTeachingChunkId && guidedProgress && initialModel
       ? (initialModel.pages[
           guidedProgress.pageIndex - 1
         ].chunks.find(
-          (chunk) => chunk.id === guidedProgress.chunkId,
+          (chunk) => chunk.id === activeTeachingChunkId,
         ) ?? null)
       : null;
+  const highlightedSourcePages = getHighlightedSourcePages(activeTeachingChunk);
+  const earliestHighlightedPage = highlightedSourcePages[0] ?? null;
+
+  if (activeTeachingChunkId !== openedHighlightedChunkId) {
+    setOpenedHighlightedChunkId(activeTeachingChunkId);
+
+    if (activeTeachingChunkId && earliestHighlightedPage !== null) {
+      setCurrentPage(earliestHighlightedPage);
+      setSelection(null);
+    }
+  }
+
   const currentResumePageIndex =
     guidedMode && guidedProgress
       ? guidedProgress.pageIndex
@@ -200,9 +214,9 @@ export function TutorialWorkspace({
     learnerTurnPrompt = `Press ${raiseHandShortcutLabel} to ask about the selection`;
   }
   const tutorHighlightBounds =
-    realtimeTutor.status === "connected" && activeGuidedChunk
+    realtimeTutor.status === "connected" && activeTeachingChunk
       ? getDocumentChunkHighlightBounds(
-          activeGuidedChunk,
+          activeTeachingChunk,
           currentPage,
         )
       : [];
@@ -328,12 +342,24 @@ export function TutorialWorkspace({
     setSelection(null);
   }
 
-  function returnToTutor() {
-    if (!tutorPageIndex) {
+  function changeHighlightedPage(pageIndex: number) {
+    if (
+      !highlightedSourcePages.includes(pageIndex) ||
+      realtimeTutor.status === "connecting"
+    ) {
       return;
     }
 
-    setCurrentPage(tutorPageIndex);
+    setCurrentPage(pageIndex);
+    setSelection(null);
+  }
+
+  function returnToHighlight() {
+    if (earliestHighlightedPage === null) {
+      return;
+    }
+
+    setCurrentPage(earliestHighlightedPage);
     setSelection(null);
   }
 
@@ -434,6 +460,7 @@ export function TutorialWorkspace({
           pageCount={pageCount}
           selection={selection}
           tutorHighlightBounds={tutorHighlightBounds}
+          highlightedSourcePages={highlightedSourcePages}
           pdfInstruction={pdfInstruction}
           modeLabel={modeLabel}
           reviewMode={reviewMode}
@@ -441,11 +468,11 @@ export function TutorialWorkspace({
           pageNavigationDisabled={
             realtimeTutor.status === "connecting"
           }
-          tutorPageIndex={tutorPageIndex}
           learningVisualState={realtimeTutor.learningVisualState}
           activeWorkspaceView={visibleWorkspaceView}
           onChangePage={changePage}
-          onReturnToTutor={returnToTutor}
+          onChangeHighlightedPage={changeHighlightedPage}
+          onReturnToHighlight={returnToHighlight}
           onSelectionChange={setSelection}
           onDownload={downloadDocument}
           onTutorialQueued={(tutorial) => {
