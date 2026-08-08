@@ -7,9 +7,15 @@ import {
   validateAttemptReferences,
 } from "@/lib/learning-state";
 import { mutateLearningState } from "@/lib/learning-state-store";
+import {
+  readRequestTextWithLimit,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body-size";
 import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
+
+const MAX_ATTEMPT_BYTES = 100 * 1024;
 
 type LearningAttemptRouteContext = {
   params: Promise<{ tutorialId: string }>;
@@ -42,6 +48,13 @@ export async function POST(
 
     return Response.json({ learningState });
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json(
+        { message: "The learning attempt is too large." },
+        { status: 413 },
+      );
+    }
+
     if (error instanceof LearningStateInputError) {
       return Response.json(
         { message: error.message },
@@ -66,8 +79,16 @@ export async function POST(
 
 async function readJson(request: Request) {
   try {
-    return (await request.json()) as unknown;
-  } catch {
+    const requestText = await readRequestTextWithLimit(
+      request,
+      MAX_ATTEMPT_BYTES,
+    );
+    return JSON.parse(requestText) as unknown;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      throw error;
+    }
+
     throw new LearningStateInputError("A JSON body is required.");
   }
 }

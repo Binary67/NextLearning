@@ -6,9 +6,15 @@ import {
   recordGuidedProgressEvent,
 } from "@/lib/guided-progress-store";
 import { isTutorialId } from "@/lib/document-storage";
+import {
+  readRequestTextWithLimit,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body-size";
 import { readPreparedTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
+
+const MAX_EVENT_BYTES = 100 * 1024;
 
 type GuidedProgressRouteContext = {
   params: Promise<{ tutorialId: string }>;
@@ -48,7 +54,20 @@ export async function POST(
     return tutorialNotFoundResponse();
   }
 
-  const event = await readEvent(request);
+  let event: GuidedProgressEvent | null;
+
+  try {
+    event = await readEvent(request);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json(
+        { message: "The guided-progress event is too large." },
+        { status: 413 },
+      );
+    }
+
+    throw error;
+  }
 
   if (!event) {
     return Response.json(
@@ -79,8 +98,16 @@ async function readEvent(
   let value: unknown;
 
   try {
-    value = await request.json();
-  } catch {
+    const requestText = await readRequestTextWithLimit(
+      request,
+      MAX_EVENT_BYTES,
+    );
+    value = JSON.parse(requestText) as unknown;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      throw error;
+    }
+
     return null;
   }
 
