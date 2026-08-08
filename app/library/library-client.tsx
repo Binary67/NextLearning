@@ -327,10 +327,24 @@ function TutorialCard({
       <div className="tutorial-card-footer">
         <span>{formatUpdatedAt(tutorial.createdAt)}</span>
         {ready && (
-          <strong>
-            Open
-            <ArrowRight size={15} aria-hidden="true" />
-          </strong>
+          <div className="tutorial-card-actions">
+            <Link
+              className="tutorial-card-action tutorial-progress-link"
+              href={`/tutorials/${tutorial.id}/progress`}
+              aria-label={`View progress for ${tutorial.title}`}
+            >
+              <BarChart2 size={15} aria-hidden="true" />
+              Progress
+            </Link>
+            <Link
+              className="tutorial-card-action tutorial-open-link"
+              href={`/tutorials/${tutorial.id}`}
+              aria-label={`Open reader for ${tutorial.title}`}
+            >
+              Open reader
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          </div>
         )}
         {tutorial.status === "failed" && (
           <button
@@ -347,29 +361,8 @@ function TutorialCard({
   );
 
   return (
-    <article
-      className={`tutorial-card${ready ? " tutorial-card-has-progress" : ""}`}
-    >
-      {ready ? (
-        <Link
-          className="tutorial-card-content"
-          href={`/tutorials/${tutorial.id}`}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div className="tutorial-card-content">{content}</div>
-      )}
-      {ready && (
-        <Link
-          className="tutorial-progress-link"
-          href={`/tutorials/${tutorial.id}/progress`}
-          aria-label={`View progress for ${tutorial.title}`}
-        >
-          <BarChart2 size={15} aria-hidden="true" />
-          Progress
-        </Link>
-      )}
+    <article className="tutorial-card">
+      <div className="tutorial-card-content">{content}</div>
       {canDelete && (
         <button
           className="tutorial-delete-button"
