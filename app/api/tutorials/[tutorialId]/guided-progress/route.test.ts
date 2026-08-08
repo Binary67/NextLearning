@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   readPreparedTutorial: vi.fn(),
   recordGuidedProgressEvent: vi.fn(),
+  resetGuidedProgress: vi.fn(),
 }));
 
 vi.mock("@/lib/document-storage", () => ({
@@ -12,13 +13,17 @@ vi.mock("@/lib/document-storage", () => ({
 vi.mock("@/lib/guided-progress-store", () => ({
   readGuidedProgress: vi.fn(),
   recordGuidedProgressEvent: mocks.recordGuidedProgressEvent,
+  resetGuidedProgress: mocks.resetGuidedProgress,
 }));
 
 vi.mock("@/lib/tutorial", () => ({
   readPreparedTutorial: mocks.readPreparedTutorial,
 }));
 
-import { POST } from "@/app/api/tutorials/[tutorialId]/guided-progress/route";
+import {
+  DELETE,
+  POST,
+} from "@/app/api/tutorials/[tutorialId]/guided-progress/route";
 
 const maxBytes = 100 * 1024;
 const tutorialId = "tutorial-id";
@@ -31,6 +36,10 @@ describe("guided-progress route", () => {
     vi.clearAllMocks();
     mocks.readPreparedTutorial.mockResolvedValue({ model: {} });
     mocks.recordGuidedProgressEvent.mockResolvedValue({});
+    mocks.resetGuidedProgress.mockResolvedValue({
+      cursor: null,
+      completedChunkIds: [],
+    });
   });
 
   it("accepts a valid event exactly at the 100 KiB limit", async () => {
@@ -71,6 +80,25 @@ describe("guided-progress route", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       message: "A valid guided-reading progress event is required.",
+    });
+  });
+
+  it("resets guided progress", async () => {
+    const response = await DELETE(
+      new Request(
+        `http://localhost/api/tutorials/${tutorialId}/guided-progress`,
+        { method: "DELETE" },
+      ),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resetGuidedProgress).toHaveBeenCalledWith(tutorialId);
+    await expect(response.json()).resolves.toEqual({
+      guidedProgress: {
+        cursor: null,
+        completedChunkIds: [],
+      },
     });
   });
 });

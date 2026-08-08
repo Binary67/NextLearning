@@ -9,18 +9,18 @@ import {
   type TutorialStatusItem,
 } from "@/lib/tutorial-status";
 
-type AppSection = "library" | "review" | "dashboard";
+type AppSection = "library" | "review" | "reader" | "progress";
 
 export function AppHeader({
   activeSection,
-  dashboardHref,
+  tutorialHref,
   settingsOpen,
   onOpenSettings,
   onShowMessage,
   tutorialStatuses,
 }: {
   activeSection: AppSection;
-  dashboardHref: string | null;
+  tutorialHref: string | null;
   settingsOpen: boolean;
   onOpenSettings: () => void;
   onShowMessage: (message: string) => void;
@@ -74,23 +74,42 @@ export function AppHeader({
         >
           Review
         </Link>
-        {dashboardHref ? (
-          <Link
-            className={`nav-link${activeSection === "dashboard" ? " active" : ""}`}
-            href={dashboardHref}
-            aria-current={activeSection === "dashboard" ? "page" : undefined}
-          >
-            Dashboard
-          </Link>
+        {tutorialHref ? (
+          <>
+            <Link
+              className={`nav-link${activeSection === "reader" ? " active" : ""}`}
+              href={tutorialHref}
+              aria-current={activeSection === "reader" ? "page" : undefined}
+            >
+              Reader
+            </Link>
+            <Link
+              className={`nav-link${activeSection === "progress" ? " active" : ""}`}
+              href={`${tutorialHref}/progress`}
+              aria-current={activeSection === "progress" ? "page" : undefined}
+            >
+              Progress
+            </Link>
+          </>
         ) : (
-          <button
-            className="nav-link"
-            type="button"
-            disabled
-            title="Choose or add a document to open the reader"
-          >
-            Dashboard
-          </button>
+          <>
+            <button
+              className="nav-link"
+              type="button"
+              disabled
+              title="Choose or add a document to open the reader"
+            >
+              Reader
+            </button>
+            <button
+              className="nav-link"
+              type="button"
+              disabled
+              title="Choose or add a document to view progress"
+            >
+              Progress
+            </button>
+          </>
         )}
       </nav>
 

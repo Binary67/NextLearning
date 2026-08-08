@@ -302,7 +302,7 @@ export function ApplicationShell({
           fallback={
             <AppHeader
               activeSection="library"
-              dashboardHref={getLatestDashboardHref(tutorials)}
+              tutorialHref={getLatestTutorialHref(tutorials)}
               settingsOpen={settingsOpen}
               onOpenSettings={() => setSettingsOpen(true)}
               onShowMessage={showToast}
@@ -369,17 +369,21 @@ function ApplicationHeader({
   const currentTutorialHref = tutorialMatch
     ? `/tutorials/${tutorialMatch[1]}`
     : null;
+  const progressPage =
+    currentTutorialHref !== null && pathname.endsWith("/progress");
   const activeSection = pathname.startsWith("/review")
     ? "review"
-    : currentTutorialHref
-      ? "dashboard"
-      : "library";
+    : progressPage
+      ? "progress"
+      : currentTutorialHref
+        ? "reader"
+        : "library";
 
   return (
     <AppHeader
       activeSection={activeSection}
-      dashboardHref={
-        currentTutorialHref ?? getLatestDashboardHref(tutorials)
+      tutorialHref={
+        currentTutorialHref ?? getLatestTutorialHref(tutorials)
       }
       settingsOpen={settingsOpen}
       onOpenSettings={onOpenSettings}
@@ -389,7 +393,7 @@ function ApplicationHeader({
   );
 }
 
-function getLatestDashboardHref(tutorials: TutorialResponse[]) {
+function getLatestTutorialHref(tutorials: TutorialResponse[]) {
   const latestReadyTutorial = tutorials.find(
     (tutorial) => tutorial.status === "ready",
   );

@@ -4,6 +4,7 @@ import {
 import {
   readGuidedProgress,
   recordGuidedProgressEvent,
+  resetGuidedProgress,
 } from "@/lib/guided-progress-store";
 import { isTutorialId } from "@/lib/document-storage";
 import {
@@ -87,6 +88,31 @@ export async function POST(
     console.error("Guided-reading progress could not be saved:", error);
     return Response.json(
       { message: "Your guided-reading progress could not be saved." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: GuidedProgressRouteContext,
+) {
+  const { tutorialId } = await context.params;
+  const prepared = isTutorialId(tutorialId)
+    ? await readPreparedTutorial(tutorialId)
+    : null;
+
+  if (!prepared) {
+    return tutorialNotFoundResponse();
+  }
+
+  try {
+    const guidedProgress = await resetGuidedProgress(tutorialId);
+    return Response.json({ guidedProgress });
+  } catch (error) {
+    console.error("Guided-reading progress could not be reset:", error);
+    return Response.json(
+      { message: "Your guided-reading progress could not be reset." },
       { status: 500 },
     );
   }

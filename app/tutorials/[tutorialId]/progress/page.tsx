@@ -18,6 +18,7 @@ import {
 
 import styles from "./progress.module.css";
 import { ProgressDetails } from "./progress-details";
+import { ResetGuidedProgressButton } from "./reset-guided-progress-button";
 
 type ConceptProgressRow = {
   concept: PreparedTutorial["model"]["concepts"][number];
@@ -167,14 +168,22 @@ export default async function TutorialProgressPage({
                   ? "Guided reading complete"
                   : "Start guided reading from the beginning"}
             </p>
-            <Link
-              className={styles.continueLink}
-              href={`/tutorials/${encodeURIComponent(
-                tutorialId,
-              )}`}
-            >
-              {guidedCursor ? "Continue reading" : "Open guided reading"}
-            </Link>
+            <div className={styles.guidedActions}>
+              <ResetGuidedProgressButton
+                tutorialId={tutorialId}
+                disabled={
+                  guidedSummary.completedChunks === 0 && !guidedCursor
+                }
+              />
+              <Link
+                className={styles.continueLink}
+                href={`/tutorials/${encodeURIComponent(
+                  tutorialId,
+                )}`}
+              >
+                {guidedCursor ? "Continue reading" : "Open guided reading"}
+              </Link>
+            </div>
           </div>
         </section>
 

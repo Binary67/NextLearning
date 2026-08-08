@@ -53,3 +53,12 @@ export function recordGuidedProgressEvent(
     return validateGuidedProgress(updated, tutorialId, model);
   });
 }
+
+export function resetGuidedProgress(
+  tutorialId: string,
+  now = new Date(),
+) {
+  return updateStoredGuidedProgress(tutorialId, () =>
+    createEmptyGuidedProgress(tutorialId, now),
+  );
+}
