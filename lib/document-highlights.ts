@@ -11,6 +11,7 @@ export type PdfTextRegion = SelectionBounds & {
 type SearchablePage = {
   text: string;
   regionIndexes: number[];
+  textRegions: PdfTextRegion[];
 };
 
 const MINIMUM_PARTIAL_MATCH_CHARACTERS = 48;
@@ -21,6 +22,7 @@ export async function addDocumentHighlightBounds(
   model: GeneratedDocumentModel,
 ): Promise<DocumentModel> {
   const textRegionsByPage = await extractPdfTextRegions(fileData);
+  const searchablePages = textRegionsByPage.map(createSearchablePage);
 
   return {
     ...model,
@@ -31,12 +33,14 @@ export async function addDocumentHighlightBounds(
           return {
             ...chunk,
             sources: chunk.sources.map((source) => {
-              const textRegions =
-                textRegionsByPage[source.page_index - 1] ?? [];
-              const highlightBounds = findDocumentHighlightBounds(
-                textRegions,
-                source.source_text,
-              );
+              const searchablePage =
+                searchablePages[source.page_index - 1];
+              const highlightBounds = searchablePage
+                ? findHighlightBoundsOnSearchablePage(
+                    searchablePage,
+                    source.source_text,
+                  )
+                : null;
 
               if (!highlightBounds) {
                 throw new Error(
@@ -60,13 +64,22 @@ export function findDocumentHighlightBounds(
   textRegions: PdfTextRegion[],
   sourceText: string,
 ) {
+  return findHighlightBoundsOnSearchablePage(
+    createSearchablePage(textRegions),
+    sourceText,
+  );
+}
+
+function findHighlightBoundsOnSearchablePage(
+  searchablePage: SearchablePage,
+  sourceText: string,
+) {
   const query = canonicalizeText(sourceText);
 
-  if (!query || textRegions.length === 0) {
+  if (!query || searchablePage.textRegions.length === 0) {
     return null;
   }
 
-  const searchablePage = createSearchablePage(textRegions);
   const match = findUniqueTextMatch(searchablePage.text, query);
 
   if (!match) {
@@ -80,7 +93,7 @@ export function findDocumentHighlightBounds(
     ),
   );
   const matchingRegions = Array.from(matchingRegionIndexes, (index) => {
-    return textRegions[index];
+    return searchablePage.textRegions[index];
   });
 
   return mergeTextRegionsByLine(matchingRegions);
@@ -170,7 +183,7 @@ function createSearchablePage(textRegions: PdfTextRegion[]) {
     }
   });
 
-  return { text, regionIndexes } satisfies SearchablePage;
+  return { text, regionIndexes, textRegions } satisfies SearchablePage;
 }
 
 function canonicalizeText(value: string) {
