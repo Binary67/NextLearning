@@ -23,7 +23,10 @@ import {
   ConfirmationDialog,
   TranscriptDialog,
 } from "./tutorial-workspace/dialogs";
-import { DocumentPanel } from "./tutorial-workspace/document-panel";
+import {
+  DocumentPanel,
+  type WorkspaceView,
+} from "./tutorial-workspace/document-panel";
 import {
   findInitialReviewTarget,
   getInitialReviewError,
@@ -124,6 +127,31 @@ export function TutorialWorkspace({
     audioInputDeviceId,
     audioOutputDeviceId,
   });
+  const learningVisualStatus =
+    realtimeTutor.learningVisualState.status;
+  const [workspaceSelection, setWorkspaceSelection] = useState(() => ({
+    learningVisualStatus,
+    view: (learningVisualStatus === "generating"
+      ? "visual"
+      : "document") as WorkspaceView,
+  }));
+
+  if (learningVisualStatus !== workspaceSelection.learningVisualStatus) {
+    let view = workspaceSelection.view;
+
+    if (learningVisualStatus === "generating") {
+      view = "visual";
+    } else if (learningVisualStatus === "idle") {
+      view = "document";
+    }
+
+    setWorkspaceSelection({ learningVisualStatus, view });
+  }
+
+  const visibleWorkspaceView =
+    learningVisualStatus === "idle"
+      ? "document"
+      : workspaceSelection.view;
   const sessionActive =
     realtimeTutor.status === "connecting" ||
     realtimeTutor.status === "connected";
@@ -414,6 +442,8 @@ export function TutorialWorkspace({
             realtimeTutor.status === "connecting"
           }
           tutorPageIndex={tutorPageIndex}
+          learningVisualState={realtimeTutor.learningVisualState}
+          activeWorkspaceView={visibleWorkspaceView}
           onChangePage={changePage}
           onReturnToTutor={returnToTutor}
           onSelectionChange={setSelection}
@@ -424,6 +454,12 @@ export function TutorialWorkspace({
           }}
           onEndSession={() => setModal("end-session")}
           onDelete={() => setModal("delete-tutorial")}
+          onWorkspaceViewChange={(view) =>
+            setWorkspaceSelection((selection) => ({
+              ...selection,
+              view,
+            }))
+          }
         />
         <TutorSidebar
           modeLabel={modeLabel}
