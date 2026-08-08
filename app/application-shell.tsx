@@ -17,7 +17,9 @@ import { LearningSettingsDialog } from "@/app/learning-settings";
 import type { TutorialResponse } from "@/lib/tutorial";
 import {
   getTutorialTransitionMessage,
+  haveTutorialStatusesChanged,
   hasActiveTutorials,
+  isTutorialStatusResponse,
 } from "@/lib/tutorial-status";
 
 const TUTORIAL_REFRESH_INTERVAL_MS = 3000;
@@ -58,6 +60,7 @@ export function ApplicationShell({
   const [toast, setToast] = useState("");
   const refreshControllerRef = useRef<AbortController | null>(null);
   const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
+  const statusControllerRef = useRef<AbortController | null>(null);
   const previousStatusesRef = useRef(
     new Map(
       initialTutorials.map((tutorial) => [
@@ -145,6 +148,44 @@ export function ApplicationShell({
     return refreshPromise;
   }, [replaceTutorials]);
 
+  const pollTutorialStatuses = useCallback(async () => {
+    const controller = new AbortController();
+    statusControllerRef.current = controller;
+
+    try {
+      const response = await fetch("/api/tutorials/status", {
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data: unknown = await response.json();
+
+      if (!isTutorialStatusResponse(data)) {
+        return;
+      }
+
+      if (
+        haveTutorialStatusesChanged(
+          previousStatusesRef.current,
+          data.tutorials,
+        )
+      ) {
+        await refreshTutorials();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        console.error("Document status could not be checked:", error);
+      }
+    } finally {
+      if (statusControllerRef.current === controller) {
+        statusControllerRef.current = null;
+      }
+    }
+  }, [refreshTutorials]);
+
   useEffect(() => {
     function refreshOnFocus() {
       void refreshTutorials();
@@ -154,6 +195,7 @@ export function ApplicationShell({
     return () => {
       window.removeEventListener("focus", refreshOnFocus);
       refreshControllerRef.current?.abort();
+      statusControllerRef.current?.abort();
       window.clearTimeout(toastTimeoutRef.current);
     };
   }, [refreshTutorials]);
@@ -170,7 +212,7 @@ export function ApplicationShell({
     );
 
     function pollTutorials() {
-      void refreshTutorials().finally(() => {
+      void pollTutorialStatuses().finally(() => {
         if (!cancelled) {
           refreshTimeout = window.setTimeout(
             pollTutorials,
@@ -183,8 +225,9 @@ export function ApplicationShell({
     return () => {
       cancelled = true;
       window.clearTimeout(refreshTimeout);
+      statusControllerRef.current?.abort();
     };
-  }, [refreshTutorials, shouldPoll]);
+  }, [pollTutorialStatuses, shouldPoll]);
 
   const addTutorial = useCallback((tutorial: TutorialResponse) => {
     previousStatusesRef.current.set(tutorial.id, tutorial.status);

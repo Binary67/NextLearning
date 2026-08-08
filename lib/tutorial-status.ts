@@ -1,9 +1,63 @@
 import type { TutorialStatus } from "@/lib/document-storage";
 
+const tutorialIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type TutorialStatusItem = {
   id: string;
   status: TutorialStatus;
 };
+
+export type TutorialStatusResponse = {
+  tutorials: TutorialStatusItem[];
+};
+
+export function isTutorialStatusResponse(
+  value: unknown,
+): value is TutorialStatusResponse {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const tutorials = (value as { tutorials?: unknown }).tutorials;
+
+  if (!Array.isArray(tutorials)) {
+    return false;
+  }
+
+  const tutorialIds = new Set<string>();
+
+  for (const tutorial of tutorials) {
+    if (
+      typeof tutorial !== "object" ||
+      tutorial === null ||
+      typeof tutorial.id !== "string" ||
+      !tutorialIdPattern.test(tutorial.id) ||
+      !isTutorialStatus(tutorial.status) ||
+      tutorialIds.has(tutorial.id)
+    ) {
+      return false;
+    }
+
+    tutorialIds.add(tutorial.id);
+  }
+
+  return true;
+}
+
+export function haveTutorialStatusesChanged(
+  currentStatuses: ReadonlyMap<string, TutorialStatus>,
+  nextTutorials: readonly TutorialStatusItem[],
+) {
+  if (currentStatuses.size !== nextTutorials.length) {
+    return true;
+  }
+
+  return nextTutorials.some(
+    (tutorial) =>
+      currentStatuses.get(tutorial.id) !== tutorial.status,
+  );
+}
 
 export function hasActiveTutorials(
   tutorials: readonly TutorialStatusItem[],
@@ -58,4 +112,13 @@ export function getTutorialTransitionMessage(
   )
     ? "A document could not be prepared. Open the library to retry."
     : "Your document is ready to open.";
+}
+
+function isTutorialStatus(value: unknown): value is TutorialStatus {
+  return (
+    value === "queued" ||
+    value === "processing" ||
+    value === "ready" ||
+    value === "failed"
+  );
 }
