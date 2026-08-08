@@ -85,6 +85,7 @@ export function failConnection(
 
   closeConnection(runtime);
   runtime.setGuidedSegmentProgress(null);
+  runtime.setLearningVisualState({ status: "idle" });
   runtime.setStatus("error");
   clearTurnState(runtime);
   runtime.setError(message);
@@ -96,6 +97,7 @@ export async function endSession(runtime: RealtimeTutorRuntime) {
 
   closeConnection(runtime);
   runtime.setGuidedSegmentProgress(null);
+  runtime.setLearningVisualState({ status: "idle" });
   runtime.setStatus("ended");
   clearTurnState(runtime);
   clearTranscript(runtime);
@@ -127,6 +129,7 @@ export async function endSession(runtime: RealtimeTutorRuntime) {
 export function resetSession(runtime: RealtimeTutorRuntime) {
   closeConnection(runtime);
   runtime.setGuidedSegmentProgress(null);
+  runtime.setLearningVisualState({ status: "idle" });
   runtime.setStatus("idle");
   clearTurnState(runtime);
   clearTranscript(runtime);

@@ -56,6 +56,7 @@ export async function startSession(
   clearTranscript(runtime);
   runtime.setError("");
   runtime.setPersistenceError("");
+  runtime.setLearningVisualState({ status: "idle" });
   runtime.sessionModeRef.current = mode;
   runtime.guidedTutorModeRef.current = guidedTutorMode;
   runtime.activeTutorSessionRef.current = {

@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
+import type { LearningVisual } from "@/lib/learning-visual";
 import type {
   DocumentModel,
   TextSelectionContext,
@@ -21,6 +22,12 @@ export type RealtimeTutorStatus =
 
 export type ExplanationStyle = "plain" | "technical";
 export type GuidedTutorMode = "reading" | "learning";
+
+export type LearningVisualState =
+  | { status: "idle" }
+  | { status: "generating" }
+  | { status: "ready"; visual: LearningVisual }
+  | { status: "error"; message: string };
 
 export type GuidedSegmentProgress = {
   pageIndex: number;
@@ -173,4 +180,5 @@ export type RealtimeTutorRuntime = {
   setGuidedSegmentProgress: StateSetter<GuidedSegmentProgress | null>;
   setError: StateSetter<string>;
   setPersistenceError: StateSetter<string>;
+  setLearningVisualState: StateSetter<LearningVisualState>;
 };

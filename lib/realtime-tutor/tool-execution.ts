@@ -1,6 +1,7 @@
 import { executeRealtimeTutorTool } from "@/lib/realtime-tutor/tools";
 import { replacePageContext } from "@/lib/realtime-tutor/context";
 import { sendEventAndWait } from "@/lib/realtime-tutor/event-transport";
+import { createLearningVisual } from "@/lib/realtime-tutor/learning-visual";
 import { recordLearningAttempt } from "@/lib/realtime-tutor/progression";
 import type {
   RealtimeFunctionCall,
@@ -58,6 +59,8 @@ export async function sendToolOutputs(
               runtime.optionsRef.current.documentId!,
               query,
             ),
+          createLearningVisual: (toolArguments) =>
+            createLearningVisual(runtime, toolArguments),
         },
       );
     } catch (reason) {

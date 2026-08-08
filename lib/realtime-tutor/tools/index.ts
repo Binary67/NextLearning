@@ -5,6 +5,12 @@ import type {
 import type { DocumentTopicMatch } from "@/lib/document-embeddings";
 import type { DocumentSelection } from "@/lib/document-selection";
 import {
+  CREATE_LEARNING_VISUAL_TOOL_NAME,
+  createLearningVisualTool,
+  readCreateLearningVisualArguments,
+  type CreateLearningVisualArguments,
+} from "@/lib/realtime-tutor/tools/create-learning-visual";
+import {
   FIND_DOCUMENT_TOPICS_TOOL_NAME,
   findDocumentTopics,
   findDocumentTopicsTool,
@@ -39,12 +45,16 @@ type RealtimeTutorToolContext = {
   findDocumentTopics: (
     query: string,
   ) => Promise<DocumentTopicMatch[]>;
+  createLearningVisual: (
+    toolArguments: CreateLearningVisualArguments,
+  ) => Promise<unknown>;
 };
 
 export const realtimeTutorTools = [
   getSelectionGroundingTool,
   findDocumentTopicsTool,
   getPageContextTool,
+  createLearningVisualTool,
 ];
 
 export const learningRealtimeTutorTools = [
@@ -79,6 +89,10 @@ export async function executeRealtimeTutorTool(
         context.documentModel,
         argumentsJson,
         context.attachPageContext,
+      );
+    case CREATE_LEARNING_VISUAL_TOOL_NAME:
+      return context.createLearningVisual(
+        readCreateLearningVisualArguments(argumentsJson),
       );
     case RECORD_LEARNING_ATTEMPT_TOOL_NAME:
       if (!context.activeLearningAttempt) {

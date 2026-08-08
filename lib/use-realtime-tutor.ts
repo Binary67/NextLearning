@@ -36,6 +36,7 @@ export type {
   ExplanationStyle,
   GuidedSegmentProgress,
   GuidedTutorMode,
+  LearningVisualState,
   RealtimeTutorStatus,
 } from "@/lib/realtime-tutor/types";
 
@@ -54,6 +55,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     guidedSegmentProgress,
     error,
     persistenceError,
+    learningVisualState,
   } = useRealtimeTutorRuntime(options);
 
   const close = useCallback(() => {
@@ -168,6 +170,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     guidedSegmentProgress,
     error,
     persistenceError,
+    learningVisualState,
     startGuided,
     startReview,
     explainPage,

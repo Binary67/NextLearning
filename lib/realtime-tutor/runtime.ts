@@ -7,6 +7,7 @@ import type {
   GuidedSegmentProgress,
   GuidedSegmentState,
   GuidedTutorMode,
+  LearningVisualState,
   PageContextItem,
   PendingServerEvent,
   RealtimeTutorOptions,
@@ -35,6 +36,8 @@ export function useRealtimeTutorRuntime(options: RealtimeTutorOptions) {
     useState<GuidedSegmentProgress | null>(null);
   const [error, setError] = useState("");
   const [persistenceError, setPersistenceError] = useState("");
+  const [learningVisualState, setLearningVisualState] =
+    useState<LearningVisualState>({ status: "idle" });
   const optionsRef = useRef(options);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -105,6 +108,7 @@ export function useRealtimeTutorRuntime(options: RealtimeTutorOptions) {
       setGuidedSegmentProgress,
       setError,
       setPersistenceError,
+      setLearningVisualState,
     }),
     [],
   );
@@ -123,5 +127,6 @@ export function useRealtimeTutorRuntime(options: RealtimeTutorOptions) {
     guidedSegmentProgress,
     error,
     persistenceError,
+    learningVisualState,
   };
 }
