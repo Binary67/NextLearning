@@ -22,6 +22,7 @@ export function validateStoredTutorial(
       "createdAt",
       "updatedAt",
       "sourcePageCount",
+      "publishedBatchCount",
       "status",
       "error",
       "preparation",
@@ -32,6 +33,11 @@ export function validateStoredTutorial(
     !isIsoTimestamp(value.createdAt) ||
     !isIsoTimestamp(value.updatedAt) ||
     !isPositiveInteger(value.sourcePageCount) ||
+    (value.publishedBatchCount !== null &&
+      (!isPositiveInteger(value.publishedBatchCount) ||
+        !isRecord(value.preparation) ||
+        !Array.isArray(value.preparation.batches) ||
+        value.publishedBatchCount > value.preparation.batches.length)) ||
     !isTutorialStatus(value.status) ||
     (value.error !== null && typeof value.error !== "string") ||
     !isDocumentPreparation(value.preparation, value.sourcePageCount)

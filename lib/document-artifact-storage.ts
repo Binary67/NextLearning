@@ -7,15 +7,16 @@ import type { GeneratedDocumentBatch } from "@/lib/document-batches";
 import {
   readJsonFile,
   writeBatchFile,
+  writeImmutableJsonFile,
   writeJsonFileAtomically,
   isMissingFileError,
 } from "@/lib/document-storage-io";
 import {
   batchFilePath,
   documentFileName,
-  documentModelFileName,
   embeddingsDirectoryName,
   generatedBatchesDirectoryName,
+  publishedDocumentModelsDirectoryName,
   tutorialDirectory,
   tutorialFilePath,
 } from "@/lib/document-storage-paths";
@@ -73,18 +74,51 @@ export function streamDocumentFile(
 export async function readDocumentModel(
   tutorialId: string,
 ): Promise<DocumentModel | null> {
-  return readJsonFile<DocumentModel>(
-    tutorialFilePath(tutorialId, documentModelFileName),
+  const tutorial = await readStoredTutorial(tutorialId);
+
+  if (!tutorial || tutorial.publishedBatchCount === null) {
+    return null;
+  }
+
+  return readPublishedDocumentModel(
+    tutorialId,
+    tutorial.publishedBatchCount,
   );
 }
 
 export function writeDocumentModel(
   tutorialId: string,
+  publishedBatchCount: number,
   model: DocumentModel,
 ) {
-  return writeJsonFileAtomically(
-    tutorialFilePath(tutorialId, documentModelFileName),
+  return writePublishedDocumentModel(
+    tutorialId,
+    publishedBatchCount,
     model,
+  );
+}
+
+export function writePublishedDocumentModel(
+  tutorialId: string,
+  publishedBatchCount: number,
+  model: DocumentModel,
+) {
+  return writeImmutableJsonFile(
+    publishedDocumentModelFilePath(tutorialId, publishedBatchCount),
+    model,
+  );
+}
+
+export async function readPublishedDocumentModel(
+  tutorialId: string,
+  publishedBatchCount: number,
+): Promise<DocumentModel | null> {
+  if (!isPositiveInteger(publishedBatchCount)) {
+    return null;
+  }
+
+  return readJsonFile<DocumentModel>(
+    publishedDocumentModelFilePath(tutorialId, publishedBatchCount),
   );
 }
 
@@ -93,13 +127,27 @@ export async function readDocumentEmbeddings(
 ): Promise<DocumentEmbeddings | null> {
   const tutorial = await readStoredTutorial(tutorialId);
 
-  if (!tutorial) {
+  if (!tutorial || tutorial.publishedBatchCount === null) {
+    return null;
+  }
+
+  return readPublishedDocumentEmbeddings(
+    tutorialId,
+    tutorial.publishedBatchCount,
+  );
+}
+
+export async function readPublishedDocumentEmbeddings(
+  tutorialId: string,
+  publishedBatchCount: number,
+): Promise<DocumentEmbeddings | null> {
+  if (!isPositiveInteger(publishedBatchCount)) {
     return null;
   }
 
   const batches = await Promise.all(
-    tutorial.preparation.batches.map(({ batch_index }) =>
-      readDocumentEmbeddingBatch(tutorialId, batch_index),
+    Array.from({ length: publishedBatchCount }, (_, index) =>
+      readDocumentEmbeddingBatch(tutorialId, index + 1),
     ),
   );
 
@@ -128,6 +176,21 @@ export async function readDocumentEmbeddings(
     dimensions: first.dimensions,
     chunks: embeddings.flatMap((batch) => batch.chunks),
   };
+}
+
+function publishedDocumentModelFilePath(
+  tutorialId: string,
+  publishedBatchCount: number,
+) {
+  return batchFilePath(
+    tutorialId,
+    publishedDocumentModelsDirectoryName,
+    publishedBatchCount,
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 export async function readGeneratedDocumentBatch(

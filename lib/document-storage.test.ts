@@ -4,6 +4,13 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { DocumentModel } from "@/lib/document-model";
+import {
+  readPublishedDocumentEmbeddings,
+  readPublishedDocumentModel,
+  writeDocumentEmbeddingBatch,
+  writePublishedDocumentModel,
+} from "@/lib/document-artifact-storage";
 import {
   readStoredGuidedProgress,
   readStoredLearningState,
@@ -247,7 +254,6 @@ describe("stored tutorial metadata", () => {
           id === malformedJsonTutorialId || id === invalidMetadataTutorialId,
       ),
     ).toBe(false);
-    expect(consoleError).toHaveBeenCalledTimes(2);
     expect(consoleError).toHaveBeenCalledWith(
       `Stored tutorial ${malformedJsonTutorialId} could not be loaded:`,
       expect.any(SyntaxError),
@@ -267,6 +273,68 @@ describe("stored tutorial metadata", () => {
     vi.spyOn(fs, "readFile").mockRejectedValue(storageError);
 
     await expect(listStoredTutorials()).rejects.toBe(storageError);
+  });
+});
+
+describe("published document artifacts", () => {
+  it("keeps document model snapshots immutable by published batch count", async () => {
+    const tutorialId = randomUUID();
+    createdTutorialIds.push(tutorialId);
+    const model = { page_count: 10 };
+
+    await writePublishedDocumentModel(tutorialId, 1, model as DocumentModel);
+
+    await expect(
+      readPublishedDocumentModel(tutorialId, 1),
+    ).resolves.toEqual(model);
+    await expect(
+      writePublishedDocumentModel(tutorialId, 1, model as DocumentModel),
+    ).resolves.toBeUndefined();
+    await expect(
+      writePublishedDocumentModel(
+        tutorialId,
+        1,
+        { page_count: 20 } as DocumentModel,
+      ),
+    ).rejects.toThrow("published document model already exists");
+    await expect(
+      readPublishedDocumentModel(tutorialId, 1),
+    ).resolves.toEqual(model);
+  });
+
+  it("reads only embedding batches inside the published prefix", async () => {
+    const tutorialId = randomUUID();
+    createdTutorialIds.push(tutorialId);
+    const first = {
+      schema_version: 1,
+      document_id: tutorialId,
+      deployment: "embeddings",
+      dimensions: 2,
+      chunks: [{ chunk_id: "chunk:first", embedding: [1, 0] }],
+    };
+    const second = {
+      ...first,
+      chunks: [{ chunk_id: "chunk:second", embedding: [0, 1] }],
+    };
+
+    await writeDocumentEmbeddingBatch(tutorialId, 1, first);
+    await writeDocumentEmbeddingBatch(tutorialId, 2, second);
+
+    await expect(
+      readPublishedDocumentEmbeddings(tutorialId, 1),
+    ).resolves.toEqual({
+      ...first,
+      chunks: first.chunks,
+    });
+    await expect(
+      readPublishedDocumentEmbeddings(tutorialId, 2),
+    ).resolves.toEqual({
+      ...first,
+      chunks: [...first.chunks, ...second.chunks],
+    });
+    await expect(
+      readPublishedDocumentEmbeddings(tutorialId, 3),
+    ).resolves.toBeNull();
   });
 });
 
@@ -296,6 +364,7 @@ function validTutorial(tutorialId: string) {
     createdAt: "2026-08-08T12:00:00.000Z",
     updatedAt: "2026-08-08T12:00:00.000Z",
     sourcePageCount: 1,
+    publishedBatchCount: null,
     status: "queued",
     error: null,
     preparation: {

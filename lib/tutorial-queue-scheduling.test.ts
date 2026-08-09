@@ -18,9 +18,11 @@ const mocks = vi.hoisted(() => ({
   listStoredTutorials: vi.fn(),
   markTutorialPrepared: vi.fn(),
   openPdfBatchReader: vi.fn(),
+  readDocumentEmbeddingBatch: vi.fn(),
   readBatch: vi.fn(),
   readDocumentFile: vi.fn(),
   readGeneratedDocumentBatch: vi.fn(),
+  readPublishedDocumentModel: vi.fn(),
   retryAzureOpenAIRateLimits: vi.fn(),
   updateStoredTutorial: vi.fn(),
   writeDocumentEmbeddingBatch: vi.fn(),
@@ -45,7 +47,9 @@ vi.mock("@/lib/document-consolidation", () => ({
 vi.mock("@/lib/document-artifact-storage", () => ({
   documentFilePath: (tutorialId: string) => `/documents/${tutorialId}.pdf`,
   readDocumentFile: mocks.readDocumentFile,
+  readDocumentEmbeddingBatch: mocks.readDocumentEmbeddingBatch,
   readGeneratedDocumentBatch: mocks.readGeneratedDocumentBatch,
+  readPublishedDocumentModel: mocks.readPublishedDocumentModel,
   writeDocumentEmbeddingBatch: mocks.writeDocumentEmbeddingBatch,
   writeDocumentModel: mocks.writeDocumentModel,
   writeGeneratedDocumentBatch: mocks.writeGeneratedDocumentBatch,
@@ -94,7 +98,7 @@ describe("tutorial queue scheduling", () => {
     generatedArtifacts = queueTestContext.generatedArtifacts;
   });
 
-  it("runs two batch workers, serializes progress, and embeds the model once", async () => {
+  it("runs two ascending workers and publishes each contiguous prefix", async () => {
     const preparation: DocumentPreparation = {
       phase: "analyzing",
       batches: [
@@ -130,10 +134,10 @@ describe("tutorial queue scheduling", () => {
     expect(queueTestContext.maxActiveMetadataWrites).toBe(1);
     expect(
       mocks.generateDocumentBatch.mock.calls.map((call) => call[4]),
-    ).toEqual([3, 1, 4]);
+    ).toEqual([1, 3, 4]);
     expect(
       mocks.readBatch.mock.calls.map(([range]) => range.batch_index),
-    ).toEqual([3, 1, 4]);
+    ).toEqual([1, 3, 4]);
     expect(mocks.closeReader).toHaveBeenCalledOnce();
 
     for (const batchIndex of [1, 3, 4]) {
@@ -150,19 +154,94 @@ describe("tutorial queue scheduling", () => {
       "metadata:tutorial:3-complete,1-complete,2-complete,4-complete",
     );
 
-    expect(mocks.generateDocumentEmbeddingBatches).toHaveBeenCalledOnce();
-    expect(mocks.generateDocumentEmbeddingBatches.mock.calls[0][1]).toEqual([
-      batch(1, 1, 10, "complete"),
-      batch(2, 11, 20, "complete"),
-      batch(3, 21, 30, "complete"),
-      batch(4, 31, 40, "complete"),
-    ]);
+    expect(mocks.generateDocumentEmbeddingBatches).toHaveBeenCalledTimes(3);
+    expect(
+      mocks.generateDocumentEmbeddingBatches.mock.calls.map(([, ranges]) =>
+        (ranges as DocumentPreparation["batches"]).map(
+          ({ batch_index }) => batch_index,
+        ),
+      ),
+    ).toEqual([[1, 2], [3], [4]]);
     expect(mocks.writeDocumentEmbeddingBatch.mock.calls).toEqual(
       [1, 2, 3, 4].map((batchIndex) => [
         "tutorial",
         batchIndex,
         embeddings,
       ]),
+    );
+  });
+
+  it("does not publish an out-of-order completed batch", async () => {
+    mocks.listStoredTutorials.mockResolvedValue([
+      tutorial("gap", "2026-08-08T09:00:00.000Z", {
+        phase: "analyzing",
+        batches: [
+          batch(1, 1, 10, "pending"),
+          batch(2, 11, 20, "pending"),
+        ],
+      }),
+    ]);
+    const firstGeneration = deferred<{ batch_index: number }>();
+    mocks.generateDocumentBatch.mockImplementation((...args: unknown[]) =>
+      args[4] === 1
+        ? firstGeneration.promise
+        : Promise.resolve({ batch_index: args[4] }),
+    );
+
+    const queuePromise = runTutorialQueue();
+    await waitFor(() => mocks.generateDocumentBatch.mock.calls.length === 2);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(
+      mocks.updateStoredTutorial.mock.calls.some(
+        ([, updates]) => "publishedBatchCount" in updates,
+      ),
+    ).toBe(false);
+
+    firstGeneration.resolve({ batch_index: 1 });
+    await queuePromise;
+
+    expect(
+      mocks.updateStoredTutorial.mock.calls
+        .filter(([, updates]) => "publishedBatchCount" in updates)
+        .map(([, updates]) => updates.publishedBatchCount),
+    ).toEqual([2]);
+  });
+
+  it("keeps the published prefix when a later batch fails", async () => {
+    mocks.listStoredTutorials.mockResolvedValue([
+      tutorial("later-failure", "2026-08-08T09:00:00.000Z", {
+        phase: "analyzing",
+        batches: [
+          batch(1, 1, 10, "pending"),
+          batch(2, 11, 20, "pending"),
+          batch(3, 21, 30, "pending"),
+        ],
+      }),
+    ]);
+    mocks.generateDocumentBatch.mockImplementation(async (...args: unknown[]) => {
+      if (args[4] === 3) {
+        await waitFor(() =>
+          mocks.updateStoredTutorial.mock.calls.some(
+            ([, updates]) => updates.publishedBatchCount === 2,
+          ),
+        );
+        throw new Error("later batch failed");
+      }
+
+      return { batch_index: args[4] };
+    });
+
+    await runTutorialQueue();
+
+    expect(
+      mocks.updateStoredTutorial.mock.calls
+        .filter(([, updates]) => "publishedBatchCount" in updates)
+        .map(([, updates]) => updates.publishedBatchCount),
+    ).toEqual([2]);
+    expect(mocks.updateStoredTutorial).toHaveBeenLastCalledWith(
+      expect.objectContaining({ publishedBatchCount: 2 }),
+      expect.objectContaining({ status: "failed" }),
     );
   });
 

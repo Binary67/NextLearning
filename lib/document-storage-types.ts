@@ -13,6 +13,7 @@ export type StoredTutorial = {
   createdAt: string;
   updatedAt: string;
   sourcePageCount: number;
+  publishedBatchCount: number | null;
   status: TutorialStatus;
   error: string | null;
   preparation: DocumentPreparation;

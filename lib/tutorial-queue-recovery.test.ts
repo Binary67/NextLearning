@@ -16,9 +16,11 @@ const mocks = vi.hoisted(() => ({
   listStoredTutorials: vi.fn(),
   markTutorialPrepared: vi.fn(),
   openPdfBatchReader: vi.fn(),
+  readDocumentEmbeddingBatch: vi.fn(),
   readBatch: vi.fn(),
   readDocumentFile: vi.fn(),
   readGeneratedDocumentBatch: vi.fn(),
+  readPublishedDocumentModel: vi.fn(),
   retryAzureOpenAIRateLimits: vi.fn(),
   updateStoredTutorial: vi.fn(),
   writeDocumentEmbeddingBatch: vi.fn(),
@@ -43,7 +45,9 @@ vi.mock("@/lib/document-consolidation", () => ({
 vi.mock("@/lib/document-artifact-storage", () => ({
   documentFilePath: (tutorialId: string) => `/documents/${tutorialId}.pdf`,
   readDocumentFile: mocks.readDocumentFile,
+  readDocumentEmbeddingBatch: mocks.readDocumentEmbeddingBatch,
   readGeneratedDocumentBatch: mocks.readGeneratedDocumentBatch,
+  readPublishedDocumentModel: mocks.readPublishedDocumentModel,
   writeDocumentEmbeddingBatch: mocks.writeDocumentEmbeddingBatch,
   writeDocumentModel: mocks.writeDocumentModel,
   writeGeneratedDocumentBatch: mocks.writeGeneratedDocumentBatch,
@@ -153,13 +157,15 @@ describe("tutorial queue recovery", () => {
     expect(mocks.generateDocumentBatch.mock.calls.map((call) => call[4])).toEqual([
       2,
     ]);
-    expect(preparationWrites).toHaveLength(3);
-    expect(preparationWrites[0].batches).toEqual([
+    expect(preparationWrites).toHaveLength(5);
+    expect(preparationWrites[2].batches).toEqual([
       batch(1, 1, 10, "complete"),
       batch(2, 11, 20, "complete"),
     ]);
-    expect(preparationWrites[0].phase).toBe("consolidating");
-    expect(preparationWrites.slice(1).map((value) => value.phase)).toEqual([
+    expect(preparationWrites.map((value) => value.phase)).toEqual([
+      "analyzing",
+      "analyzing",
+      "consolidating",
       "embedding",
       "complete",
     ]);

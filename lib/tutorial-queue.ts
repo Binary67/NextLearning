@@ -3,12 +3,18 @@ import {
   retryAzureOpenAIRateLimits,
 } from "@/lib/azure-openai-generation-retry";
 import { generateDocumentEmbeddingBatches } from "@/lib/document-embedding-generation";
-import type { DocumentPreparation } from "@/lib/document-batches";
+import {
+  getContiguousCompletedBatchCount,
+  type DocumentPreparation,
+} from "@/lib/document-batches";
 import { consolidateDocumentBatches } from "@/lib/document-consolidation";
+import type { DocumentModel } from "@/lib/document-model";
 import {
   documentFilePath,
+  readDocumentEmbeddingBatch,
   readDocumentFile,
   readGeneratedDocumentBatch,
+  readPublishedDocumentModel,
   writeDocumentEmbeddingBatch,
   writeDocumentModel,
   writeGeneratedDocumentBatch,
@@ -27,6 +33,22 @@ type TutorialQueueState = {
   drainRequested: boolean;
   recovered: boolean;
 };
+
+type TutorialUpdates = Partial<
+  Pick<
+    StoredTutorial,
+    "error" | "preparation" | "publishedBatchCount" | "status" | "title"
+  >
+>;
+
+type UpdateTutorial = (
+  updates: TutorialUpdates,
+) => Promise<StoredTutorial>;
+
+type PublishPrefix = (
+  tutorial: StoredTutorial,
+  publishedBatchCount: number,
+) => Promise<StoredTutorial>;
 
 const queueGlobal = globalThis as typeof globalThis & {
   nextLearningTutorialQueue?: TutorialQueueState;
@@ -103,67 +125,87 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
     status: "processing",
     error: null,
   });
+  let pendingMetadataUpdate: Promise<unknown> = Promise.resolve();
   let stage = "reading the source document";
+
+  const updateTutorial: UpdateTutorial = (updates) => {
+    const queuedUpdates = updates.preparation
+      ? {
+          ...updates,
+          preparation: copyPreparation(updates.preparation),
+        }
+      : updates;
+    const nextUpdate = pendingMetadataUpdate.then(async () => {
+      tutorial = await updateStoredTutorial(tutorial, queuedUpdates);
+      return tutorial;
+    });
+
+    pendingMetadataUpdate = nextUpdate.catch(() => {});
+    return nextUpdate;
+  };
 
   try {
     const preparation = resetInterruptedBatch(tutorial.preparation);
 
     stage = "document batch analysis";
-    tutorial = await analyzeDocumentBatches(tutorial, preparation);
+    let latestModel: DocumentModel | null = null;
+    const publishPrefix: PublishPrefix = async (
+      currentTutorial,
+      publishedBatchCount,
+    ) => {
+      const published = await publishDocumentPrefix(
+        currentTutorial,
+        publishedBatchCount,
+        updateTutorial,
+      );
+      latestModel = published.model;
+      return published.tutorial;
+    };
+
+    tutorial = await analyzeDocumentBatches(
+      tutorial,
+      preparation,
+      updateTutorial,
+      publishPrefix,
+    );
 
     stage = "document consolidation";
-    const batchRanges = [...preparation.batches].sort(
-      (left, right) => left.batch_index - right.batch_index,
-    );
-    const generatedBatches = await Promise.all(
-      batchRanges.map((batch) =>
-        readGeneratedDocumentBatch(tutorial.id, batch.batch_index, {
-          documentId: tutorial.id,
-          sourcePageCount: tutorial.sourcePageCount,
-          batchIndex: batch.batch_index,
-          startPage: batch.start_page,
-          endPage: batch.end_page,
-        }),
-      ),
-    );
+    tutorial = await updateTutorial({
+      preparation: {
+        ...tutorial.preparation,
+        phase: "embedding",
+      },
+    });
 
-    if (generatedBatches.some((batch) => batch === null)) {
-      throw new Error("A generated document batch is missing.");
+    const publishedBatchCount = tutorial.preparation.batches.length;
+
+    if (tutorial.publishedBatchCount !== publishedBatchCount) {
+      tutorial = await publishPrefix(tutorial, publishedBatchCount);
     }
-
-    const model = await consolidateDocumentBatches(
-      await readDocumentFile(tutorial.id),
-      tutorial.id,
-      tutorial.sourcePageCount,
-      generatedBatches.filter((batch) => batch !== null),
-    );
-    await writeDocumentModel(tutorial.id, model);
 
     stage = "embedding generation";
-    preparation.phase = "embedding";
-    tutorial = await updateStoredTutorial(tutorial, { preparation });
-
-    const embeddingBatches = await generateDocumentEmbeddingBatches(
-      model,
-      batchRanges,
+    latestModel ??= await readPublishedDocumentModel(
+      tutorial.id,
+      publishedBatchCount,
     );
-    for (const { batch_index, embeddings } of embeddingBatches) {
-      await writeDocumentEmbeddingBatch(
-        tutorial.id,
-        batch_index,
-        embeddings,
-      );
+
+    if (!latestModel) {
+      throw new Error("The published document model is missing.");
     }
 
-    preparation.phase = "complete";
-    tutorial = await updateStoredTutorial(tutorial, { preparation });
-    await markTutorialPrepared(tutorial, model.title);
+    tutorial = await updateTutorial({
+      preparation: {
+        ...tutorial.preparation,
+        phase: "complete",
+      },
+    });
+    await markTutorialPrepared(tutorial, latestModel.title);
   } catch (error) {
     console.error(
       `Document ${tutorial.id} preparation failed during ${stage}:`,
       error,
     );
-    await updateStoredTutorial(tutorial, {
+    await updateTutorial({
       status: "failed",
       error: getPreparationFailureMessage(error),
     });
@@ -173,14 +215,17 @@ async function prepareTutorial(queuedTutorial: StoredTutorial) {
 async function analyzeDocumentBatches(
   initialTutorial: StoredTutorial,
   preparation: DocumentPreparation,
+  updateTutorial: UpdateTutorial,
+  publishPrefix: PublishPrefix,
 ) {
   let tutorial = initialTutorial;
+  let currentPreparation = preparation;
   let nextBatchIndex = 0;
   const workerState: { failure: { error: unknown } | null } = {
     failure: null,
   };
   const reconciledBatches = await Promise.all(
-    preparation.batches.map(async (batch) => ({
+    currentPreparation.batches.map(async (batch) => ({
       ...batch,
       status:
         (await readGeneratedDocumentBatch(
@@ -192,20 +237,48 @@ async function analyzeDocumentBatches(
           : ("complete" as const),
     })),
   );
-  preparation.batches = reconciledBatches;
-  preparation.phase = "analyzing";
+  currentPreparation = {
+    ...currentPreparation,
+    phase: "analyzing",
+    batches: reconciledBatches,
+  };
+  tutorial = await updateTutorial({ preparation: currentPreparation });
 
-  const pendingBatches = preparation.batches.filter(
-    (batch) => batch.status === "pending",
-  );
+  const pendingBatches = [...currentPreparation.batches]
+    .filter((batch) => batch.status === "pending")
+    .sort((left, right) => left.batch_index - right.batch_index);
+
+  async function publishCompletedPrefix() {
+    const contiguousCompletedCount = getContiguousCompletedBatchCount(
+      currentPreparation.batches,
+    );
+    const minimumPublishedBatchCount = Math.min(
+      2,
+      currentPreparation.batches.length,
+    );
+
+    if (
+      contiguousCompletedCount < minimumPublishedBatchCount ||
+      contiguousCompletedCount <= (tutorial.publishedBatchCount ?? 0)
+    ) {
+      return;
+    }
+
+    tutorial = await publishPrefix(tutorial, contiguousCompletedCount);
+  }
 
   if (pendingBatches.length === 0) {
-    preparation.batches = preparation.batches.map((batch) => ({
-      ...batch,
-      status: "complete" as const,
-    }));
-    preparation.phase = "consolidating";
-    return updateStoredTutorial(tutorial, { preparation });
+    currentPreparation = {
+      ...currentPreparation,
+      batches: currentPreparation.batches.map((batch) => ({
+        ...batch,
+        status: "complete" as const,
+      })),
+      phase: "consolidating",
+    };
+    tutorial = await updateTutorial({ preparation: currentPreparation });
+    await publishCompletedPrefix();
+    return tutorial;
   }
 
   const reader = await openPdfBatchReader(
@@ -213,6 +286,38 @@ async function analyzeDocumentBatches(
     tutorial.sourcePageCount,
     pendingBatches,
   );
+
+  let completionQueue: Promise<void> = Promise.resolve();
+  let completionFailure: unknown = null;
+
+  async function completeBatch(
+    batch: DocumentPreparation["batches"][number],
+  ) {
+    if (completionFailure !== null) {
+      throw completionFailure;
+    }
+
+    currentPreparation = {
+      ...currentPreparation,
+      batches: currentPreparation.batches.map((currentBatch) =>
+        currentBatch.batch_index === batch.batch_index
+          ? { ...currentBatch, status: "complete" as const }
+          : currentBatch,
+      ),
+    };
+    tutorial = await updateTutorial({ preparation: currentPreparation });
+    await publishCompletedPrefix();
+  }
+
+  function recordBatchCompletion(
+    batch: DocumentPreparation["batches"][number],
+  ) {
+    const completion = completionQueue.then(() => completeBatch(batch));
+
+    completionQueue = completion.catch((error) => {
+      completionFailure ??= error;
+    });
+  }
 
   async function processBatch(
     batch: DocumentPreparation["batches"][number],
@@ -232,6 +337,7 @@ async function analyzeDocumentBatches(
       ),
     );
     await writeGeneratedDocumentBatch(tutorial.id, generatedBatch);
+    recordBatchCompletion(batch);
   }
 
   async function runWorker() {
@@ -259,12 +365,17 @@ async function analyzeDocumentBatches(
       ),
     );
 
+    await completionQueue;
+
     if (workerState.failure !== null) {
       throw workerState.failure.error;
     }
+    if (completionFailure !== null) {
+      throw completionFailure;
+    }
 
     const verifiedBatches = await Promise.all(
-      preparation.batches.map((batch) =>
+      currentPreparation.batches.map((batch) =>
         readGeneratedDocumentBatch(
           tutorial.id,
           batch.batch_index,
@@ -276,16 +387,101 @@ async function analyzeDocumentBatches(
       throw new Error("A generated document batch is missing.");
     }
 
-    preparation.batches = preparation.batches.map((batch) => ({
-      ...batch,
-      status: "complete" as const,
-    }));
-    preparation.phase = "consolidating";
-    tutorial = await updateStoredTutorial(tutorial, { preparation });
+    currentPreparation = {
+      ...currentPreparation,
+      batches: currentPreparation.batches.map((batch) => ({
+        ...batch,
+        status: "complete" as const,
+      })),
+      phase: "consolidating",
+    };
+    tutorial = await updateTutorial({ preparation: currentPreparation });
+    await publishCompletedPrefix();
     return tutorial;
   } finally {
     await reader.close();
   }
+}
+
+async function publishDocumentPrefix(
+  tutorial: StoredTutorial,
+  publishedBatchCount: number,
+  updateTutorial: UpdateTutorial,
+) {
+  const currentPublishedBatchCount = tutorial.publishedBatchCount ?? 0;
+
+  if (publishedBatchCount <= currentPublishedBatchCount) {
+    throw new Error("The document prefix is already published.");
+  }
+
+  const batchRanges = [...tutorial.preparation.batches]
+    .sort((left, right) => left.batch_index - right.batch_index)
+    .slice(0, publishedBatchCount);
+  const generatedBatches = await Promise.all(
+    batchRanges.map((batch) =>
+      readGeneratedDocumentBatch(
+        tutorial.id,
+        batch.batch_index,
+        getBatchValidationContext(tutorial, batch),
+      ),
+    ),
+  );
+
+  if (generatedBatches.some((batch) => batch === null)) {
+    throw new Error("A generated document batch is missing.");
+  }
+
+  const model = await consolidateDocumentBatches(
+    await readDocumentFile(tutorial.id),
+    tutorial.id,
+    batchRanges.at(-1)?.end_page ?? tutorial.sourcePageCount,
+    generatedBatches.filter((batch) => batch !== null),
+  );
+  await writeDocumentModel(tutorial.id, publishedBatchCount, model);
+
+  const embeddingStatuses = await Promise.all(
+    batchRanges.map(async (batch) => ({
+      batch,
+      embeddings: await readDocumentEmbeddingBatch(
+        tutorial.id,
+        batch.batch_index,
+      ),
+    })),
+  );
+  const missingEmbeddingRanges = embeddingStatuses
+    .filter(({ embeddings }) => embeddings === null)
+    .map(({ batch }) => batch);
+
+  if (missingEmbeddingRanges.length > 0) {
+    const embeddingBatches = await generateDocumentEmbeddingBatches(
+      model,
+      missingEmbeddingRanges,
+    );
+
+    for (const { batch_index, embeddings } of embeddingBatches) {
+      await writeDocumentEmbeddingBatch(
+        tutorial.id,
+        batch_index,
+        embeddings,
+      );
+    }
+  }
+
+  const persistedEmbeddings = await Promise.all(
+    batchRanges.map(({ batch_index }) =>
+      readDocumentEmbeddingBatch(tutorial.id, batch_index),
+    ),
+  );
+
+  if (persistedEmbeddings.some((embeddings) => embeddings === null)) {
+    throw new Error("A document embedding batch is missing.");
+  }
+
+  const updatedTutorial = await updateTutorial({
+    publishedBatchCount,
+  });
+
+  return { model, tutorial: updatedTutorial };
 }
 
 function getBatchValidationContext(
@@ -313,6 +509,15 @@ function resetInterruptedBatch(
           ? ("pending" as const)
           : batch.status,
     })),
+  };
+}
+
+function copyPreparation(
+  preparation: DocumentPreparation,
+): DocumentPreparation {
+  return {
+    ...preparation,
+    batches: preparation.batches.map((batch) => ({ ...batch })),
   };
 }
 

@@ -55,3 +55,25 @@ export function createDocumentPreparation(
     batches,
   };
 }
+
+export function getContiguousCompletedBatchCount(
+  batches: readonly DocumentPreparation["batches"][number][],
+) {
+  const orderedBatches = [...batches].sort(
+    (left, right) => left.batch_index - right.batch_index,
+  );
+  let completedCount = 0;
+
+  for (const batch of orderedBatches) {
+    if (
+      batch.batch_index !== completedCount + 1 ||
+      batch.status !== "complete"
+    ) {
+      break;
+    }
+
+    completedCount += 1;
+  }
+
+  return completedCount;
+}

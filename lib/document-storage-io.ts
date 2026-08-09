@@ -54,6 +54,37 @@ export async function writeJsonFileAtomically(
   }
 }
 
+export async function writeImmutableJsonFile(
+  filePath: string,
+  value: unknown,
+) {
+  const serialized = JSON.stringify(value, null, 2);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+
+  try {
+    await fs.writeFile(temporaryPath, serialized);
+
+    try {
+      await fs.link(temporaryPath, filePath);
+    } catch (error) {
+      if (!isExistingFileError(error)) {
+        throw error;
+      }
+
+      const existing = await fs.readFile(filePath, "utf8");
+
+      if (existing !== serialized) {
+        throw new Error(
+          `The published document model already exists: ${filePath}`,
+        );
+      }
+    }
+  } finally {
+    await fs.rm(temporaryPath, { force: true }).catch(() => {});
+  }
+}
+
 export async function readJsonFile<T>(filePath: string): Promise<T | null> {
   try {
     const contents = await fs.readFile(filePath, "utf8");
@@ -72,5 +103,13 @@ export function isMissingFileError(error: unknown) {
     error instanceof Error &&
     "code" in error &&
     (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
+function isExistingFileError(error: unknown) {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "EEXIST"
   );
 }

@@ -429,6 +429,7 @@ function tutorial(id: string, updatedAt: string): StoredTutorial {
     createdAt: "2026-08-05T09:00:00.000Z",
     updatedAt,
     sourcePageCount: 1,
+    publishedBatchCount: null,
     status: "ready",
     error: null,
     preparation: {

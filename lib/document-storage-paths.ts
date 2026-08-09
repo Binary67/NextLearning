@@ -11,6 +11,7 @@ export const documentModelFileName = "document.json";
 export const progressFileName = "progress.json";
 export const generatedBatchesDirectoryName = "generated-batches";
 export const embeddingsDirectoryName = "embeddings";
+export const publishedDocumentModelsDirectoryName = "published-models";
 
 export function tutorialDirectory(tutorialId: string) {
   return path.join(tutorialsDirectory, tutorialId);

@@ -123,6 +123,7 @@ export async function createQueuedTutorial(
     createdAt,
     updatedAt: createdAt,
     sourcePageCount,
+    publishedBatchCount: null,
     status: "queued",
     error: null,
     preparation: createDocumentPreparation(sourcePageCount),
@@ -143,7 +144,11 @@ export async function updateStoredTutorial(
   updates: Partial<
     Pick<
       StoredTutorial,
-      "error" | "preparation" | "status" | "title"
+      | "error"
+      | "preparation"
+      | "publishedBatchCount"
+      | "status"
+      | "title"
     >
   >,
 ) {

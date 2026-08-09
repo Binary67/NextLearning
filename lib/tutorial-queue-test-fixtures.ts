@@ -17,6 +17,7 @@ export function setupTutorialQueueMocks(mocks: Record<string, Mock>) {
   let activeMetadataWrites = 0;
   let maxActiveMetadataWrites = 0;
   const generatedArtifacts = new Map<number, unknown>();
+  const embeddingArtifacts = new Map<number, DocumentEmbeddings>();
 
   mocks.listStoredTutorials.mockResolvedValue([]);
   mocks.retryAzureOpenAIRateLimits.mockImplementation(
@@ -39,6 +40,13 @@ export function setupTutorialQueueMocks(mocks: Record<string, Mock>) {
   mocks.readGeneratedDocumentBatch.mockImplementation(
     (_tutorialId: string, batchIndex: number) =>
       Promise.resolve(generatedArtifacts.get(batchIndex) ?? null),
+  );
+  mocks.readDocumentEmbeddingBatch.mockImplementation(
+    (_tutorialId: string, batchIndex: number) =>
+      Promise.resolve(embeddingArtifacts.get(batchIndex) ?? null),
+  );
+  mocks.readPublishedDocumentModel.mockImplementation(
+    (_tutorialId: string) => Promise.resolve(documentModel(_tutorialId)),
   );
   mocks.consolidateDocumentBatches.mockImplementation(
     (_fileData: Buffer, tutorialId: string) =>
@@ -66,7 +74,16 @@ export function setupTutorialQueueMocks(mocks: Record<string, Mock>) {
         })),
       ),
   );
-  mocks.writeDocumentEmbeddingBatch.mockResolvedValue(undefined);
+  mocks.writeDocumentEmbeddingBatch.mockImplementation(
+    (
+      _tutorialId: string,
+      batchIndex: number,
+      batchEmbeddings: DocumentEmbeddings,
+    ) => {
+      embeddingArtifacts.set(batchIndex, batchEmbeddings);
+      return Promise.resolve();
+    },
+  );
   mocks.writeDocumentModel.mockResolvedValue(undefined);
   mocks.markTutorialPrepared.mockImplementation(() => {
     events.push("prepared");
@@ -124,6 +141,7 @@ export function tutorial(
     sourcePageCount: Math.max(
       ...preparation.batches.map(({ end_page }) => end_page),
     ),
+    publishedBatchCount: null,
     status: "queued",
     error: null,
     preparation,

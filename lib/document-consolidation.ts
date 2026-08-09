@@ -18,6 +18,8 @@ export async function consolidateDocumentBatches(
   const orderedBatches = [...generatedBatches].sort(
     (left, right) => left.batch_index - right.batch_index,
   );
+  const publishedPageCount =
+    orderedBatches.at(-1)?.end_page ?? pageCount;
   const canonicalConcepts = new Map<string, DocumentConcept>();
   const conceptIdsByBatch = new Map<number, Map<string, string>>();
   const usedConceptIds = new Map<string, string>();
@@ -79,7 +81,7 @@ export async function consolidateDocumentBatches(
     schema_version: orderedBatches[0].schema_version,
     document_id: documentId,
     title: orderedBatches[0].title,
-    page_count: pageCount,
+    page_count: publishedPageCount,
     pages,
     concepts: [...canonicalConcepts.values()],
     connections,
