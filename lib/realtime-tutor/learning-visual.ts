@@ -29,9 +29,10 @@ export async function createLearningVisual(
 export async function createLearnerRequestedLearningVisual(
   runtime: RealtimeTutorRuntime,
   pageIndex: number,
+  chunkId: string | null = null,
 ) {
   await requestLearningVisual(runtime, async () => ({
-    ...(await buildLearningVisualPageContext(runtime, pageIndex)),
+    ...(await buildLearningVisualPageContext(runtime, pageIndex, chunkId)),
     request: { origin: "learner" },
   }));
 }

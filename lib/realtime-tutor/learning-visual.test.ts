@@ -202,6 +202,25 @@ describe("create_learning_visual tool", () => {
     );
   });
 
+  it("grounds a guided learner visual to the requested active chunk", async () => {
+    const runtime = createRuntime();
+    vi.mocked(renderPdfPageImage).mockResolvedValue({
+      imageUrl: "data:image/jpeg;base64,page-image",
+      width: 1400,
+      height: 1800,
+    });
+    vi.mocked(fetch).mockResolvedValue(response(true, visual));
+
+    await createLearnerRequestedLearningVisual(runtime, 2, "chunk-2");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/tutorials/tutorial-1/learning-visuals",
+      expect.objectContaining({
+        body: expect.stringContaining('"chunkId":"chunk-2"'),
+      }),
+    );
+  });
+
   it("replaces the previous visual with the next request", async () => {
     const runtime = createRuntime();
     const nextVisual = { ...visual, id: "visual-2", title: "Key matching" };

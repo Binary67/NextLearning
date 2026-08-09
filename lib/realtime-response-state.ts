@@ -1,7 +1,8 @@
 export type TutorResponseKind =
   | "guided_segment"
   | "learning_prompt"
-  | "learner_question";
+  | "learner_question"
+  | "technical_lesson_action";
 
 type LogicalResponse = {
   id: string;

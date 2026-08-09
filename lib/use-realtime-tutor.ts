@@ -19,6 +19,7 @@ import {
   endSession,
   resetSession,
 } from "@/lib/realtime-tutor/lifecycle";
+import { requestTechnicalLessonAction as requestLessonAction } from "@/lib/realtime-tutor/lesson-actions";
 import {
   createLearnerRequestedLearningVisual,
 } from "@/lib/realtime-tutor/learning-visual";
@@ -32,6 +33,7 @@ import {
 import type {
   GuidedTutorMode,
   RealtimeTutorOptions,
+  TechnicalLessonAction,
   TutorSessionMode,
 } from "@/lib/realtime-tutor/types";
 
@@ -41,6 +43,7 @@ export type {
   GuidedTutorMode,
   LearningVisualState,
   RealtimeTutorStatus,
+  TechnicalLessonAction,
 } from "@/lib/realtime-tutor/types";
 
 export function useRealtimeTutor(options: RealtimeTutorOptions) {
@@ -128,6 +131,19 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     );
   }
 
+  function requestTechnicalLessonAction(
+    action: TechnicalLessonAction,
+    pageIndex: number,
+  ): Promise<boolean> {
+    return requestLessonAction(
+      runtime,
+      status,
+      isSubmittingUserTurn,
+      action,
+      pageIndex,
+    );
+  }
+
   function toggleUserTurn() {
     return toggleLearnerTurn(
       runtime,
@@ -186,6 +202,7 @@ export function useRealtimeTutor(options: RealtimeTutorOptions) {
     startReview,
     explainPage,
     continueGuided,
+    requestTechnicalLessonAction,
     toggleUserTurn,
     replayTutorAudio,
     selectAudioInputDevice,
