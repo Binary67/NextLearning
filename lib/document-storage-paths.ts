@@ -7,7 +7,6 @@ export const tutorialsDirectory = path.join(
 );
 export const tutorialMetadataFileName = "tutorial.json";
 export const documentFileName = "source.pdf";
-export const documentModelFileName = "document.json";
 export const progressFileName = "progress.json";
 export const generatedBatchesDirectoryName = "generated-batches";
 export const embeddingsDirectoryName = "embeddings";
