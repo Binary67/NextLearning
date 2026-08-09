@@ -14,7 +14,7 @@ import {
   validateGeneratedDocumentBatch,
 } from "@/lib/document-model";
 import type { GeneratedDocumentBatch } from "@/lib/document-batches";
-import { addDocumentHighlightBounds } from "@/lib/document-highlights";
+import { addDocumentHighlightBounds } from "@/lib/document-highlight-orchestration";
 
 const DOCUMENT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -183,4 +183,3 @@ Connection rules:
 
 Do not create learner prompts, assessments, progress, timing, or realtime behavior.`;
 }
-

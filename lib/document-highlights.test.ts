@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   addDocumentHighlightBounds,
   findDocumentHighlightBounds,
-} from "@/lib/document-highlights";
+} from "@/lib/document-highlight-orchestration";
 import type { GeneratedDocumentModel } from "@/lib/document-model";
 import {
   createPdfTextRegion,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { GeneratedDocumentBatch } from "@/lib/document-batches";
-import { addDocumentHighlightBounds } from "@/lib/document-highlights";
+import { addDocumentHighlightBounds } from "@/lib/document-highlight-orchestration";
 import {
   type DocumentConcept,
   type DocumentConnection,

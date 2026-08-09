@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { addDocumentHighlightBounds } from "@/lib/document-highlights";
+import { addDocumentHighlightBounds } from "@/lib/document-highlight-orchestration";
 import type { GeneratedDocumentModel } from "@/lib/document-model";
 
 describe("PDF source grounding fixture", () => {
