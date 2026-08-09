@@ -2,13 +2,11 @@ import { promises as fs } from "node:fs";
 
 import { createDocumentPreparation } from "@/lib/document-batches";
 import {
-  copyFileAtomically,
   isMissingFileError,
   readJsonFile,
   writeJsonFileAtomically,
 } from "@/lib/document-storage-io";
 import {
-  documentFileName,
   tutorialDirectory,
   tutorialFilePath,
   tutorialMetadataFileName,
@@ -111,7 +109,6 @@ export async function deleteStoredTutorial(tutorialId: string) {
 
 export async function createQueuedTutorial(
   documentName: string,
-  sourceFilePath: string,
   tutorialId: string,
   sourcePageCount: number,
 ): Promise<StoredTutorial> {
@@ -129,11 +126,6 @@ export async function createQueuedTutorial(
     preparation: createDocumentPreparation(sourcePageCount),
   };
 
-  await fs.mkdir(tutorialDirectory(tutorialId), { recursive: true });
-  await copyFileAtomically(
-    sourceFilePath,
-    tutorialFilePath(tutorialId, documentFileName),
-  );
   await writeStoredTutorial(tutorial);
 
   return tutorial;

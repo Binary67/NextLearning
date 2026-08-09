@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { createWriteStream, promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { after } from "next/server";
 
 import { MAX_DOCUMENT_SIZE } from "@/lib/document-artifact-storage";
+import type { StoredTutorial } from "@/lib/document-storage-types";
+import {
+  documentFileName,
+  tutorialDirectory,
+  tutorialFilePath,
+} from "@/lib/document-storage-paths";
 import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
   isContentLengthOverLimit,
@@ -79,17 +84,16 @@ export async function POST(request: Request) {
   }
 
   const tutorialId = randomUUID();
-  const uploadDirectory = await fs.mkdtemp(
-    path.join(tmpdir(), "nextlearning-upload-"),
-  );
-  const uploadPath = path.join(uploadDirectory, "source.pdf");
+  const tutorialDir = tutorialDirectory(tutorialId);
+  const filePath = tutorialFilePath(tutorialId, documentFileName);
   let sourcePageCount: number;
 
   try {
-    await streamUploadToFile(request.body, uploadPath);
-    sourcePageCount = await readPdfPageCount(uploadPath);
+    await fs.mkdir(tutorialDir, { recursive: true });
+    await streamUploadToFile(request.body, filePath);
+    sourcePageCount = await readPdfPageCount(filePath);
   } catch (error) {
-    await fs.rm(uploadDirectory, { force: true, recursive: true });
+    await fs.rm(tutorialDir, { force: true, recursive: true });
 
     if (error instanceof DocumentTooLargeError) {
       return Response.json(
@@ -105,17 +109,17 @@ export async function POST(request: Request) {
     );
   }
 
-  let tutorial: Awaited<ReturnType<typeof createQueuedTutorial>>;
+  let tutorial: StoredTutorial;
 
   try {
     tutorial = await createQueuedTutorial(
       documentName,
-      uploadPath,
       tutorialId,
       sourcePageCount,
     );
-  } finally {
-    await fs.rm(uploadDirectory, { force: true, recursive: true });
+  } catch (error) {
+    await fs.rm(tutorialDir, { force: true, recursive: true });
+    throw error;
   }
 
   after(runTutorialQueue);

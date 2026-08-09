@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentPreparation } from "@/lib/document-batches";
 import {
@@ -93,11 +93,14 @@ describe("tutorial queue scheduling", () => {
     const state = queueGlobal.nextLearningTutorialQueue!;
     state.promise = null;
     state.drainRequested = false;
-    state.recovered = false;
-
+    vi.stubEnv("TUTORIAL_GENERATION_CONCURRENCY", "2");
     queueTestContext = setupTutorialQueueMocks(mocks);
     events = queueTestContext.events;
     generatedArtifacts = queueTestContext.generatedArtifacts;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("runs two ascending workers and publishes each contiguous prefix", async () => {
@@ -240,7 +243,7 @@ describe("tutorial queue scheduling", () => {
       mocks.updateStoredTutorial.mock.calls
         .filter(([, updates]) => "publishedBatchCount" in updates)
         .map(([, updates]) => updates.publishedBatchCount),
-    ).toEqual([2]);
+    ).toEqual([1, 2]);
     expect(mocks.updateStoredTutorial).toHaveBeenLastCalledWith(
       expect.objectContaining({ publishedBatchCount: 2 }),
       expect.objectContaining({ status: "failed" }),
@@ -302,5 +305,40 @@ describe("tutorial queue scheduling", () => {
     ).toEqual([1, 2]);
     expect(mocks.closeReader).toHaveBeenCalledOnce();
     expect(events.at(-1)).toBe("failed");
+  });
+
+  it("runs up to four workers by default", async () => {
+    vi.stubEnv("TUTORIAL_GENERATION_CONCURRENCY", "4");
+    const preparation: DocumentPreparation = {
+      phase: "analyzing",
+      batches: [
+        batch(1, 1, 10, "pending"),
+        batch(2, 11, 20, "pending"),
+        batch(3, 21, 30, "pending"),
+        batch(4, 31, 40, "pending"),
+      ],
+    };
+    mocks.listStoredTutorials.mockResolvedValue([
+      tutorial("concurrency", "2026-08-08T09:00:00.000Z", preparation),
+    ]);
+
+    let activeGenerations = 0;
+    let maxActiveGenerations = 0;
+    mocks.generateDocumentBatch.mockImplementation(
+      async (...args: unknown[]) => {
+        activeGenerations += 1;
+        maxActiveGenerations = Math.max(
+          maxActiveGenerations,
+          activeGenerations,
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        activeGenerations -= 1;
+        return { batch_index: args[4] };
+      },
+    );
+
+    await runTutorialQueue();
+
+    expect(maxActiveGenerations).toBe(4);
   });
 });

@@ -5,7 +5,7 @@ import type {
   GeneratedDocumentPage,
 } from "@/lib/document-model";
 
-export const DOCUMENT_BATCH_SIZE = 10;
+export const DOCUMENT_BATCH_SIZE = 5;
 export const DOCUMENT_BATCH_OVERLAP = 1;
 
 export type DocumentBatchRange = {

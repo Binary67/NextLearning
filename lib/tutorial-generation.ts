@@ -2,6 +2,7 @@ import {
   InvalidAzureOpenAIContentError,
   readAzureOpenAIGenerationConfiguration,
   retryAzureOpenAIGeneration,
+  retryAzureOpenAIRateLimits,
 } from "@/lib/azure-openai-generation-retry";
 import {
   type AzureOpenAIResponse,
@@ -34,29 +35,32 @@ export async function generateDocumentBatch(
 ): Promise<GroundedGeneratedDocumentBatch> {
   const encodedFile = fileData.toString("base64");
   const textRegionsByPage = await extractPdfTextRegions(fileData);
+  const content = [
+    {
+      type: "input_file",
+      filename: fileName,
+      file_data: `data:application/pdf;base64,${encodedFile}`,
+      detail:
+        process.env.DOCUMENT_VISION_DETAIL === "high" ? "high" : "low",
+    },
+    {
+      type: "input_text",
+      text: buildDocumentBatchPrompt(
+        documentId,
+        sourcePageCount,
+        startPage,
+        endPage,
+        inputStartPage,
+        inputEndPage,
+        buildDocumentPageText(textRegionsByPage, inputStartPage),
+      ),
+    },
+  ];
 
   return retryAzureOpenAIGeneration(async () => {
-    const outputText = await requestStructuredGeneration([
-      {
-        type: "input_file",
-        filename: fileName,
-        file_data: `data:application/pdf;base64,${encodedFile}`,
-        detail:
-          process.env.DOCUMENT_VISION_DETAIL === "high" ? "high" : "low",
-      },
-      {
-        type: "input_text",
-        text: buildDocumentBatchPrompt(
-          documentId,
-          sourcePageCount,
-          startPage,
-          endPage,
-          inputStartPage,
-          inputEndPage,
-          buildDocumentPageText(textRegionsByPage, inputStartPage),
-        ),
-      },
-    ]);
+    const outputText = await retryAzureOpenAIRateLimits(() =>
+      requestStructuredGeneration(content),
+    );
 
     try {
       const value = JSON.parse(outputText) as unknown;
@@ -117,7 +121,10 @@ async function requestStructuredGeneration(content: object[]) {
       store: false,
       stream: true,
       reasoning: {
-        effort: "high",
+        effort:
+          process.env.DOCUMENT_REASONING_EFFORT === "high"
+            ? "high"
+            : "low",
       },
       input: [
         {

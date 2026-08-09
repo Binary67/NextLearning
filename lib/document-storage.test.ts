@@ -102,12 +102,12 @@ describe("stored tutorial metadata", () => {
 
   it.each([
     {
-      pageCount: 10,
+      pageCount: 5,
       batches: [
         {
           batch_index: 1,
           start_page: 1,
-          end_page: 10,
+          end_page: 5,
           status: "pending",
         },
       ],
@@ -118,11 +118,17 @@ describe("stored tutorial metadata", () => {
         {
           batch_index: 1,
           start_page: 1,
-          end_page: 10,
+          end_page: 5,
           status: "pending",
         },
         {
           batch_index: 2,
+          start_page: 6,
+          end_page: 10,
+          status: "pending",
+        },
+        {
+          batch_index: 3,
           start_page: 11,
           end_page: 11,
           status: "pending",
@@ -135,17 +141,29 @@ describe("stored tutorial metadata", () => {
         {
           batch_index: 1,
           start_page: 1,
-          end_page: 10,
+          end_page: 5,
           status: "pending",
         },
         {
           batch_index: 2,
-          start_page: 11,
-          end_page: 20,
+          start_page: 6,
+          end_page: 10,
           status: "pending",
         },
         {
           batch_index: 3,
+          start_page: 11,
+          end_page: 15,
+          status: "pending",
+        },
+        {
+          batch_index: 4,
+          start_page: 16,
+          end_page: 20,
+          status: "pending",
+        },
+        {
+          batch_index: 5,
           start_page: 21,
           end_page: 21,
           status: "pending",
@@ -177,7 +195,7 @@ describe("stored tutorial metadata", () => {
         {
           batch_index: 1,
           start_page: 1,
-          end_page: 10,
+          end_page: 5,
           status: "pending",
         },
       ],
@@ -188,12 +206,12 @@ describe("stored tutorial metadata", () => {
         {
           batch_index: 1,
           start_page: 1,
-          end_page: 10,
+          end_page: 5,
           status: "pending",
         },
         {
           batch_index: 2,
-          start_page: 11,
+          start_page: 6,
           end_page: 20,
           status: "pending",
         },

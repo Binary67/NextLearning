@@ -1,6 +1,5 @@
 import {
   MissingAzureOpenAIConfigurationError,
-  retryAzureOpenAIRateLimits,
 } from "@/lib/azure-openai-generation-retry";
 import { generateDocumentEmbeddingBatches } from "@/lib/document-embedding-generation";
 import {
@@ -26,6 +25,14 @@ import {
 import type { StoredTutorial } from "@/lib/document-storage-types";
 import { openPdfBatchReader } from "@/lib/pdf-document-batches";
 import { generateDocumentBatch } from "@/lib/tutorial-generation";
+
+const DEFAULT_WORKER_COUNT = 4;
+
+function getWorkerCount() {
+  return Number(
+    process.env.TUTORIAL_GENERATION_CONCURRENCY ?? DEFAULT_WORKER_COUNT,
+  );
+}
 
 type TutorialQueueState = {
   promise: Promise<void> | null;
@@ -252,7 +259,7 @@ async function analyzeDocumentBatches(
       currentPreparation.batches,
     );
     const minimumPublishedBatchCount = Math.min(
-      2,
+      1,
       currentPreparation.batches.length,
     );
 
@@ -322,18 +329,16 @@ async function analyzeDocumentBatches(
     batch: DocumentPreparation["batches"][number],
   ) {
     const pdfBatch = await reader.readBatch(batch);
-    const generatedBatch = await retryAzureOpenAIRateLimits(() =>
-      generateDocumentBatch(
-        pdfBatch.fileData,
-        tutorial.documentName,
-        tutorial.id,
-        tutorial.sourcePageCount,
-        batch.batch_index,
-        batch.start_page,
-        batch.end_page,
-        pdfBatch.inputStartPage,
-        pdfBatch.inputEndPage,
-      ),
+    const generatedBatch = await generateDocumentBatch(
+      pdfBatch.fileData,
+      tutorial.documentName,
+      tutorial.id,
+      tutorial.sourcePageCount,
+      batch.batch_index,
+      batch.start_page,
+      batch.end_page,
+      pdfBatch.inputStartPage,
+      pdfBatch.inputEndPage,
     );
     await writeGeneratedDocumentBatch(tutorial.id, generatedBatch);
     recordBatchCompletion(batch);
@@ -359,7 +364,7 @@ async function analyzeDocumentBatches(
   try {
     await Promise.all(
       Array.from(
-        { length: Math.min(2, pendingBatches.length) },
+        { length: Math.min(getWorkerCount(), pendingBatches.length) },
         () => runWorker(),
       ),
     );

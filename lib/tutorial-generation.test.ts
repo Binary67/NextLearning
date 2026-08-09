@@ -166,6 +166,41 @@ describe("generateDocumentBatch", () => {
     await expect(readVisionDetail()).resolves.toBe("high");
   });
 
+  it("defaults the reasoning effort to low and honors the high override", async () => {
+    mockPdfPages(["Page one extracted text."]);
+    const output = createGeneratedBatchOutput(
+      "Page one extracted text.",
+      1,
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => streamedOutput(output));
+    vi.stubGlobal("fetch", fetchMock);
+
+    async function readReasoningEffort() {
+      await generateDocumentBatch(
+        Buffer.from("pdf"),
+        "document.pdf",
+        "document-id",
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+      );
+      const requestBody = JSON.parse(
+        fetchMock.mock.calls.at(-1)?.[1]?.body as string,
+      );
+      return requestBody.reasoning.effort as string;
+    }
+
+    await expect(readReasoningEffort()).resolves.toBe("low");
+
+    vi.stubEnv("DOCUMENT_REASONING_EFFORT", "high");
+    await expect(readReasoningEffort()).resolves.toBe("high");
+  });
+
   it("wraps final grounding failures with precise source details", async () => {
     mockPdfPages(["Grounded source text"]);
     const output = createGeneratedBatchOutput("Invented source text", 1);
