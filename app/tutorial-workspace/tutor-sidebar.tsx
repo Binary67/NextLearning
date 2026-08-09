@@ -2,7 +2,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import type {
   DocumentModel,
@@ -14,6 +14,7 @@ import type {
   GuidedTutorMode,
   RealtimeTutorStatus,
 } from "@/lib/use-realtime-tutor";
+import type { TechnicalLessonAction } from "@/lib/realtime-tutor/types";
 
 import {
   GuidedProgressCard,
@@ -27,6 +28,7 @@ import {
 import type { TutorMode } from "./types";
 import type { RelatedPagesStatus } from "./use-related-pages";
 import { TutorResponseCard } from "./tutor-response-card";
+import { technicalLessonActions } from "./technical-lesson-actions";
 
 export function TutorSidebar({
   modeLabel,
@@ -46,6 +48,7 @@ export function TutorSidebar({
   relatedPagesStatus,
   documentModel,
   guidedProgress,
+  currentPage,
   hasNextPage,
   learnerCanAsk,
   learnerTurnPrompt,
@@ -56,6 +59,7 @@ export function TutorSidebar({
   isSubmittingUserTurn,
   isTutorResponding,
   isTutorSpeaking,
+  learningVisualGenerating,
   canReplayTutorAudio,
   isReplayingTutorAudio,
   currentTutorTranscript,
@@ -67,6 +71,7 @@ export function TutorSidebar({
   onEndSession,
   onReplayAudio,
   onOpenTranscript,
+  requestTechnicalLessonAction,
 }: {
   modeLabel: string;
   tutorMode: TutorMode;
@@ -85,6 +90,7 @@ export function TutorSidebar({
   relatedPagesStatus: RelatedPagesStatus;
   documentModel: DocumentModel | null;
   guidedProgress: GuidedSegmentProgress | null;
+  currentPage: number;
   hasNextPage: boolean;
   learnerCanAsk: boolean;
   learnerTurnPrompt: string;
@@ -95,6 +101,7 @@ export function TutorSidebar({
   isSubmittingUserTurn: boolean;
   isTutorResponding: boolean;
   isTutorSpeaking: boolean;
+  learningVisualGenerating: boolean;
   canReplayTutorAudio: boolean;
   isReplayingTutorAudio: boolean;
   currentTutorTranscript: string;
@@ -106,6 +113,10 @@ export function TutorSidebar({
   onEndSession: () => void;
   onReplayAudio: () => void;
   onOpenTranscript: () => void;
+  requestTechnicalLessonAction: (
+    action: TechnicalLessonAction,
+    pageIndex: number,
+  ) => Promise<boolean>;
 }) {
   const guidedMode = tutorMode === "guided";
   const reviewMode = tutorMode === "review";
@@ -165,6 +176,13 @@ export function TutorSidebar({
         onToggle={onToggleUserTurn}
       />
       {guidedContinueAction}
+      {guidedProgress?.chunkId && !guidedProgress.learningPhase ? (
+        <TechnicalLessonActions
+          pageIndex={currentPage}
+          disabled={guidedTurnBusy || learningVisualGenerating}
+          requestTechnicalLessonAction={requestTechnicalLessonAction}
+        />
+      ) : null}
     </>
   ) : null;
 
@@ -282,6 +300,68 @@ export function TutorSidebar({
         />
       ) : null}
     </aside>
+  );
+}
+
+function TechnicalLessonActions({
+  pageIndex,
+  disabled,
+  requestTechnicalLessonAction,
+}: {
+  pageIndex: number;
+  disabled: boolean;
+  requestTechnicalLessonAction: (
+    action: TechnicalLessonAction,
+    pageIndex: number,
+  ) => Promise<boolean>;
+}) {
+  const [pendingAction, setPendingAction] =
+    useState<TechnicalLessonAction | null>(null);
+  const pendingActionRef = useRef<TechnicalLessonAction | null>(null);
+
+  async function requestAction(action: TechnicalLessonAction) {
+    if (disabled || pendingActionRef.current !== null) {
+      return;
+    }
+
+    pendingActionRef.current = action;
+    setPendingAction(action);
+
+    try {
+      await requestTechnicalLessonAction(action, pageIndex);
+    } finally {
+      pendingActionRef.current = null;
+      setPendingAction(null);
+    }
+  }
+
+  return (
+    <div
+      className="technical-lesson-actions"
+      role="group"
+      aria-labelledby="technical-lesson-actions-label"
+      aria-busy={pendingAction !== null}
+    >
+      <span
+        className="technical-lesson-actions-label"
+        id="technical-lesson-actions-label"
+      >
+        More ways to learn
+      </span>
+      <div className="technical-lesson-action-grid">
+        {technicalLessonActions.map(({ action, label }) => (
+          <button
+            className="secondary-button technical-lesson-action"
+            type="button"
+            key={action}
+            onClick={() => void requestAction(action)}
+            disabled={disabled || pendingAction !== null}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

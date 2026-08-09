@@ -516,6 +516,7 @@ export function TutorialWorkspace({
           relatedPagesStatus={relatedPagesStatus}
           documentModel={initialModel}
           guidedProgress={guidedProgress}
+          currentPage={currentPage}
           hasNextPage={
             (guidedProgress?.pageIndex ?? resumePageIndex) <
             pageCount
@@ -529,6 +530,7 @@ export function TutorialWorkspace({
           isSubmittingUserTurn={realtimeTutor.isSubmittingUserTurn}
           isTutorResponding={realtimeTutor.isTutorResponding}
           isTutorSpeaking={realtimeTutor.isTutorSpeaking}
+          learningVisualGenerating={learningVisualStatus === "generating"}
           canReplayTutorAudio={realtimeTutor.canReplayTutorAudio}
           isReplayingTutorAudio={realtimeTutor.isReplayingTutorAudio}
           currentTutorTranscript={realtimeTutor.currentTutorTranscript}
@@ -540,6 +542,9 @@ export function TutorialWorkspace({
           onEndSession={() => setModal("end-session")}
           onReplayAudio={() => void realtimeTutor.replayTutorAudio()}
           onOpenTranscript={() => setModal("transcript")}
+          requestTechnicalLessonAction={
+            realtimeTutor.requestTechnicalLessonAction
+          }
         />
       </main>
 
