@@ -4,11 +4,15 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { GroundedGeneratedDocumentBatch } from "@/lib/document-batches";
 import type { DocumentModel } from "@/lib/document-model";
 import {
+  hasDocumentEmbeddingBatch,
+  readGeneratedDocumentBatch,
   readPublishedDocumentEmbeddings,
   readPublishedDocumentModel,
   writeDocumentEmbeddingBatch,
+  writeGeneratedDocumentBatch,
   writePublishedDocumentModel,
 } from "@/lib/document-artifact-storage";
 import {
@@ -338,6 +342,108 @@ describe("published document artifacts", () => {
   });
 });
 
+describe("document artifact caches", () => {
+  it("reports whether an embedding batch exists without parsing it", async () => {
+    const tutorialId = randomUUID();
+    createdTutorialIds.push(tutorialId);
+    const embeddingsBatch = {
+      schema_version: 1,
+      document_id: tutorialId,
+      deployment: "embeddings",
+      dimensions: 2,
+      chunks: [{ chunk_id: "chunk:first", embedding: [1, 0] }],
+    };
+
+    await writeDocumentEmbeddingBatch(tutorialId, 1, embeddingsBatch);
+
+    await expect(hasDocumentEmbeddingBatch(tutorialId, 1)).resolves.toBe(
+      true,
+    );
+    await expect(hasDocumentEmbeddingBatch(tutorialId, 2)).resolves.toBe(
+      false,
+    );
+
+    const storageError = Object.assign(new Error("Storage read failed"), {
+      code: "EIO",
+    });
+    vi.spyOn(fs, "access").mockRejectedValue(storageError);
+
+    await expect(hasDocumentEmbeddingBatch(tutorialId, 1)).rejects.toBe(
+      storageError,
+    );
+  });
+
+  it("caches generated batches and invalidates the cache on rewrite", async () => {
+    const tutorialId = randomUUID();
+    createdTutorialIds.push(tutorialId);
+    const context = {
+      documentId: tutorialId,
+      sourcePageCount: 1,
+      batchIndex: 1,
+      startPage: 1,
+      endPage: 1,
+    };
+    const first = groundedBatch(tutorialId, "First title", "First summary");
+    const second = groundedBatch(
+      tutorialId,
+      "Second title",
+      "Second summary",
+    );
+
+    await writeGeneratedDocumentBatch(tutorialId, first);
+    const readFile = vi.spyOn(fs, "readFile");
+
+    await expect(
+      readGeneratedDocumentBatch(tutorialId, 1, context),
+    ).resolves.toEqual(first);
+    await expect(
+      readGeneratedDocumentBatch(tutorialId, 1, context),
+    ).resolves.toEqual(first);
+    expect(readFile).toHaveBeenCalledTimes(1);
+
+    await writeGeneratedDocumentBatch(tutorialId, second);
+
+    await expect(
+      readGeneratedDocumentBatch(tutorialId, 1, context),
+    ).resolves.toEqual(second);
+    expect(readFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates cached published embeddings when a batch is rewritten", async () => {
+    const tutorialId = randomUUID();
+    createdTutorialIds.push(tutorialId);
+    const first = {
+      schema_version: 1,
+      document_id: tutorialId,
+      deployment: "embeddings",
+      dimensions: 2,
+      chunks: [{ chunk_id: "chunk:first", embedding: [1, 0] }],
+    };
+    const second = {
+      ...first,
+      chunks: [{ chunk_id: "chunk:rewritten", embedding: [0, 1] }],
+    };
+
+    await writeDocumentEmbeddingBatch(tutorialId, 1, first);
+    const readFile = vi.spyOn(fs, "readFile");
+
+    await expect(
+      readPublishedDocumentEmbeddings(tutorialId, 1),
+    ).resolves.toEqual(first);
+    await expect(
+      readPublishedDocumentEmbeddings(tutorialId, 1),
+    ).resolves.toEqual(first);
+    expect(readFile).toHaveBeenCalledTimes(1);
+
+    await writeDocumentEmbeddingBatch(tutorialId, 1, second);
+
+    await expect(
+      readPublishedDocumentEmbeddings(tutorialId, 1),
+    ).resolves.toEqual(second);
+    expect(readFile).toHaveBeenCalledTimes(2);
+  });
+});
+
 async function writeTutorialMetadata(
   tutorialId: string,
   value: unknown,
@@ -378,5 +484,62 @@ function validTutorial(tutorialId: string) {
         },
       ],
     },
+  };
+}
+
+function groundedBatch(
+  tutorialId: string,
+  title: string,
+  summary: string,
+): GroundedGeneratedDocumentBatch {
+  return {
+    schema_version: 5,
+    document_id: tutorialId,
+    batch_index: 1,
+    start_page: 1,
+    end_page: 1,
+    title,
+    page_count: 1,
+    pages: [
+      {
+        page_index: 1,
+        page_label: "1",
+        chunks: [
+          {
+            id: "chunk:p1-introduction",
+            section_title: "Section",
+            sources: [
+              {
+                page_index: 1,
+                source_text: "Grounded source text",
+                highlight_bounds: [
+                  { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+                ],
+              },
+            ],
+            title: "Introduction",
+            summary,
+            concept_ids: ["concept:grounding"],
+          },
+        ],
+      },
+    ],
+    concepts: [
+      {
+        id: "concept:grounding",
+        name: "Grounding",
+        definition: "Definition",
+        occurrences: [
+          {
+            page_index: 1,
+            page_label: "1",
+            role: "explained",
+            explicitness: "explicit",
+            confidence: 1,
+          },
+        ],
+      },
+    ],
+    connections: [],
   };
 }

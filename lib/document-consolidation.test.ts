@@ -1,27 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { GeneratedDocumentBatch } from "@/lib/document-batches";
-import type { GeneratedDocumentModel } from "@/lib/document-model";
-
-vi.mock("@/lib/document-highlight-orchestration", () => ({
-  addDocumentHighlightBounds: vi.fn(
-    async (_fileData: Buffer, model: GeneratedDocumentModel) => ({
-      ...model,
-      pages: model.pages.map((page) => ({
-        ...page,
-        chunks: page.chunks.map((chunk) => ({
-          ...chunk,
-          sources: chunk.sources.map((source) => ({
-            ...source,
-            highlight_bounds: [
-              { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
-            ],
-          })),
-        })),
-      })),
-    }),
-  ),
-}));
+import type { GroundedGeneratedDocumentBatch } from "@/lib/document-batches";
 
 import { consolidateDocumentBatches } from "@/lib/document-consolidation";
 
@@ -31,13 +10,11 @@ describe("document consolidation", () => {
     const secondBatch = createBatch(2, 11, 20, "concept:second");
 
     const prefix = await consolidateDocumentBatches(
-      Buffer.from("pdf"),
       "tutorial",
       20,
       [firstBatch],
     );
     const complete = await consolidateDocumentBatches(
-      Buffer.from("pdf"),
       "tutorial",
       20,
       [secondBatch, firstBatch],
@@ -62,7 +39,7 @@ function createBatch(
   startPage: number,
   endPage: number,
   conceptId: string,
-): GeneratedDocumentBatch {
+): GroundedGeneratedDocumentBatch {
   const pages = Array.from(
     { length: endPage - startPage + 1 },
     (_, pageOffset) => {
@@ -79,6 +56,9 @@ function createBatch(
               {
                 page_index: pageIndex,
                 source_text: `Source ${pageIndex}`,
+                highlight_bounds: [
+                  { x: 0.1, y: 0.1, width: 0.2, height: 0.05 },
+                ],
               },
             ],
             title: `Page ${pageIndex}`,

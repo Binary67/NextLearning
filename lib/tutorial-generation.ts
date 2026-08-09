@@ -13,7 +13,7 @@ import {
   type GeneratedDocumentModel,
   validateGeneratedDocumentBatch,
 } from "@/lib/document-model";
-import type { GeneratedDocumentBatch } from "@/lib/document-batches";
+import type { GroundedGeneratedDocumentBatch } from "@/lib/document-batches";
 import { addDocumentHighlightBounds } from "@/lib/document-highlight-orchestration";
 import { extractPdfTextRegions } from "@/lib/document-highlight-geometry";
 import { buildPageText } from "@/lib/document-highlight-tokens";
@@ -31,7 +31,7 @@ export async function generateDocumentBatch(
   endPage: number,
   inputStartPage: number,
   inputEndPage: number,
-): Promise<GeneratedDocumentBatch> {
+): Promise<GroundedGeneratedDocumentBatch> {
   const encodedFile = fileData.toString("base64");
   const textRegionsByPage = await extractPdfTextRegions(fileData);
 
@@ -41,7 +41,8 @@ export async function generateDocumentBatch(
         type: "input_file",
         filename: fileName,
         file_data: `data:application/pdf;base64,${encodedFile}`,
-        detail: "high",
+        detail:
+          process.env.DOCUMENT_VISION_DETAIL === "high" ? "high" : "low",
       },
       {
         type: "input_text",
@@ -66,7 +67,7 @@ export async function generateDocumentBatch(
         startPage,
         endPage,
       });
-      await addDocumentHighlightBounds(
+      const grounded = await addDocumentHighlightBounds(
         fileData,
         {
           ...(value as GeneratedDocumentModel),
@@ -76,7 +77,10 @@ export async function generateDocumentBatch(
         textRegionsByPage,
       );
 
-      return generatedBatch;
+      return {
+        ...generatedBatch,
+        pages: grounded.pages,
+      };
     } catch (error) {
       const reason = error instanceof Error ? ` ${error.message}` : "";
       throw new InvalidAzureOpenAIContentError(

@@ -35,7 +35,10 @@ export {
   validateDocumentModel,
   validateGeneratedDocumentModel,
 } from "@/lib/document-model/validation/document-model";
-export { validateGeneratedDocumentBatch } from "@/lib/document-model/validation/generated-document-batch";
+export {
+  validateGeneratedDocumentBatch,
+  validateGroundedGeneratedDocumentBatch,
+} from "@/lib/document-model/validation/generated-document-batch";
 export type {
   GeneratedDocumentBatchValidationContext,
 } from "@/lib/document-model/validation/generated-document-batch";

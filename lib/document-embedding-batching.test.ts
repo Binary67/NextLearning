@@ -47,7 +47,7 @@ describe("document embedding generation", () => {
     });
   });
 
-  it("does not repeat a successful request when a later batch retries", async () => {
+  it("runs embedding batches concurrently and does not repeat a successful request when a later batch retries", async () => {
     vi.useFakeTimers();
     const baseChunk = model.pages[0].chunks[0];
     const baseSource = baseChunk.sources[0];
@@ -71,6 +71,11 @@ describe("document embedding generation", () => {
       ],
     };
     const requestInputs: string[][] = [];
+    let singleChunkBatchAttempts = 0;
+    let releaseFirstSingleChunkBatch: (() => void) | undefined;
+    const singleChunkBatchGate = new Promise<void>((resolve) => {
+      releaseFirstSingleChunkBatch = resolve;
+    });
     const fetchMock = vi.fn<typeof fetch>((_input, init) => {
       if (typeof init?.body !== "string") {
         throw new Error("Expected an embedding request body.");
@@ -79,9 +84,19 @@ describe("document embedding generation", () => {
       const body = JSON.parse(init.body) as { input: string[] };
       requestInputs.push(body.input);
 
-      if (requestInputs.length === 2) {
+      if (body.input.length === 1) {
+        singleChunkBatchAttempts += 1;
+
+        if (singleChunkBatchAttempts === 1) {
+          return singleChunkBatchGate.then(() =>
+            Promise.resolve(
+              new Response("Service unavailable", { status: 503 }),
+            ),
+          );
+        }
+
         return Promise.resolve(
-          new Response("Service unavailable", { status: 503 }),
+          Response.json({ data: [{ index: 0, embedding: [1, 0] }] }),
         );
       }
 
@@ -97,13 +112,20 @@ describe("document embedding generation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const request = generateDocumentEmbeddings(batchedModel);
-    await vi.advanceTimersByTimeAsync(1000);
-    await request;
 
-    expect(requestInputs).toHaveLength(3);
+    expect(requestInputs).toHaveLength(2);
     expect(requestInputs[0]).toHaveLength(100);
     expect(requestInputs[1]).toHaveLength(1);
+
+    releaseFirstSingleChunkBatch?.();
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await request;
+
+    expect(requestInputs).toHaveLength(3);
     expect(requestInputs[2]).toEqual(requestInputs[1]);
+    expect(result.chunks.map(({ chunk_id }) => chunk_id)).toEqual(
+      Array.from({ length: 101 }, (_, index) => `chunk:${index}`),
+    );
   });
 
   it("keeps generated embedding vectors in input order", async () => {

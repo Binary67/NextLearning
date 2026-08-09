@@ -3,7 +3,9 @@ import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-import type { GeneratedDocumentBatch } from "@/lib/document-batches";
+import type {
+  GroundedGeneratedDocumentBatch,
+} from "@/lib/document-batches";
 import {
   readJsonFile,
   writeBatchFile,
@@ -22,12 +24,33 @@ import {
 import {
   type DocumentModel,
   type GeneratedDocumentBatchValidationContext,
-  validateGeneratedDocumentBatch,
+  validateGroundedGeneratedDocumentBatch,
 } from "@/lib/document-model";
 import { readStoredTutorial } from "@/lib/tutorial-storage";
 import type { DocumentEmbeddings } from "@/lib/document-embedding-types";
+import { LruPromiseCache } from "@/lib/lru-promise-cache";
 
 export const MAX_DOCUMENT_SIZE = 512 * 1024 * 1024;
+
+const generatedBatchCache = new LruPromiseCache<
+  string,
+  GroundedGeneratedDocumentBatch | null
+>(32);
+const publishedEmbeddingsCache = new LruPromiseCache<
+  string,
+  DocumentEmbeddings | null
+>(32);
+
+function generatedBatchCacheKey(tutorialId: string, batchIndex: number) {
+  return `${tutorialId}\0${batchIndex}`;
+}
+
+function publishedEmbeddingsCacheKey(
+  tutorialId: string,
+  publishedBatchCount: number,
+) {
+  return `${tutorialId}\0${publishedBatchCount}`;
+}
 
 export async function readDocumentFile(tutorialId: string) {
   return fs.readFile(tutorialFilePath(tutorialId, documentFileName));
@@ -136,45 +159,50 @@ export async function readDocumentEmbeddings(
   );
 }
 
-export async function readPublishedDocumentEmbeddings(
+export function readPublishedDocumentEmbeddings(
   tutorialId: string,
   publishedBatchCount: number,
 ): Promise<DocumentEmbeddings | null> {
-  if (!isPositiveInteger(publishedBatchCount)) {
-    return null;
-  }
+  return publishedEmbeddingsCache.getOrCreate(
+    publishedEmbeddingsCacheKey(tutorialId, publishedBatchCount),
+    async () => {
+      if (!isPositiveInteger(publishedBatchCount)) {
+        return null;
+      }
 
-  const batches = await Promise.all(
-    Array.from({ length: publishedBatchCount }, (_, index) =>
-      readDocumentEmbeddingBatch(tutorialId, index + 1),
-    ),
+      const batches = await Promise.all(
+        Array.from({ length: publishedBatchCount }, (_, index) =>
+          readDocumentEmbeddingBatch(tutorialId, index + 1),
+        ),
+      );
+
+      if (batches.some((batch) => batch === null)) {
+        return null;
+      }
+
+      const embeddings = batches as DocumentEmbeddings[];
+      const first = embeddings[0];
+
+      if (
+        !first ||
+        embeddings.some(
+          (batch) =>
+            batch.deployment !== first.deployment ||
+            batch.dimensions !== first.dimensions,
+        )
+      ) {
+        return null;
+      }
+
+      return {
+        schema_version: first.schema_version,
+        document_id: tutorialId,
+        deployment: first.deployment,
+        dimensions: first.dimensions,
+        chunks: embeddings.flatMap((batch) => batch.chunks),
+      };
+    },
   );
-
-  if (batches.some((batch) => batch === null)) {
-    return null;
-  }
-
-  const embeddings = batches as DocumentEmbeddings[];
-  const first = embeddings[0];
-
-  if (
-    !first ||
-    embeddings.some(
-      (batch) =>
-        batch.deployment !== first.deployment ||
-        batch.dimensions !== first.dimensions,
-    )
-  ) {
-    return null;
-  }
-
-  return {
-    schema_version: first.schema_version,
-    document_id: tutorialId,
-    deployment: first.deployment,
-    dimensions: first.dimensions,
-    chunks: embeddings.flatMap((batch) => batch.chunks),
-  };
 }
 
 function publishedDocumentModelFilePath(
@@ -192,23 +220,31 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-export async function readGeneratedDocumentBatch(
+export function readGeneratedDocumentBatch(
   tutorialId: string,
   batchIndex: number,
   context: GeneratedDocumentBatchValidationContext,
 ) {
-  const value = await readJsonFile<unknown>(
-    batchFilePath(tutorialId, generatedBatchesDirectoryName, batchIndex),
+  return generatedBatchCache.getOrCreate(
+    generatedBatchCacheKey(tutorialId, batchIndex),
+    async () => {
+      const value = await readJsonFile<unknown>(
+        batchFilePath(tutorialId, generatedBatchesDirectoryName, batchIndex),
+      );
+      return value === null
+        ? null
+        : validateGroundedGeneratedDocumentBatch(value, context);
+    },
   );
-  return value === null
-    ? null
-    : validateGeneratedDocumentBatch(value, context);
 }
 
 export function writeGeneratedDocumentBatch(
   tutorialId: string,
-  batch: GeneratedDocumentBatch,
+  batch: GroundedGeneratedDocumentBatch,
 ) {
+  generatedBatchCache.delete(
+    generatedBatchCacheKey(tutorialId, batch.batch_index),
+  );
   return writeBatchFile(
     tutorialId,
     generatedBatchesDirectoryName,
@@ -231,12 +267,40 @@ export function writeDocumentEmbeddingBatch(
   batchIndex: number,
   embeddings: DocumentEmbeddings,
 ) {
+  let publishedBatchCount = batchIndex;
+
+  while (
+    publishedEmbeddingsCache.delete(
+      publishedEmbeddingsCacheKey(tutorialId, publishedBatchCount),
+    )
+  ) {
+    publishedBatchCount += 1;
+  }
+
   return writeBatchFile(
     tutorialId,
     embeddingsDirectoryName,
     batchIndex,
     embeddings,
   );
+}
+
+export async function hasDocumentEmbeddingBatch(
+  tutorialId: string,
+  batchIndex: number,
+) {
+  try {
+    await fs.access(
+      batchFilePath(tutorialId, embeddingsDirectoryName, batchIndex),
+    );
+    return true;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 export async function hasDocumentEmbeddings(tutorialId: string) {

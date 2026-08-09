@@ -127,7 +127,9 @@ describe("document embedding client", () => {
       const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(response));
       vi.stubGlobal("fetch", fetchMock);
 
-      await expect(requestEmbeddings(["Source text"])).rejects.toThrow();
+      await expect(
+        requestEmbeddings(["Invalid source text"]),
+      ).rejects.toThrow();
       expect(fetchMock).toHaveBeenCalledOnce();
     }
   });
@@ -140,7 +142,10 @@ describe("document embedding client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const request = requestEmbeddings(["Source text"], controller.signal);
+    const request = requestEmbeddings(
+      ["Transient source text"],
+      controller.signal,
+    );
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     controller.abort(cancellation);
 
@@ -171,6 +176,28 @@ describe("document embedding client", () => {
         [0, 1],
       ],
     });
+  });
+
+  it("caches repeated single-input queries so they skip the API", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        Response.json({
+          data: [{ index: 0, embedding: [3, 4] }],
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestEmbeddings(["Repeated query"])).resolves.toEqual({
+      deployment: "embeddings",
+      embeddings: [[0.6, 0.8]],
+    });
+    await expect(requestEmbeddings(["Repeated query"])).resolves.toEqual({
+      deployment: "embeddings",
+      embeddings: [[0.6, 0.8]],
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
 });

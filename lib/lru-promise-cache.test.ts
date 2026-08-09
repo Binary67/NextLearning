@@ -79,4 +79,22 @@ describe("LruPromiseCache", () => {
       cache.getOrCreate("a", () => Promise.resolve("retried")),
     ).resolves.toBe("retried");
   });
+
+  it("deletes an entry and reports whether it was present", async () => {
+    const cache = new LruPromiseCache<string, string>(2);
+
+    await cache.getOrCreate("a", () => Promise.resolve("a"));
+
+    expect(cache.delete("a")).toBe(true);
+    expect(cache.size).toBe(0);
+    expect(cache.delete("a")).toBe(false);
+
+    let recreated = false;
+    await cache.getOrCreate("a", () => {
+      recreated = true;
+      return Promise.resolve("new a");
+    });
+
+    expect(recreated).toBe(true);
+  });
 });

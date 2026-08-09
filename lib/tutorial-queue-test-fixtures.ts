@@ -41,6 +41,10 @@ export function setupTutorialQueueMocks(mocks: Record<string, Mock>) {
     (_tutorialId: string, batchIndex: number) =>
       Promise.resolve(generatedArtifacts.get(batchIndex) ?? null),
   );
+  mocks.hasDocumentEmbeddingBatch.mockImplementation(
+    (_tutorialId: string, batchIndex: number) =>
+      Promise.resolve(embeddingArtifacts.has(batchIndex)),
+  );
   mocks.readDocumentEmbeddingBatch.mockImplementation(
     (_tutorialId: string, batchIndex: number) =>
       Promise.resolve(embeddingArtifacts.get(batchIndex) ?? null),
@@ -49,8 +53,7 @@ export function setupTutorialQueueMocks(mocks: Record<string, Mock>) {
     (_tutorialId: string) => Promise.resolve(documentModel(_tutorialId)),
   );
   mocks.consolidateDocumentBatches.mockImplementation(
-    (_fileData: Buffer, tutorialId: string) =>
-      Promise.resolve(documentModel(tutorialId)),
+    (tutorialId: string) => Promise.resolve(documentModel(tutorialId)),
   );
   mocks.generateDocumentBatch.mockImplementation(
     (...args: unknown[]) =>

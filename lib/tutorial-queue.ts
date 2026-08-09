@@ -11,8 +11,7 @@ import { consolidateDocumentBatches } from "@/lib/document-consolidation";
 import type { DocumentModel } from "@/lib/document-model";
 import {
   documentFilePath,
-  readDocumentEmbeddingBatch,
-  readDocumentFile,
+  hasDocumentEmbeddingBatch,
   readGeneratedDocumentBatch,
   readPublishedDocumentModel,
   writeDocumentEmbeddingBatch,
@@ -432,7 +431,6 @@ async function publishDocumentPrefix(
   }
 
   const model = await consolidateDocumentBatches(
-    await readDocumentFile(tutorial.id),
     tutorial.id,
     batchRanges.at(-1)?.end_page ?? tutorial.sourcePageCount,
     generatedBatches.filter((batch) => batch !== null),
@@ -442,14 +440,11 @@ async function publishDocumentPrefix(
   const embeddingStatuses = await Promise.all(
     batchRanges.map(async (batch) => ({
       batch,
-      embeddings: await readDocumentEmbeddingBatch(
-        tutorial.id,
-        batch.batch_index,
-      ),
+      exists: await hasDocumentEmbeddingBatch(tutorial.id, batch.batch_index),
     })),
   );
   const missingEmbeddingRanges = embeddingStatuses
-    .filter(({ embeddings }) => embeddings === null)
+    .filter(({ exists }) => !exists)
     .map(({ batch }) => batch);
 
   if (missingEmbeddingRanges.length > 0) {
@@ -458,22 +453,20 @@ async function publishDocumentPrefix(
       missingEmbeddingRanges,
     );
 
-    for (const { batch_index, embeddings } of embeddingBatches) {
-      await writeDocumentEmbeddingBatch(
-        tutorial.id,
-        batch_index,
-        embeddings,
-      );
-    }
+    await Promise.all(
+      embeddingBatches.map(({ batch_index, embeddings }) =>
+        writeDocumentEmbeddingBatch(tutorial.id, batch_index, embeddings),
+      ),
+    );
   }
 
   const persistedEmbeddings = await Promise.all(
     batchRanges.map(({ batch_index }) =>
-      readDocumentEmbeddingBatch(tutorial.id, batch_index),
+      hasDocumentEmbeddingBatch(tutorial.id, batch_index),
     ),
   );
 
-  if (persistedEmbeddings.some((embeddings) => embeddings === null)) {
+  if (persistedEmbeddings.some((exists) => !exists)) {
     throw new Error("A document embedding batch is missing.");
   }
 

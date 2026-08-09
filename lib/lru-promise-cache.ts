@@ -11,6 +11,10 @@ export class LruPromiseCache<Key, Value> {
     return this.entries.size;
   }
 
+  delete(key: Key) {
+    return this.entries.delete(key);
+  }
+
   getOrCreate(key: Key, create: () => Promise<Value>) {
     const existingValue = this.entries.get(key);
 

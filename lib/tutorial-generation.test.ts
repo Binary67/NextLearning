@@ -122,10 +122,48 @@ describe("generateDocumentBatch", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(getDocument).toHaveBeenCalledTimes(1);
-    expect(result.pages[0].chunks[0].sources[0]).toEqual({
-      page_index: 3,
-      source_text: "Grounded source text",
-    });
+    expect(result.pages[0].chunks[0].sources[0]).toEqual(
+      expect.objectContaining({
+        page_index: 3,
+        source_text: "Grounded source text",
+        highlight_bounds: expect.any(Array),
+      }),
+    );
+  });
+
+  it("defaults the input file vision detail to low and honors the high override", async () => {
+    mockPdfPages(["Page one extracted text."]);
+    const output = createGeneratedBatchOutput(
+      "Page one extracted text.",
+      1,
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => streamedOutput(output));
+    vi.stubGlobal("fetch", fetchMock);
+
+    async function readVisionDetail() {
+      await generateDocumentBatch(
+        Buffer.from("pdf"),
+        "document.pdf",
+        "document-id",
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+      );
+      const requestBody = JSON.parse(
+        fetchMock.mock.calls.at(-1)?.[1]?.body as string,
+      );
+      return requestBody.input[0].content[0].detail as string;
+    }
+
+    await expect(readVisionDetail()).resolves.toBe("low");
+
+    vi.stubEnv("DOCUMENT_VISION_DETAIL", "high");
+    await expect(readVisionDetail()).resolves.toBe("high");
   });
 
   it("wraps final grounding failures with precise source details", async () => {

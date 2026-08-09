@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { GeneratedDocumentBatch } from "@/lib/document-batches";
-import { addDocumentHighlightBounds } from "@/lib/document-highlight-orchestration";
+import type { GroundedGeneratedDocumentBatch } from "@/lib/document-batches";
 import {
   type DocumentConcept,
   type DocumentConnection,
@@ -10,10 +9,9 @@ import {
 } from "@/lib/document-model";
 
 export async function consolidateDocumentBatches(
-  fileData: Buffer,
   documentId: string,
   pageCount: number,
-  generatedBatches: GeneratedDocumentBatch[],
+  generatedBatches: GroundedGeneratedDocumentBatch[],
 ) {
   const orderedBatches = [...generatedBatches].sort(
     (left, right) => left.batch_index - right.batch_index,
@@ -86,10 +84,7 @@ export async function consolidateDocumentBatches(
     concepts: [...canonicalConcepts.values()],
     connections,
   };
-  return validateDocumentModel(
-    await addDocumentHighlightBounds(fileData, generatedModel),
-    documentId,
-  );
+  return validateDocumentModel(generatedModel, documentId);
 }
 
 function normalizeConceptName(name: string) {

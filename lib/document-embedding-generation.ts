@@ -32,12 +32,20 @@ export async function generateDocumentEmbeddingBatches(
   model: DocumentModel,
   batchRanges: readonly DocumentBatchRange[],
 ): Promise<DocumentEmbeddingBatch[]> {
-  const preparedChunks = prepareDocumentEmbeddingChunks(model);
+  const conceptNames = getConceptNames(model);
   const preparedChunksByRange = batchRanges.map((range) =>
-    preparedChunks.filter(
-      ({ pageIndex }) =>
-        pageIndex >= range.start_page && pageIndex <= range.end_page,
-    ),
+    model.pages
+      .filter(
+        (page) =>
+          page.page_index >= range.start_page &&
+          page.page_index <= range.end_page,
+      )
+      .flatMap((page) =>
+        page.chunks.map((chunk) => ({
+          chunk,
+          searchText: buildChunkSearchText(chunk, conceptNames),
+        })),
+      ),
   );
   const preparedChunksInRangeOrder = preparedChunksByRange.flat();
   const { deployment, embeddings } = await requestEmbeddings(

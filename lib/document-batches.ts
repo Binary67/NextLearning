@@ -1,6 +1,7 @@
 import type {
   DocumentConcept,
   DocumentConnection,
+  DocumentPage,
   GeneratedDocumentPage,
 } from "@/lib/document-model";
 
@@ -30,6 +31,13 @@ export type GeneratedDocumentBatch = DocumentBatchRange & {
   pages: GeneratedDocumentPage[];
   concepts: DocumentConcept[];
   connections: DocumentConnection[];
+};
+
+export type GroundedGeneratedDocumentBatch = Omit<
+  GeneratedDocumentBatch,
+  "pages"
+> & {
+  pages: DocumentPage[];
 };
 
 export function createDocumentPreparation(

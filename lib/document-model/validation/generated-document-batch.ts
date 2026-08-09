@@ -1,5 +1,11 @@
-import type { GeneratedDocumentBatch } from "@/lib/document-batches";
-import type { GeneratedDocumentModel } from "@/lib/document-model/types";
+import type {
+  GeneratedDocumentBatch,
+  GroundedGeneratedDocumentBatch,
+} from "@/lib/document-batches";
+import type {
+  DocumentModel,
+  GeneratedDocumentModel,
+} from "@/lib/document-model/types";
 import {
   isNonEmptyString,
   isPositiveInteger,
@@ -15,10 +21,10 @@ export type GeneratedDocumentBatchValidationContext = {
   endPage: number;
 };
 
-export function validateGeneratedDocumentBatch(
+function assertValidBatchShape(
   value: unknown,
   context: GeneratedDocumentBatchValidationContext,
-): GeneratedDocumentBatch {
+) {
   if (
     !isPositiveInteger(context.batchIndex) ||
     !isPositiveInteger(context.sourcePageCount) ||
@@ -42,6 +48,13 @@ export function validateGeneratedDocumentBatch(
   ) {
     throw new Error("The generated document batch has invalid identity.");
   }
+}
+
+export function validateGeneratedDocumentBatch(
+  value: unknown,
+  context: GeneratedDocumentBatchValidationContext,
+): GeneratedDocumentBatch {
+  assertValidBatchShape(value, context);
 
   const model = validateDocumentModelValue(
     value,
@@ -53,6 +66,37 @@ export function validateGeneratedDocumentBatch(
       pageCount: context.sourcePageCount,
     },
   ) as GeneratedDocumentModel;
+
+  return {
+    schema_version: model.schema_version,
+    document_id: context.documentId,
+    batch_index: context.batchIndex,
+    start_page: context.startPage,
+    end_page: context.endPage,
+    title: model.title,
+    page_count: context.sourcePageCount,
+    pages: model.pages,
+    concepts: model.concepts,
+    connections: model.connections,
+  };
+}
+
+export function validateGroundedGeneratedDocumentBatch(
+  value: unknown,
+  context: GeneratedDocumentBatchValidationContext,
+): GroundedGeneratedDocumentBatch {
+  assertValidBatchShape(value, context);
+
+  const model = validateDocumentModelValue(
+    value,
+    context.documentId,
+    true,
+    {
+      startPage: context.startPage,
+      endPage: context.endPage,
+      pageCount: context.sourcePageCount,
+    },
+  ) as DocumentModel;
 
   return {
     schema_version: model.schema_version,
