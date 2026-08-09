@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   type GeneratedDocumentModel,
+  validateGeneratedDocumentBatch,
   validateGeneratedDocumentModel,
 } from "@/lib/document-model";
+import type { GeneratedDocumentBatch } from "@/lib/document-batches";
 
 describe("validateGeneratedDocumentModel", () => {
   it("accepts a continued paragraph owned by the later page", () => {
@@ -76,6 +78,87 @@ describe("validateGeneratedDocumentModel", () => {
     expect(() =>
       validateGeneratedDocumentModel(model, model.document_id),
     ).toThrow("invalid page");
+  });
+});
+
+describe("validateGeneratedDocumentBatch", () => {
+  it("accepts only the trusted owned page range", () => {
+    const model = createContinuationModel();
+    const batch = validateGeneratedDocumentBatch(
+      {
+        ...model,
+        pages: [model.pages[1]],
+      },
+      {
+        documentId: model.document_id,
+        sourcePageCount: model.page_count,
+        batchIndex: 2,
+        startPage: 2,
+        endPage: 2,
+      },
+    );
+
+    expect(batch).toEqual({
+      schema_version: 5,
+      document_id: "document-id",
+      batch_index: 2,
+      start_page: 2,
+      end_page: 2,
+      title: "Document",
+      page_count: 2,
+      pages: [model.pages[1]],
+      concepts: model.concepts,
+      connections: [],
+    } satisfies GeneratedDocumentBatch);
+  });
+
+  it("rejects a page outside the expected range", () => {
+    const model = createContinuationModel();
+
+    expect(() =>
+      validateGeneratedDocumentBatch(
+        { ...model, pages: [model.pages[0]] },
+        {
+          documentId: model.document_id,
+          sourcePageCount: model.page_count,
+          batchIndex: 2,
+          startPage: 2,
+          endPage: 2,
+        },
+      ),
+    ).toThrow("invalid page");
+  });
+
+  it("rejects local references to concepts outside the batch", () => {
+    const model = createContinuationModel();
+    model.pages[1].chunks[0].concept_ids = ["concept:other"];
+    model.concepts.push({
+      id: "concept:other",
+      name: "Other",
+      definition: "Other concept.",
+      occurrences: [
+        {
+          page_index: 1,
+          page_label: "1",
+          role: "explained",
+          explicitness: "explicit",
+          confidence: 1,
+        },
+      ],
+    });
+
+    expect(() =>
+      validateGeneratedDocumentBatch(
+        { ...model, pages: [model.pages[1]] },
+        {
+          documentId: model.document_id,
+          sourcePageCount: model.page_count,
+          batchIndex: 2,
+          startPage: 2,
+          endPage: 2,
+        },
+      ),
+    ).toThrow("invalid occurrence");
   });
 });
 

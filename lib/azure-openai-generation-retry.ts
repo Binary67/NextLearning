@@ -42,6 +42,45 @@ export async function retryAzureOpenAIGeneration<T>(
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 const DEFAULT_RATE_LIMIT_DELAY_MS = 1000;
+const MAX_RETRY_DELAY_MS = 30 * 1000;
+
+export async function retryAzureOpenAIRequest<T>(
+  request: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  let retryCount = 0;
+
+  while (true) {
+    signal?.throwIfAborted();
+
+    try {
+      return await request();
+    } catch (error) {
+      signal?.throwIfAborted();
+
+      if (
+        (!(error instanceof RateLimitedAzureOpenAIError) &&
+          !(error instanceof RetryableAzureOpenAIError)) ||
+        retryCount === MAX_RATE_LIMIT_RETRIES
+      ) {
+        throw error;
+      }
+
+      const delay = Math.max(
+        0,
+        Math.min(
+          error instanceof RateLimitedAzureOpenAIError
+            ? (error.retryAfterMilliseconds ??
+              DEFAULT_RATE_LIMIT_DELAY_MS * 2 ** retryCount)
+            : DEFAULT_RATE_LIMIT_DELAY_MS * 2 ** retryCount,
+          MAX_RETRY_DELAY_MS,
+        ),
+      );
+      await delayWithAbort(delay, signal);
+      retryCount += 1;
+    }
+  }
+}
 
 export async function retryAzureOpenAIRateLimits<T>(
   generate: () => Promise<T>,
@@ -59,13 +98,43 @@ export async function retryAzureOpenAIRateLimits<T>(
         throw error;
       }
 
-      const delay =
-        error.retryAfterMilliseconds ??
-        DEFAULT_RATE_LIMIT_DELAY_MS * 2 ** retryCount;
+      const delay = Math.max(
+        0,
+        Math.min(
+          error.retryAfterMilliseconds ??
+            DEFAULT_RATE_LIMIT_DELAY_MS * 2 ** retryCount,
+          MAX_RETRY_DELAY_MS,
+        ),
+      );
       await new Promise((resolve) => setTimeout(resolve, delay));
       retryCount += 1;
     }
   }
+}
+
+function delayWithAbort(delay: number, signal?: AbortSignal) {
+  if (!signal) {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, delay);
+    return promise;
+  }
+
+  const abortSignal = signal;
+  abortSignal.throwIfAborted();
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const timeout = setTimeout(() => {
+    abortSignal.removeEventListener("abort", onAbort);
+    resolve();
+  }, delay);
+
+  function onAbort() {
+    clearTimeout(timeout);
+    reject(abortSignal.reason);
+  }
+
+  abortSignal.addEventListener("abort", onAbort, { once: true });
+  return promise;
 }
 
 export function readAzureOpenAIGenerationConfiguration() {

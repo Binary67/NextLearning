@@ -26,6 +26,7 @@ export type GeneratedDocumentBatch = DocumentBatchRange & {
   schema_version: number;
   document_id: string;
   title: string;
+  page_count: number;
   pages: GeneratedDocumentPage[];
   concepts: DocumentConcept[];
   connections: DocumentConnection[];

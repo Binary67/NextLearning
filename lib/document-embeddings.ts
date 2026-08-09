@@ -1,6 +1,7 @@
 import {
   createAzureOpenAIResponseError,
   readAzureOpenAIEmbeddingConfiguration,
+  retryAzureOpenAIRequest,
 } from "@/lib/azure-openai-generation-retry";
 import { readAzureOpenAIResponseError } from "@/lib/azure-openai-response";
 import type { DocumentBatchRange } from "@/lib/document-batches";
@@ -404,11 +405,15 @@ async function requestEmbeddings(
   for (let index = 0; index < inputs.length; index += EMBEDDING_BATCH_SIZE) {
     const batch = inputs.slice(index, index + EMBEDDING_BATCH_SIZE);
     embeddings.push(
-      ...(await requestEmbeddingBatch(
-        batch,
-        endpoint,
-        apiKey,
-        deployment,
+      ...(await retryAzureOpenAIRequest(
+        () =>
+          requestEmbeddingBatch(
+            batch,
+            endpoint,
+            apiKey,
+            deployment,
+            signal,
+          ),
         signal,
       )),
     );

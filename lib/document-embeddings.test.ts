@@ -59,26 +59,30 @@ describe("document embeddings", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
-  it("classifies a non-JSON 5xx as retryable", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(() =>
-        Promise.resolve(
-          new Response("<html>Service unavailable</html>", {
-            status: 503,
-          }),
-        ),
+  it("retries a non-JSON 5xx per request up to the bounded limit", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response("<html>Service unavailable</html>", {
+          status: 503,
+        }),
       ),
     );
+    vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generateDocumentEmbeddings(model)).rejects.toBeInstanceOf(
+    const request = generateDocumentEmbeddings(model);
+    const rejection = expect(request).rejects.toBeInstanceOf(
       RetryableAzureOpenAIError,
     );
+    await vi.advanceTimersByTimeAsync(7_000);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("aborts embedding requests after 30 seconds", async () => {
@@ -169,6 +173,143 @@ describe("document embeddings", () => {
         },
       ],
     });
+  });
+
+  it("does not repeat a successful request when a later batch retries", async () => {
+    vi.useFakeTimers();
+    const baseChunk = model.pages[0].chunks[0];
+    const baseSource = baseChunk.sources[0];
+    const batchedModel: DocumentModel = {
+      ...model,
+      pages: [
+        {
+          ...model.pages[0],
+          chunks: Array.from({ length: 101 }, (_, index) => ({
+            ...baseChunk,
+            id: `chunk:${index}`,
+            title: `Chunk ${index}`,
+            sources: [
+              {
+                ...baseSource,
+                source_text: `Source ${index}`,
+              },
+            ],
+          })),
+        },
+      ],
+    };
+    const requestInputs: string[][] = [];
+    const fetchMock = vi.fn<typeof fetch>((_input, init) => {
+      if (typeof init?.body !== "string") {
+        throw new Error("Expected an embedding request body.");
+      }
+
+      const body = JSON.parse(init.body) as { input: string[] };
+      requestInputs.push(body.input);
+
+      if (requestInputs.length === 2) {
+        return Promise.resolve(
+          new Response("Service unavailable", { status: 503 }),
+        );
+      }
+
+      return Promise.resolve(
+        Response.json({
+          data: body.input.map((_, index) => ({
+            index,
+            embedding: [1, 0],
+          })),
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = generateDocumentEmbeddings(batchedModel);
+    await vi.advanceTimersByTimeAsync(1000);
+    await request;
+
+    expect(requestInputs).toHaveLength(3);
+    expect(requestInputs[0]).toHaveLength(100);
+    expect(requestInputs[1]).toHaveLength(1);
+    expect(requestInputs[2]).toEqual(requestInputs[1]);
+  });
+
+  it("does not retry 400 responses, invalid response data, or invalid vectors", async () => {
+    const cases = [
+      new Response("Bad request", { status: 400 }),
+      Response.json({ data: [{ index: 0 }] }),
+      Response.json({ data: [{ index: 0, embedding: [0, 0] }] }),
+    ];
+
+    for (const response of cases) {
+      const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(response));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(generateDocumentEmbeddings(model)).rejects.toThrow();
+      expect(fetchMock).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("does not retry a transient response after caller cancellation", async () => {
+    const controller = new AbortController();
+    const cancellation = new DOMException("Cancelled", "AbortError");
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response("Service unavailable", { status: 503 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = findTextSelectionContext(
+      model,
+      documentEmbeddings,
+      1,
+      "selected text",
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(cancellation);
+
+    await expect(request).rejects.toBe(cancellation);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps embedding vectors in input order", async () => {
+    const firstChunk = model.pages[0].chunks[0];
+    const orderedModel: DocumentModel = {
+      ...model,
+      pages: [
+        {
+          ...model.pages[0],
+          chunks: [
+            firstChunk,
+            {
+              ...firstChunk,
+              id: "chunk:second",
+              title: "Second",
+            },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            data: [
+              { index: 1, embedding: [0, 2] },
+              { index: 0, embedding: [3, 0] },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const result = await generateDocumentEmbeddings(orderedModel);
+
+    expect(result.chunks).toEqual([
+      { chunk_id: "chunk:first", embedding: [1, 0] },
+      { chunk_id: "chunk:second", embedding: [0, 1] },
+    ]);
   });
 
   it("coalesces document ranges and partitions their embeddings", async () => {

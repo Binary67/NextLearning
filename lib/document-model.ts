@@ -33,5 +33,9 @@ export type {
 } from "@/lib/document-model/types";
 export {
   validateDocumentModel,
+  validateGeneratedDocumentBatch,
   validateGeneratedDocumentModel,
+} from "@/lib/document-model/validation";
+export type {
+  GeneratedDocumentBatchValidationContext,
 } from "@/lib/document-model/validation";

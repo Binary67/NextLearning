@@ -10,7 +10,11 @@ import {
   type DocumentPreparation,
   type GeneratedDocumentBatch,
 } from "@/lib/document-batches";
-import type { DocumentModel } from "@/lib/document-model";
+import {
+  type DocumentModel,
+  type GeneratedDocumentBatchValidationContext,
+  validateGeneratedDocumentBatch,
+} from "@/lib/document-model";
 
 export const MAX_DOCUMENT_SIZE = 512 * 1024 * 1024;
 
@@ -222,13 +226,17 @@ export async function readDocumentEmbeddings(
   };
 }
 
-export function readGeneratedDocumentBatch(
+export async function readGeneratedDocumentBatch(
   tutorialId: string,
   batchIndex: number,
+  context: GeneratedDocumentBatchValidationContext,
 ) {
-  return readJsonFile<GeneratedDocumentBatch>(
+  const value = await readJsonFile<unknown>(
     batchFilePath(tutorialId, generatedBatchesDirectoryName, batchIndex),
   );
+  return value === null
+    ? null
+    : validateGeneratedDocumentBatch(value, context);
 }
 
 export function writeGeneratedDocumentBatch(

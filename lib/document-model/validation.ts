@@ -10,6 +10,68 @@ import {
   occurrenceRoles,
   relationshipValues,
 } from "@/lib/document-model/types";
+import type { GeneratedDocumentBatch } from "@/lib/document-batches";
+
+export type GeneratedDocumentBatchValidationContext = {
+  documentId: string;
+  sourcePageCount: number;
+  batchIndex: number;
+  startPage: number;
+  endPage: number;
+};
+
+export function validateGeneratedDocumentBatch(
+  value: unknown,
+  context: GeneratedDocumentBatchValidationContext,
+): GeneratedDocumentBatch {
+  if (
+    !isPositiveInteger(context.batchIndex) ||
+    !isPositiveInteger(context.sourcePageCount) ||
+    !isPositiveInteger(context.startPage) ||
+    !isPositiveInteger(context.endPage) ||
+    context.startPage > context.endPage ||
+    context.endPage > context.sourcePageCount ||
+    !isNonEmptyString(context.documentId)
+  ) {
+    throw new Error("The generated document batch context is invalid.");
+  }
+
+  if (
+    isRecord(value) &&
+    ("batch_index" in value ||
+      "start_page" in value ||
+      "end_page" in value) &&
+    (value.batch_index !== context.batchIndex ||
+      value.start_page !== context.startPage ||
+      value.end_page !== context.endPage)
+  ) {
+    throw new Error("The generated document batch has invalid identity.");
+  }
+
+  const model = validateDocumentModelValue(
+    value,
+    context.documentId,
+    false,
+    {
+      startPage: context.startPage,
+      endPage: context.endPage,
+      pageCount: context.sourcePageCount,
+    },
+  ) as GeneratedDocumentModel;
+
+  return {
+    schema_version: model.schema_version,
+    document_id: context.documentId,
+    batch_index: context.batchIndex,
+    start_page: context.startPage,
+    end_page: context.endPage,
+    title: model.title,
+    page_count: context.sourcePageCount,
+    pages: model.pages,
+    concepts: model.concepts,
+    connections: model.connections,
+  };
+}
 
 export function validateDocumentModel(
   value: unknown,
@@ -33,18 +95,28 @@ function validateDocumentModelValue(
   value: unknown,
   documentId: string,
   requireHighlightBounds: boolean,
+  pageRange?: { startPage: number; endPage: number; pageCount: number },
 ) {
   if (!isRecord(value)) {
     throw new Error("The generated document model is not an object.");
   }
 
+  const pageCount = pageRange?.pageCount ?? value.page_count;
+
+  if (!isPositiveInteger(pageCount)) {
+    throw new Error("The generated document model has invalid metadata.");
+  }
+
+  const startPage = pageRange?.startPage ?? 1;
+  const endPage = pageRange?.endPage ?? pageCount;
+
   if (
     value.schema_version !== DOCUMENT_MODEL_SCHEMA_VERSION ||
     value.document_id !== documentId ||
     !isNonEmptyString(value.title) ||
-    !isPositiveInteger(value.page_count) ||
+    value.page_count !== pageCount ||
     !Array.isArray(value.pages) ||
-    value.pages.length !== value.page_count ||
+    value.pages.length !== endPage - startPage + 1 ||
     !Array.isArray(value.concepts) ||
     value.concepts.length === 0 ||
     !Array.isArray(value.connections)
@@ -55,14 +127,22 @@ function validateDocumentModelValue(
   const pageLabels = validatePages(
     value.pages,
     requireHighlightBounds,
+    startPage,
   );
   const conceptIds = validateConcepts(
     value.concepts,
-    value.page_count,
+    startPage,
+    endPage,
     pageLabels,
   );
   validatePageChunks(value.pages, conceptIds, value.concepts);
-  validateConnections(value.connections, conceptIds, value.page_count);
+  validateConnections(
+    value.connections,
+    conceptIds,
+    pageCount,
+    startPage,
+    endPage,
+  );
 
   return value;
 }
@@ -70,6 +150,7 @@ function validateDocumentModelValue(
 function validatePages(
   pages: unknown[],
   requireHighlightBounds: boolean,
+  startPage = 1,
 ) {
   const pageLabels = new Map<number, string>();
   const chunkIds = new Set<string>();
@@ -78,7 +159,7 @@ function validatePages(
   for (const [index, page] of pages.entries()) {
     if (
       !isRecord(page) ||
-      page.page_index !== index + 1 ||
+      page.page_index !== startPage + index ||
       !isNonEmptyString(page.page_label) ||
       !Array.isArray(page.chunks) ||
       page.chunks.length > 3
@@ -266,10 +347,10 @@ function isUnitInterval(value: unknown): value is number {
 function isPositiveUnitInterval(value: unknown): value is number {
   return typeof value === "number" && value > 0 && value <= 1;
 }
-
 function validateConcepts(
   concepts: unknown[],
-  pageCount: number,
+  startPage: number,
+  endPage: number,
   pageLabels: ReadonlyMap<number, string>,
 ) {
   const conceptIds = new Set<string>();
@@ -294,7 +375,8 @@ function validateConcepts(
       if (
         !isRecord(occurrence) ||
         !isPositiveInteger(occurrence.page_index) ||
-        occurrence.page_index > pageCount ||
+        occurrence.page_index < startPage ||
+        occurrence.page_index > endPage ||
         occurrence.page_label !== pageLabels.get(occurrence.page_index) ||
         !occurrenceRoles.includes(occurrence.role as OccurrenceRole) ||
         !explicitnessValues.includes(
@@ -369,6 +451,8 @@ function validateConnections(
   connections: unknown[],
   conceptIds: ReadonlySet<string>,
   pageCount: number,
+  startPage = 1,
+  endPage = pageCount,
 ) {
   for (const connection of connections) {
     if (
@@ -383,7 +467,11 @@ function validateConnections(
       !Array.isArray(connection.relevant_pages) ||
       connection.relevant_pages.length === 0 ||
       !connection.relevant_pages.every(
-        (page) => isPositiveInteger(page) && page <= pageCount,
+        (page) =>
+          isPositiveInteger(page) &&
+          page <= pageCount &&
+          page >= startPage &&
+          page <= endPage,
       ) ||
       !isNonEmptyString(connection.reason) ||
       !isConfidence(connection.confidence)

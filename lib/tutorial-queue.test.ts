@@ -80,6 +80,7 @@ const embeddings: DocumentEmbeddings = {
 let events: string[];
 let activeMetadataWrites: number;
 let maxActiveMetadataWrites: number;
+let generatedArtifacts: Map<number, unknown>;
 
 describe("tutorial queue", () => {
   beforeEach(() => {
@@ -87,6 +88,7 @@ describe("tutorial queue", () => {
     events = [];
     activeMetadataWrites = 0;
     maxActiveMetadataWrites = 0;
+    generatedArtifacts = new Map();
 
     const state = queueGlobal.nextLearningTutorialQueue!;
     state.promise = null;
@@ -111,20 +113,9 @@ describe("tutorial queue", () => {
       }),
     );
     mocks.closeReader.mockResolvedValue(undefined);
-    mocks.readDocumentFile.mockResolvedValue(Buffer.from("document"));
     mocks.readGeneratedDocumentBatch.mockImplementation(
-      (tutorialId: string, batchIndex: number) =>
-        Promise.resolve({
-          schema_version: 1,
-          document_id: tutorialId,
-          batch_index: batchIndex,
-          start_page: batchIndex,
-          end_page: batchIndex,
-          title: `Batch ${batchIndex}`,
-          pages: [],
-          concepts: [],
-          connections: [],
-        }),
+      (_tutorialId: string, batchIndex: number) =>
+        Promise.resolve(generatedArtifacts.get(batchIndex) ?? null),
     );
     mocks.consolidateDocumentBatches.mockImplementation(
       (_fileData: Buffer, tutorialId: string) =>
@@ -138,6 +129,7 @@ describe("tutorial queue", () => {
     );
     mocks.writeGeneratedDocumentBatch.mockImplementation(
       (_tutorialId: string, batch: { batch_index: number }) => {
+        generatedArtifacts.set(batch.batch_index, batch);
         events.push(`generated:${batch.batch_index}`);
         return Promise.resolve();
       },
@@ -200,6 +192,7 @@ describe("tutorial queue", () => {
     mocks.listStoredTutorials.mockResolvedValue([
       tutorial("tutorial", "2026-08-08T09:00:00.000Z", preparation),
     ]);
+    generatedArtifacts.set(2, { batch_index: 2 });
 
     let activeGenerations = 0;
     let maxActiveGenerations = 0;
@@ -242,12 +235,20 @@ describe("tutorial queue", () => {
       "metadata:tutorial:3-complete,1-complete,2-complete,4-complete",
     );
 
-    expect(mocks.readGeneratedDocumentBatch.mock.calls).toEqual([
-      ["tutorial", 1],
-      ["tutorial", 2],
-      ["tutorial", 3],
-      ["tutorial", 4],
-    ]);
+    for (const expected of preparation.batches) {
+      expect(
+        mocks.readGeneratedDocumentBatch.mock.calls.filter(
+          ([tutorialId, batchIndex, context]) =>
+            tutorialId === "tutorial" &&
+            batchIndex === expected.batch_index &&
+            context.documentId === "tutorial" &&
+            context.sourcePageCount === 40 &&
+            context.batchIndex === expected.batch_index &&
+            context.startPage === expected.start_page &&
+            context.endPage === expected.end_page,
+        ),
+      ).toHaveLength(3);
+    }
     expect(mocks.generateDocumentEmbeddingBatches).toHaveBeenCalledOnce();
     expect(mocks.generateDocumentEmbeddingBatches.mock.calls[0][1]).toEqual([
       batch(1, 1, 10, "complete"),
@@ -262,6 +263,25 @@ describe("tutorial queue", () => {
         embeddings,
       ]),
     );
+  });
+
+  it("does not retry embedding generation at the queue level", async () => {
+    mocks.listStoredTutorials.mockResolvedValue([
+      tutorial("embedding-failure", "2026-08-08T09:00:00.000Z", {
+        phase: "analyzing",
+        batches: [batch(1, 1, 1, "complete")],
+      }),
+    ]);
+    generatedArtifacts.set(1, { batch_index: 1 });
+    mocks.generateDocumentEmbeddingBatches.mockRejectedValue(
+      new Error("embedding failed"),
+    );
+
+    await runTutorialQueue();
+
+    expect(mocks.generateDocumentEmbeddingBatches).toHaveBeenCalledOnce();
+    expect(mocks.retryAzureOpenAIRateLimits).not.toHaveBeenCalled();
+    expect(events.at(-1)).toBe("failed");
   });
 
   it("settles active work before terminal failure and starts no later batch", async () => {
@@ -314,6 +334,7 @@ describe("tutorial queue", () => {
       completePreparation(),
     );
     const processingOrder: string[] = [];
+    generatedArtifacts.set(1, { batch_index: 1 });
     mocks.listStoredTutorials.mockResolvedValue([newer, older]);
     mocks.updateStoredTutorial.mockImplementation(
       async (
@@ -335,6 +356,7 @@ describe("tutorial queue", () => {
   });
 
   it("takes a second snapshot when another drain is requested", async () => {
+    generatedArtifacts.set(1, { batch_index: 1 });
     mocks.listStoredTutorials
       .mockResolvedValueOnce([
         tutorial(
@@ -379,6 +401,78 @@ describe("tutorial queue", () => {
     );
     expect(mocks.generateDocumentBatch).toHaveBeenCalledOnce();
     expect(mocks.generateDocumentBatch.mock.calls[0][4]).toBe(1);
+  });
+
+  it("recovers valid artifacts, processes only missing ranges, and transitions once after analysis", async () => {
+    const preparation = {
+      phase: "analyzing" as const,
+      batches: [
+        batch(1, 1, 10, "pending"),
+        batch(2, 11, 20, "pending"),
+      ],
+    };
+    const stored = tutorial("checkpoint", "2026-08-08T09:00:00.000Z", preparation);
+    const artifacts = new Map<number, unknown>([
+      [1, { batch_index: 1 }],
+    ]);
+    const preparationWrites: DocumentPreparation[] = [];
+    mocks.listStoredTutorials.mockResolvedValue([stored]);
+    mocks.updateStoredTutorial.mockImplementation(
+      async (
+        tutorial: StoredTutorial,
+        updates: Partial<StoredTutorial>,
+      ) => {
+        if (updates.preparation) {
+          preparationWrites.push(structuredClone(updates.preparation));
+        }
+        return { ...tutorial, ...updates };
+      },
+    );
+    mocks.readGeneratedDocumentBatch.mockImplementation(
+      (_tutorialId: string, batchIndex: number) =>
+        Promise.resolve(artifacts.get(batchIndex) ?? null),
+    );
+    mocks.writeGeneratedDocumentBatch.mockImplementation(
+      (_tutorialId: string, generated: { batch_index: number }) => {
+        artifacts.set(generated.batch_index, generated);
+        return Promise.resolve();
+      },
+    );
+    await runTutorialQueue();
+
+    expect(mocks.generateDocumentBatch.mock.calls.map((call) => call[4])).toEqual([
+      2,
+    ]);
+    expect(preparationWrites).toHaveLength(3);
+    expect(preparationWrites[0].batches).toEqual([
+      batch(1, 1, 10, "complete"),
+      batch(2, 11, 20, "complete"),
+    ]);
+    expect(preparationWrites[0].phase).toBe("consolidating");
+    expect(preparationWrites.slice(1).map((value) => value.phase)).toEqual([
+      "embedding",
+      "complete",
+    ]);
+  });
+
+  it("rejects malformed persisted artifacts without processing or deleting them", async () => {
+    mocks.listStoredTutorials.mockResolvedValue([
+      tutorial("malformed", "2026-08-08T09:00:00.000Z", {
+        phase: "analyzing",
+        batches: [batch(1, 1, 10, "complete")],
+      }),
+    ]);
+    const malformed = new Error("The generated document batch has invalid metadata.");
+    mocks.readGeneratedDocumentBatch.mockRejectedValue(malformed);
+
+    await runTutorialQueue();
+
+    expect(mocks.generateDocumentBatch).not.toHaveBeenCalled();
+    expect(mocks.writeGeneratedDocumentBatch).not.toHaveBeenCalled();
+    expect(mocks.updateStoredTutorial).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "malformed" }),
+      expect.objectContaining({ status: "failed" }),
+    );
   });
 });
 

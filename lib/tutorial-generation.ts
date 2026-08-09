@@ -11,7 +11,7 @@ import {
 import {
   documentModelJsonSchema,
   type GeneratedDocumentModel,
-  validateGeneratedDocumentModel,
+  validateGeneratedDocumentBatch,
 } from "@/lib/document-model";
 import type { GeneratedDocumentBatch } from "@/lib/document-batches";
 import { addDocumentHighlightBounds } from "@/lib/document-highlights";
@@ -53,30 +53,24 @@ export async function generateDocumentBatch(
     ]);
 
     try {
-      const generatedModel = validateGeneratedBatch(
-        JSON.parse(outputText) as unknown,
+      const value = JSON.parse(outputText) as unknown;
+      const generatedBatch = validateGeneratedDocumentBatch(value, {
         documentId,
         sourcePageCount,
+        batchIndex,
         startPage,
         endPage,
-      );
+      });
       await addDocumentHighlightBounds(
         fileData,
-        generatedModel,
+        {
+          ...(value as GeneratedDocumentModel),
+          pages: generatedBatch.pages,
+        },
         inputStartPage,
       );
 
-      return {
-        schema_version: generatedModel.schema_version,
-        document_id: documentId,
-        batch_index: batchIndex,
-        start_page: startPage,
-        end_page: endPage,
-        title: generatedModel.title,
-        pages: generatedModel.pages.slice(startPage - 1, endPage),
-        concepts: generatedModel.concepts,
-        connections: generatedModel.connections,
-      };
+      return generatedBatch;
     } catch (error) {
       const reason = error instanceof Error ? ` ${error.message}` : "";
       throw new InvalidAzureOpenAIContentError(
@@ -190,49 +184,3 @@ Connection rules:
 Do not create learner prompts, assessments, progress, timing, or realtime behavior.`;
 }
 
-function validateGeneratedBatch(
-  value: unknown,
-  documentId: string,
-  sourcePageCount: number,
-  startPage: number,
-  endPage: number,
-) {
-  if (
-    !isRecord(value) ||
-    value.page_count !== sourcePageCount ||
-    !Array.isArray(value.pages) ||
-    value.pages.length !== endPage - startPage + 1 ||
-    value.pages.some(
-      (page, index) =>
-        !isRecord(page) || page.page_index !== startPage + index,
-    )
-  ) {
-    throw new Error("Azure OpenAI returned an invalid document batch.");
-  }
-
-  const returnedPages = new Map(
-    value.pages.map((page) => [
-      (page as { page_index: number }).page_index,
-      page,
-    ]),
-  );
-  const pages = Array.from({ length: sourcePageCount }, (_, index) => {
-    const pageIndex = index + 1;
-    return (
-      returnedPages.get(pageIndex) ?? {
-        page_index: pageIndex,
-        page_label: String(pageIndex),
-        chunks: [],
-      }
-    );
-  });
-
-  return validateGeneratedDocumentModel(
-    { ...value, pages } as GeneratedDocumentModel,
-    documentId,
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
