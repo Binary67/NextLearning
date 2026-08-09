@@ -93,6 +93,44 @@ describe("guided reading progress", () => {
       ),
     ).toThrow("references unavailable content");
   });
+
+  it("opens the first appended lesson after a completed prefix expands", () => {
+    let progress = createEmptyGuidedProgress(tutorialId, now);
+
+    for (const [pageIndex, chunkId] of [
+      [1, "chunk:first"],
+      [1, "chunk:second"],
+      [3, "chunk:third"],
+    ] as const) {
+      progress = updateGuidedProgress(
+        progress,
+        { type: "segment_completed", pageIndex, chunkId },
+        model,
+        now,
+      );
+    }
+
+    const expandedModel: DocumentModel = {
+      ...model,
+      page_count: 4,
+      pages: [
+        ...model.pages,
+        {
+          page_index: 4,
+          page_label: "4",
+          chunks: [chunk("chunk:fourth")],
+        },
+      ],
+    };
+
+    expect(
+      validateGuidedProgress(progress, tutorialId, expandedModel).cursor,
+    ).toEqual({
+      pageIndex: 4,
+      chunkId: "chunk:fourth",
+      state: "pending",
+    });
+  });
 });
 
 const model: DocumentModel = {

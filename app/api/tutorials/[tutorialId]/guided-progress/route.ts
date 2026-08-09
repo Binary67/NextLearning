@@ -11,7 +11,7 @@ import {
   readRequestTextWithLimit,
   RequestBodyTooLargeError,
 } from "@/lib/request-body-size";
-import { readPreparedTutorial } from "@/lib/tutorial";
+import { readAvailableTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,7 @@ export async function GET(
 ) {
   const { tutorialId } = await context.params;
   const prepared = isTutorialId(tutorialId)
-    ? await readPreparedTutorial(tutorialId)
+    ? await readAvailableTutorial(tutorialId)
     : null;
 
   if (!prepared) {
@@ -48,7 +48,7 @@ export async function POST(
 ) {
   const { tutorialId } = await context.params;
   const prepared = isTutorialId(tutorialId)
-    ? await readPreparedTutorial(tutorialId)
+    ? await readAvailableTutorial(tutorialId)
     : null;
 
   if (!prepared) {
@@ -99,7 +99,7 @@ export async function DELETE(
 ) {
   const { tutorialId } = await context.params;
   const prepared = isTutorialId(tutorialId)
-    ? await readPreparedTutorial(tutorialId)
+    ? await readAvailableTutorial(tutorialId)
     : null;
 
   if (!prepared) {

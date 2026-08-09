@@ -5,12 +5,10 @@ import type { StoredTutorial } from "@/lib/document-storage-types";
 import type { LearningState } from "@/lib/learning-state";
 
 const mocks = vi.hoisted(() => ({
-  hasDocumentEmbeddings: vi.fn(),
   listStoredTutorials: vi.fn(),
-  readDocumentModel: vi.fn(),
+  readPublishedDocumentModel: vi.fn(),
   readStoredLearningState: vi.fn(),
   readStoredTutorial: vi.fn(),
-  updateStoredLearningState: vi.fn(),
   validateDocumentModel: vi.fn(),
 }));
 
@@ -25,8 +23,7 @@ vi.mock("@/lib/document-model", async (importOriginal) => {
 });
 
 vi.mock("@/lib/document-artifact-storage", () => ({
-  hasDocumentEmbeddings: mocks.hasDocumentEmbeddings,
-  readDocumentModel: mocks.readDocumentModel,
+  readPublishedDocumentModel: mocks.readPublishedDocumentModel,
 }));
 
 vi.mock("@/lib/tutorial-storage", () => ({
@@ -36,28 +33,206 @@ vi.mock("@/lib/tutorial-storage", () => ({
 
 vi.mock("@/lib/stored-progress", () => ({
   readStoredLearningState: mocks.readStoredLearningState,
-  updateStoredLearningState: mocks.updateStoredLearningState,
 }));
 
 import {
   listTutorials,
-  readPreparedTutorial,
+  readAvailableTutorial,
 } from "@/lib/tutorial";
 
-describe("tutorial learning progress", () => {
+describe("available tutorials", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.hasDocumentEmbeddings.mockResolvedValue(true);
     mocks.readStoredLearningState.mockResolvedValue(null);
     mocks.validateDocumentModel.mockImplementation((value) => value);
   });
 
-  it("summarizes valid stored learning progress", async () => {
-    const now = new Date("2026-08-05T12:00:00.000Z");
+  it.each(["processing", "failed"] as const)(
+    "accepts a %s tutorial with a published snapshot",
+    async (status) => {
+      const storedTutorial = tutorial(
+        `00000000-0000-4000-8000-00000000000${status === "processing" ? "1" : "2"}`,
+        status,
+        2,
+      );
+      const storedModel = model(storedTutorial.id, "Published model");
+
+      mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+      mocks.readPublishedDocumentModel.mockResolvedValue(storedModel);
+
+      await expect(readAvailableTutorial(storedTutorial.id)).resolves.toEqual(
+        {
+          tutorial: storedTutorial,
+          model: storedModel,
+          publishedBatchCount: 2,
+        },
+      );
+      expect(mocks.readPublishedDocumentModel).toHaveBeenCalledWith(
+        storedTutorial.id,
+        2,
+      );
+    },
+  );
+
+  it("does not make a queued tutorial available", async () => {
     const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000101",
-      "2026-08-05T11:00:00.000Z",
+      "00000000-0000-4000-8000-000000000003",
+      "queued",
+      2,
     );
+
+    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+
+    await expect(
+      readAvailableTutorial(storedTutorial.id),
+    ).resolves.toBeNull();
+    expect(mocks.readPublishedDocumentModel).not.toHaveBeenCalled();
+  });
+
+  it("requires a ready tutorial snapshot to cover the source document", async () => {
+    const storedTutorial = tutorial(
+      "00000000-0000-4000-8000-000000000004",
+      "ready",
+      2,
+    );
+    const storedModel = model(storedTutorial.id, "Partial model");
+
+    mocks.readStoredTutorial.mockResolvedValue({
+      ...storedTutorial,
+      sourcePageCount: 2,
+    });
+    mocks.readPublishedDocumentModel.mockResolvedValue(storedModel);
+
+    await expect(
+      readAvailableTutorial(storedTutorial.id),
+    ).resolves.toBeNull();
+  });
+
+  it("keeps the published prefix available after later failure", async () => {
+    const storedTutorial = tutorial(
+      "00000000-0000-4000-8000-000000000005",
+      "failed",
+      2,
+    );
+    const storedModel = model(storedTutorial.id, "Last published model");
+
+    mocks.readStoredTutorial.mockResolvedValue({
+      ...storedTutorial,
+      error: "The final batch failed.",
+    });
+    mocks.readPublishedDocumentModel.mockResolvedValue(storedModel);
+
+    await expect(
+      readAvailableTutorial(storedTutorial.id),
+    ).resolves.toMatchObject({
+      tutorial: { status: "failed", error: "The final batch failed." },
+      model: storedModel,
+      publishedBatchCount: 2,
+    });
+  });
+
+  it("shares one validated model read for the same published batch", async () => {
+    const storedTutorial = tutorial(
+      "00000000-0000-4000-8000-000000000006",
+      "processing",
+      2,
+    );
+    let resolveModel: (value: DocumentModel) => void = () => {};
+    const storedModel = new Promise<DocumentModel>((resolve) => {
+      resolveModel = resolve;
+    });
+
+    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+    mocks.readPublishedDocumentModel.mockReturnValue(storedModel);
+
+    const firstRead = readAvailableTutorial(storedTutorial.id);
+    const secondRead = readAvailableTutorial(storedTutorial.id);
+
+    await vi.waitFor(() => {
+      expect(mocks.readPublishedDocumentModel).toHaveBeenCalledTimes(1);
+    });
+    resolveModel(model(storedTutorial.id, "Concurrent model"));
+
+    const [first, second] = await Promise.all([firstRead, secondRead]);
+
+    expect(first?.model).toBe(second?.model);
+    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a new model when the published batch expands", async () => {
+    const tutorialId = "00000000-0000-4000-8000-000000000007";
+    const firstTutorial = tutorial(tutorialId, "processing", 1);
+    const secondTutorial = tutorial(tutorialId, "processing", 2);
+    const firstModel = model(tutorialId, "First model");
+    const secondModel = model(tutorialId, "Second model");
+
+    mocks.readStoredTutorial
+      .mockResolvedValueOnce(firstTutorial)
+      .mockResolvedValueOnce(secondTutorial);
+    mocks.readPublishedDocumentModel
+      .mockResolvedValueOnce(firstModel)
+      .mockResolvedValueOnce(secondModel);
+
+    await expect(readAvailableTutorial(tutorialId)).resolves.toMatchObject({
+      model: firstModel,
+      publishedBatchCount: 1,
+    });
+    await expect(readAvailableTutorial(tutorialId)).resolves.toMatchObject({
+      model: secondModel,
+      publishedBatchCount: 2,
+    });
+
+    expect(mocks.readPublishedDocumentModel).toHaveBeenNthCalledWith(
+      1,
+      tutorialId,
+      1,
+    );
+    expect(mocks.readPublishedDocumentModel).toHaveBeenNthCalledWith(
+      2,
+      tutorialId,
+      2,
+    );
+  });
+
+  it("does not cache missing or failed model reads", async () => {
+    const tutorialId = "00000000-0000-4000-8000-000000000008";
+    const storedTutorial = tutorial(tutorialId, "processing", 1);
+    const storedModel = model(tutorialId, "Retried model");
+
+    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
+    mocks.readPublishedDocumentModel
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValueOnce(storedModel);
+
+    await expect(readAvailableTutorial(tutorialId)).resolves.toBeNull();
+    await expect(readAvailableTutorial(tutorialId)).rejects.toThrow(
+      "read failed",
+    );
+    await expect(readAvailableTutorial(tutorialId)).resolves.toMatchObject({
+      model: storedModel,
+    });
+
+    expect(mocks.readPublishedDocumentModel).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("tutorial list responses", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readStoredLearningState.mockResolvedValue(null);
+    mocks.validateDocumentModel.mockImplementation((value) => value);
+  });
+
+  it("includes partial availability and learning progress", async () => {
+    const storedTutorial = {
+      ...tutorial(
+        "00000000-0000-4000-8000-000000000009",
+        "processing",
+        2,
+      ),
+      sourcePageCount: 3,
+    };
     const storedModel = model(storedTutorial.id, "Progress model");
     const learningState: LearningState = {
       tutorialId: storedTutorial.id,
@@ -81,365 +256,50 @@ describe("tutorial learning progress", () => {
 
     mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
     mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel.mockResolvedValue(storedModel);
+    mocks.readPublishedDocumentModel.mockResolvedValue(storedModel);
     mocks.readStoredLearningState.mockResolvedValue(learningState);
 
-    await expect(listTutorials(now)).resolves.toMatchObject([
+    await expect(
+      listTutorials(new Date("2026-08-05T12:00:00.000Z")),
+    ).resolves.toMatchObject([
       {
         id: storedTutorial.id,
-        map: {
-          page_count: 1,
-          concept_count: 1,
-          connection_count: 0,
-        },
+        sourcePageCount: 3,
+        availability: { batchCount: 2, pageCount: 1 },
+        map: { page_count: 1 },
         learningSummary: {
           practiced: 1,
           total: 1,
-          mastered: 0,
-          reviewing: 1,
-          learning: 0,
-          notPracticed: 0,
           dueNow: 1,
         },
       },
     ]);
   });
-
-  it("summarizes missing learning state as no progress", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000102",
-      "2026-08-05T11:01:00.000Z",
-    );
-    const storedModel = model(storedTutorial.id, "Empty progress");
-
-    mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel.mockResolvedValue(storedModel);
-
-    await expect(listTutorials()).resolves.toMatchObject([
-      {
-        id: storedTutorial.id,
-        learningSummary: {
-          practiced: 0,
-          total: 1,
-          mastered: 0,
-          reviewing: 0,
-          learning: 0,
-          notPracticed: 1,
-          dueNow: 0,
-        },
-      },
-    ]);
-  });
-
-  it.each([
-    {
-      name: "cannot be read",
-      learningState: new Error("learning state read failed"),
-    },
-    {
-      name: "is invalid",
-      learningState: { tutorialId: "wrong-tutorial" },
-    },
-  ])(
-    "keeps the prepared tutorial when learning state $name",
-    async ({ learningState }) => {
-      const storedTutorial = tutorial(
-        "00000000-0000-4000-8000-000000000103",
-        "2026-08-05T11:02:00.000Z",
-      );
-      const storedModel = model(storedTutorial.id, "Fallback progress");
-      const consoleError = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
-      mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
-      mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-      mocks.readDocumentModel.mockResolvedValue(storedModel);
-
-      if (learningState instanceof Error) {
-        mocks.readStoredLearningState.mockRejectedValue(learningState);
-      } else {
-        mocks.readStoredLearningState.mockResolvedValue(learningState);
-      }
-
-      await expect(listTutorials()).resolves.toMatchObject([
-        {
-          id: storedTutorial.id,
-          map: {
-            page_count: 1,
-            concept_count: 1,
-            connection_count: 0,
-          },
-          learningSummary: null,
-        },
-      ]);
-      expect(consoleError).toHaveBeenCalledWith(
-        `Learning progress for stored tutorial ${storedTutorial.id} could not be loaded:`,
-        expect.any(Error),
-      );
-
-      consoleError.mockRestore();
-    },
-  );
-
-  it("omits a tutorial when its prepared document fails", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000104",
-      "2026-08-05T11:03:00.000Z",
-    );
-    const preparedError = new Error("prepared document read failed");
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel.mockRejectedValue(preparedError);
-
-    await expect(listTutorials()).resolves.toEqual([]);
-    expect(mocks.readStoredLearningState).not.toHaveBeenCalled();
-    expect(consoleError).toHaveBeenCalledWith(
-      `Stored tutorial ${storedTutorial.id} could not be loaded:`,
-      preparedError,
-    );
-
-    consoleError.mockRestore();
-  });
 });
 
-describe("prepared tutorial model cache", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.hasDocumentEmbeddings.mockResolvedValue(true);
-    mocks.readStoredLearningState.mockResolvedValue(null);
-    mocks.validateDocumentModel.mockImplementation((value) => value);
-  });
-
-  it("shares one model read and validation between concurrent callers", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000001",
-      "2026-08-05T10:00:00.000Z",
-    );
-    let resolveModel: (value: DocumentModel) => void = () => {};
-    const storedModel = new Promise<DocumentModel>((resolve) => {
-      resolveModel = resolve;
-    });
-
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel.mockReturnValue(storedModel);
-
-    const firstRead = readPreparedTutorial(storedTutorial.id);
-    const secondRead = readPreparedTutorial(storedTutorial.id);
-
-    await vi.waitFor(() => {
-      expect(mocks.readDocumentModel).toHaveBeenCalledTimes(1);
-    });
-    resolveModel(model(storedTutorial.id, "Concurrent model"));
-
-    const [first, second] = await Promise.all([firstRead, secondRead]);
-
-    expect(first?.model).toBe(second?.model);
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(1);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(1);
-  });
-
-  it("reuses a validated model across direct and tutorial-list reads", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000002",
-      "2026-08-05T10:01:00.000Z",
-    );
-    const storedModel = model(storedTutorial.id, "Reusable model");
-
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel.mockResolvedValue(storedModel);
-    mocks.listStoredTutorials.mockResolvedValue([storedTutorial]);
-
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toMatchObject({ model: storedModel });
-    await expect(listTutorials()).resolves.toMatchObject([
-      {
-        id: storedTutorial.id,
-        map: {
-          page_count: 1,
-          concept_count: 1,
-          connection_count: 0,
-        },
-      },
-    ]);
-
-    expect(mocks.readStoredTutorial).toHaveBeenCalledTimes(2);
-    expect(mocks.hasDocumentEmbeddings).toHaveBeenCalledTimes(2);
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(1);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads and validates a fresh model when updatedAt changes", async () => {
-    const tutorialId = "00000000-0000-4000-8000-000000000003";
-    const firstTutorial = tutorial(
-      tutorialId,
-      "2026-08-05T10:02:00.000Z",
-    );
-    const secondTutorial = tutorial(
-      tutorialId,
-      "2026-08-05T10:03:00.000Z",
-    );
-    const firstModel = model(tutorialId, "First model");
-    const secondModel = model(tutorialId, "Second model");
-
-    mocks.readStoredTutorial
-      .mockResolvedValueOnce(firstTutorial)
-      .mockResolvedValueOnce(secondTutorial);
-    mocks.readDocumentModel
-      .mockResolvedValueOnce(firstModel)
-      .mockResolvedValueOnce(secondModel);
-
-    await expect(readPreparedTutorial(tutorialId)).resolves.toMatchObject({
-      model: firstModel,
-    });
-    await expect(readPreparedTutorial(tutorialId)).resolves.toMatchObject({
-      model: secondModel,
-    });
-
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(2);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries after a model read rejects", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000004",
-      "2026-08-05T10:04:00.000Z",
-    );
-    const storedModel = model(storedTutorial.id, "Retried model");
-
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel
-      .mockRejectedValueOnce(new Error("read failed"))
-      .mockResolvedValueOnce(storedModel);
-
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).rejects.toThrow("read failed");
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toMatchObject({ model: storedModel });
-
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(2);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(1);
-  });
-
-  it("retries after model validation rejects", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000005",
-      "2026-08-05T10:05:00.000Z",
-    );
-    const storedModel = model(storedTutorial.id, "Retried validation");
-
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel.mockResolvedValue(storedModel);
-    mocks.validateDocumentModel
-      .mockImplementationOnce(() => {
-        throw new Error("validation failed");
-      })
-      .mockImplementationOnce((value) => value);
-
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).rejects.toThrow("validation failed");
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toMatchObject({ model: storedModel });
-
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(2);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not retain a missing model as a cache hit", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000006",
-      "2026-08-05T10:06:00.000Z",
-    );
-    const storedModel = model(storedTutorial.id, "Completed model");
-
-    mocks.readStoredTutorial.mockResolvedValue(storedTutorial);
-    mocks.readDocumentModel
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(storedModel);
-
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toBeNull();
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toMatchObject({ model: storedModel });
-
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(2);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not serve a cached model when current availability is lost", async () => {
-    const storedTutorial = tutorial(
-      "00000000-0000-4000-8000-000000000007",
-      "2026-08-05T10:07:00.000Z",
-    );
-    const processingTutorial: StoredTutorial = {
-      ...storedTutorial,
-      status: "processing",
-    };
-    const storedModel = model(storedTutorial.id, "Unavailable model");
-
-    mocks.readStoredTutorial
-      .mockResolvedValueOnce(storedTutorial)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(processingTutorial)
-      .mockResolvedValueOnce(storedTutorial);
-    mocks.readDocumentModel.mockResolvedValue(storedModel);
-    mocks.hasDocumentEmbeddings
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
-
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toMatchObject({ model: storedModel });
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toBeNull();
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toBeNull();
-    await expect(
-      readPreparedTutorial(storedTutorial.id),
-    ).resolves.toBeNull();
-
-    expect(mocks.readStoredTutorial).toHaveBeenCalledTimes(4);
-    expect(mocks.hasDocumentEmbeddings).toHaveBeenCalledTimes(4);
-    expect(mocks.readDocumentModel).toHaveBeenCalledTimes(1);
-    expect(mocks.validateDocumentModel).toHaveBeenCalledTimes(1);
-  });
-});
-
-function tutorial(id: string, updatedAt: string): StoredTutorial {
+function tutorial(
+  id: string,
+  status: StoredTutorial["status"],
+  publishedBatchCount: number | null,
+): StoredTutorial {
   return {
     id,
     title: "Stored tutorial",
     documentName: "stored.pdf",
     createdAt: "2026-08-05T09:00:00.000Z",
-    updatedAt,
+    updatedAt: "2026-08-05T11:00:00.000Z",
     sourcePageCount: 1,
-    publishedBatchCount: null,
-    status: "ready",
+    status,
     error: null,
+    publishedBatchCount,
     preparation: {
-      phase: "complete",
+      phase: status === "ready" ? "complete" : "analyzing",
       batches: [
         {
           batch_index: 1,
           start_page: 1,
           end_page: 1,
-          status: "complete",
+          status: status === "ready" ? "complete" : "processing",
         },
       ],
     },

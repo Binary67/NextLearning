@@ -18,7 +18,7 @@ function tutorial(
   id: string,
   status: TutorialStatusItem["status"],
 ): TutorialStatusItem {
-  return { id, status };
+  return { id, status, availability: null };
 }
 
 describe("tutorial polling decisions", () => {
@@ -133,6 +133,27 @@ describe("tutorial status snapshot changes", () => {
     expect(
       haveTutorialStatusesChanged(currentStatuses, [
         tutorial(tutorialIds.first, "queued"),
+      ]),
+    ).toBe(true);
+  });
+
+  it("refreshes when a published availability batch expands", () => {
+    const currentStatuses = new Map<string, TutorialStatusItem>([
+      [
+        tutorialIds.first,
+        {
+          ...tutorial(tutorialIds.first, "processing"),
+          availability: { batchCount: 1, pageCount: 10 },
+        },
+      ],
+    ]);
+
+    expect(
+      haveTutorialStatusesChanged(currentStatuses, [
+        {
+          ...tutorial(tutorialIds.first, "processing"),
+          availability: { batchCount: 2, pageCount: 20 },
+        },
       ]),
     ).toBe(true);
   });

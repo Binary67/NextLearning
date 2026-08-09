@@ -1,13 +1,13 @@
 import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
 import { findTextSelectionContext } from "@/lib/document-search";
 import { validateDocumentEmbeddings } from "@/lib/document-embedding-validation";
-import { readDocumentEmbeddings } from "@/lib/document-artifact-storage";
+import { readPublishedDocumentEmbeddings } from "@/lib/document-artifact-storage";
 import { isTutorialId } from "@/lib/tutorial-storage";
 import {
   readRequestTextWithLimit,
   RequestBodyTooLargeError,
 } from "@/lib/request-body-size";
-import { readPreparedTutorial } from "@/lib/tutorial";
+import { readAvailableTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
@@ -51,16 +51,22 @@ export async function POST(
   }
 
   try {
-    const [prepared, storedEmbeddings] = await Promise.all([
-      readPreparedTutorial(tutorialId),
-      readDocumentEmbeddings(tutorialId),
-    ]);
+    const available = await readAvailableTutorial(tutorialId);
 
-    if (!prepared || !storedEmbeddings) {
+    if (!available) {
       return tutorialNotFoundResponse();
     }
 
-    if (input.page_index > prepared.model.page_count) {
+    const storedEmbeddings = await readPublishedDocumentEmbeddings(
+      tutorialId,
+      available.publishedBatchCount,
+    );
+
+    if (!storedEmbeddings) {
+      return tutorialNotFoundResponse();
+    }
+
+    if (input.page_index > available.model.page_count) {
       return Response.json(
         { message: "The selected page is not available." },
         { status: 400 },
@@ -69,10 +75,10 @@ export async function POST(
 
     const embeddings = validateDocumentEmbeddings(
       storedEmbeddings,
-      prepared.model,
+      available.model,
     );
     const textSelection = await findTextSelectionContext(
-      prepared.model,
+      available.model,
       embeddings,
       input.page_index,
       input.selection_text,

@@ -153,7 +153,21 @@ export function validateGuidedProgress(
     );
   }
 
-  return value as GuidedReadingProgress;
+  const progress = value as GuidedReadingProgress;
+
+  if (progress.cursor !== null || progress.completedChunkIds.length === 0) {
+    return progress;
+  }
+
+  return {
+    ...progress,
+    cursor: findNextCursor(
+      model,
+      1,
+      0,
+      new Set(progress.completedChunkIds),
+    ),
+  };
 }
 
 export function summarizeGuidedProgress(

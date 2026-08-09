@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findTextSelectionContext: vi.fn(),
-  readDocumentEmbeddings: vi.fn(),
-  readPreparedTutorial: vi.fn(),
+  readPublishedDocumentEmbeddings: vi.fn(),
+  readAvailableTutorial: vi.fn(),
   validateDocumentEmbeddings: vi.fn(),
 }));
 
@@ -20,7 +20,8 @@ vi.mock("@/lib/tutorial-storage", () => ({
 }));
 
 vi.mock("@/lib/document-artifact-storage", () => ({
-  readDocumentEmbeddings: mocks.readDocumentEmbeddings,
+  readPublishedDocumentEmbeddings:
+    mocks.readPublishedDocumentEmbeddings,
 }));
 
 vi.mock("@/lib/request-body-size", () => {
@@ -41,7 +42,7 @@ vi.mock("@/lib/request-body-size", () => {
 });
 
 vi.mock("@/lib/tutorial", () => ({
-  readPreparedTutorial: mocks.readPreparedTutorial,
+  readAvailableTutorial: mocks.readAvailableTutorial,
 }));
 
 import { POST } from "@/app/api/tutorials/[tutorialId]/related-pages/route";
@@ -58,8 +59,11 @@ const embeddings = {};
 describe("related-pages route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.readPreparedTutorial.mockResolvedValue({ model });
-    mocks.readDocumentEmbeddings.mockResolvedValue(embeddings);
+    mocks.readAvailableTutorial.mockResolvedValue({
+      model,
+      publishedBatchCount: 2,
+    });
+    mocks.readPublishedDocumentEmbeddings.mockResolvedValue(embeddings);
     mocks.validateDocumentEmbeddings.mockReturnValue(embeddings);
     mocks.findTextSelectionContext.mockResolvedValue(null);
   });
@@ -73,7 +77,7 @@ describe("related-pages route", () => {
     await expect(response.json()).resolves.toEqual({
       message: "The related-page request is too large.",
     });
-    expect(mocks.readPreparedTutorial).not.toHaveBeenCalled();
+    expect(mocks.readAvailableTutorial).not.toHaveBeenCalled();
   });
 
   it("passes the incoming request signal to related-page matching", async () => {
@@ -87,6 +91,10 @@ describe("related-pages route", () => {
     const response = await POST(request, routeContext);
 
     expect(response.status).toBe(200);
+    expect(mocks.readPublishedDocumentEmbeddings).toHaveBeenCalledWith(
+      tutorialId,
+      2,
+    );
     expect(mocks.findTextSelectionContext).toHaveBeenCalledWith(
       model,
       embeddings,

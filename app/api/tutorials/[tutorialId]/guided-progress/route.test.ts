@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  readPreparedTutorial: vi.fn(),
+  readAvailableTutorial: vi.fn(),
   recordGuidedProgressEvent: vi.fn(),
   resetGuidedProgress: vi.fn(),
 }));
@@ -17,7 +17,7 @@ vi.mock("@/lib/guided-progress-store", () => ({
 }));
 
 vi.mock("@/lib/tutorial", () => ({
-  readPreparedTutorial: mocks.readPreparedTutorial,
+  readAvailableTutorial: mocks.readAvailableTutorial,
 }));
 
 import {
@@ -34,7 +34,7 @@ const routeContext = {
 describe("guided-progress route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.readPreparedTutorial.mockResolvedValue({ model: {} });
+    mocks.readAvailableTutorial.mockResolvedValue({ model: {} });
     mocks.recordGuidedProgressEvent.mockResolvedValue({});
     mocks.resetGuidedProgress.mockResolvedValue({
       cursor: null,

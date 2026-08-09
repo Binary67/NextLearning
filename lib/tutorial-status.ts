@@ -1,4 +1,5 @@
 import type { TutorialStatus } from "@/lib/document-storage-types";
+import type { TutorialAvailability } from "@/lib/tutorial";
 
 const tutorialIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -6,11 +7,14 @@ const tutorialIdPattern =
 export type TutorialStatusItem = {
   id: string;
   status: TutorialStatus;
+  availability: TutorialAvailability | null;
 };
 
 export type TutorialStatusResponse = {
   tutorials: TutorialStatusItem[];
 };
+
+type CurrentTutorialStatus = TutorialStatus | TutorialStatusItem;
 
 export function isTutorialStatusResponse(
   value: unknown,
@@ -34,6 +38,7 @@ export function isTutorialStatusResponse(
       typeof tutorial.id !== "string" ||
       !tutorialIdPattern.test(tutorial.id) ||
       !isTutorialStatus(tutorial.status) ||
+      !isTutorialAvailability(tutorial.availability) ||
       tutorialIds.has(tutorial.id)
     ) {
       return false;
@@ -46,17 +51,30 @@ export function isTutorialStatusResponse(
 }
 
 export function haveTutorialStatusesChanged(
-  currentStatuses: ReadonlyMap<string, TutorialStatus>,
+  currentStatuses: ReadonlyMap<string, CurrentTutorialStatus>,
   nextTutorials: readonly TutorialStatusItem[],
 ) {
   if (currentStatuses.size !== nextTutorials.length) {
     return true;
   }
 
-  return nextTutorials.some(
-    (tutorial) =>
-      currentStatuses.get(tutorial.id) !== tutorial.status,
-  );
+  return nextTutorials.some((tutorial) => {
+    const current = currentStatuses.get(tutorial.id);
+
+    if (current === undefined) {
+      return true;
+    }
+
+    if (typeof current === "string") {
+      return current !== tutorial.status;
+    }
+
+    return (
+      current.status !== tutorial.status ||
+      current.availability?.batchCount !==
+        tutorial.availability?.batchCount
+    );
+  });
 }
 
 export function hasActiveTutorials(
@@ -87,7 +105,7 @@ export function countActiveTutorials(
 }
 
 export function getTutorialTransitionMessage(
-  previousStatuses: ReadonlyMap<string, TutorialStatus> | null,
+  previousStatuses: ReadonlyMap<string, CurrentTutorialStatus> | null,
   tutorials: readonly TutorialStatusItem[],
 ) {
   if (!previousStatuses) {
@@ -95,7 +113,9 @@ export function getTutorialTransitionMessage(
   }
 
   const completedTutorials = tutorials.filter((tutorial) => {
-    const previousStatus = previousStatuses.get(tutorial.id);
+    const previous = previousStatuses.get(tutorial.id);
+    const previousStatus =
+      typeof previous === "string" ? previous : previous?.status;
 
     return (
       (previousStatus === "queued" || previousStatus === "processing") &&
@@ -121,4 +141,30 @@ function isTutorialStatus(value: unknown): value is TutorialStatus {
     value === "ready" ||
     value === "failed"
   );
+}
+
+function isTutorialAvailability(
+  value: unknown,
+): value is TutorialAvailability | null {
+  if (value === null) {
+    return true;
+  }
+
+  if (typeof value !== "object") {
+    return false;
+  }
+
+  const availability = value as {
+    batchCount?: unknown;
+    pageCount?: unknown;
+  };
+
+  return (
+    isPositiveInteger(availability.batchCount) &&
+    isPositiveInteger(availability.pageCount)
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }

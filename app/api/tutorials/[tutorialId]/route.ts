@@ -7,7 +7,7 @@ import {
   updateStoredTutorial,
 } from "@/lib/tutorial-storage";
 import {
-  readPreparedTutorial,
+  readAvailableTutorial,
   toTutorialResponse,
 } from "@/lib/tutorial";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
@@ -28,15 +28,15 @@ export async function GET(
     return tutorialNotFoundResponse();
   }
 
-  const prepared = await readPreparedTutorial(tutorialId);
+  const available = await readAvailableTutorial(tutorialId);
 
-  if (!prepared) {
+  if (!available) {
     return tutorialNotFoundResponse();
   }
 
   return Response.json({
-    tutorial: toTutorialResponse(prepared.tutorial, prepared.model),
-    model: prepared.model,
+    tutorial: toTutorialResponse(available.tutorial, available.model),
+    model: available.model,
   });
 }
 

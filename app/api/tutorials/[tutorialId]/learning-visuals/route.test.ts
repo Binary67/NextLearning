@@ -8,7 +8,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   generateLearningVisual: vi.fn(),
-  readPreparedTutorial: vi.fn(),
+  readAvailableTutorial: vi.fn(),
 }));
 
 vi.mock("@/lib/tutorial-storage", () => ({
@@ -21,7 +21,7 @@ vi.mock("@/lib/learning-visual/generation", () => ({
 }));
 
 vi.mock("@/lib/tutorial", () => ({
-  readPreparedTutorial: mocks.readPreparedTutorial,
+  readAvailableTutorial: mocks.readAvailableTutorial,
 }));
 
 import { POST } from "@/app/api/tutorials/[tutorialId]/learning-visuals/route";
@@ -57,7 +57,7 @@ const visual = {
 describe("learning-visuals route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.readPreparedTutorial.mockResolvedValue({ model: {} });
+    mocks.readAvailableTutorial.mockResolvedValue({ model: {} });
     mocks.generateLearningVisual.mockResolvedValue(visual);
   });
 
@@ -82,7 +82,7 @@ describe("learning-visuals route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(mocks.readPreparedTutorial).not.toHaveBeenCalled();
+    expect(mocks.readAvailableTutorial).not.toHaveBeenCalled();
   });
 
   it("returns 400 for invalid prepared page or chunk references", async () => {
@@ -102,7 +102,7 @@ describe("learning-visuals route", () => {
   });
 
   it("returns 404 when the tutorial is unavailable", async () => {
-    mocks.readPreparedTutorial.mockResolvedValue(null);
+    mocks.readAvailableTutorial.mockResolvedValue(null);
 
     const response = await POST(
       createRequest(JSON.stringify(validInput)),
@@ -120,7 +120,7 @@ describe("learning-visuals route", () => {
     );
 
     expect(response.status).toBe(413);
-    expect(mocks.readPreparedTutorial).not.toHaveBeenCalled();
+    expect(mocks.readAvailableTutorial).not.toHaveBeenCalled();
   });
 
   it("returns 503 when Azure generation is not configured", async () => {

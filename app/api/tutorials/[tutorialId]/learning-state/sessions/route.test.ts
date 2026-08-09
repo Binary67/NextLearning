@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   mutateLearningState: vi.fn(),
   parseLearningSessionInput: vi.fn(),
-  readPreparedTutorial: vi.fn(),
+  readAvailableTutorial: vi.fn(),
 }));
 
 vi.mock("@/lib/tutorial-storage", () => ({
@@ -22,7 +22,7 @@ vi.mock("@/lib/learning-state-store", () => ({
 }));
 
 vi.mock("@/lib/tutorial", () => ({
-  readPreparedTutorial: mocks.readPreparedTutorial,
+  readAvailableTutorial: mocks.readAvailableTutorial,
 }));
 
 import { POST } from "@/app/api/tutorials/[tutorialId]/learning-state/sessions/route";
@@ -36,7 +36,7 @@ const routeContext = {
 describe("learning-session route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.readPreparedTutorial.mockResolvedValue({ model: {} });
+    mocks.readAvailableTutorial.mockResolvedValue({ model: {} });
     mocks.parseLearningSessionInput.mockReturnValue({});
     mocks.mutateLearningState.mockResolvedValue({});
   });

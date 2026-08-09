@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   mutateLearningState: vi.fn(),
   parseResumeInput: vi.fn(),
-  readPreparedTutorial: vi.fn(),
+  readAvailableTutorial: vi.fn(),
 }));
 
 vi.mock("@/lib/tutorial-storage", () => ({
@@ -24,7 +24,7 @@ vi.mock("@/lib/learning-state-store", () => ({
 }));
 
 vi.mock("@/lib/tutorial", () => ({
-  readPreparedTutorial: mocks.readPreparedTutorial,
+  readAvailableTutorial: mocks.readAvailableTutorial,
 }));
 
 import { PATCH } from "@/app/api/tutorials/[tutorialId]/learning-state/route";
@@ -38,7 +38,7 @@ const routeContext = {
 describe("learning-state route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.readPreparedTutorial.mockResolvedValue({ model: {} });
+    mocks.readAvailableTutorial.mockResolvedValue({ model: {} });
     mocks.parseResumeInput.mockReturnValue({
       pageIndex: 0,
       chunkId: null,

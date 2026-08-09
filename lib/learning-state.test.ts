@@ -205,6 +205,61 @@ describe("learning-state validation", () => {
       ),
     ).toThrow(LearningStateInputError);
   });
+
+  it("preserves stored progress when the published model grows", () => {
+    const state = recordLearningAttempt(
+      createEmptyLearningState(tutorialId, start),
+      attempt(),
+      start,
+    );
+    const expandedModel: DocumentModel = {
+      ...model,
+      page_count: 3,
+      pages: [
+        ...model.pages,
+        {
+          page_index: 3,
+          page_label: "3",
+          chunks: [
+            {
+              ...model.pages[1].chunks[0],
+              id: "chunk:gamma",
+              title: "Gamma",
+              summary: "Gamma summary",
+              concept_ids: ["concept:gamma"],
+              sources: [
+                {
+                  ...model.pages[1].chunks[0].sources[0],
+                  page_index: 3,
+                  source_text: "Gamma text",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      concepts: [
+        ...model.concepts,
+        {
+          ...model.concepts[1],
+          id: "concept:gamma",
+          name: "Gamma",
+          definition: "The gamma concept.",
+          occurrences: [
+            {
+              ...model.concepts[1].occurrences[0],
+              page_index: 3,
+              page_label: "3",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(validateLearningState(state, tutorialId, expandedModel)).toEqual(
+      state,
+    );
+  });
 });
 
 function attempt(

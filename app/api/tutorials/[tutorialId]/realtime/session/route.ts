@@ -4,7 +4,7 @@ import {
   readRequestTextWithLimit,
   RequestBodyTooLargeError,
 } from "@/lib/request-body-size";
-import { readPreparedTutorial } from "@/lib/tutorial";
+import { readAvailableTutorial } from "@/lib/tutorial";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ export async function POST(
     return tutorialNotFoundResponse();
   }
 
-  const tutorial = await readPreparedTutorial(tutorialId);
+  const tutorial = await readAvailableTutorial(tutorialId);
 
   if (!tutorial) {
     return tutorialNotFoundResponse();

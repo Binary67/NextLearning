@@ -5,7 +5,7 @@ import type {
   LearningState,
 } from "@/lib/learning-state";
 import { readLearningState } from "@/lib/learning-state-store";
-import { readPreparedTutorial } from "@/lib/tutorial";
+import { readAvailableTutorial } from "@/lib/tutorial";
 
 export type ReviewQueueItem = {
   tutorialId: string;
@@ -44,19 +44,19 @@ export async function readDueReviews(now = new Date()) {
   const tutorialIds = await listStoredTutorialIds();
   const tutorials = await Promise.all(
     tutorialIds.map(async (tutorialId) => {
-      const prepared = await readPreparedTutorial(tutorialId);
+      const available = await readAvailableTutorial(tutorialId);
 
-      if (!prepared) {
+      if (!available) {
         return null;
       }
 
       return {
         tutorialId,
-        tutorialTitle: prepared.tutorial.title,
-        model: prepared.model,
+        tutorialTitle: available.tutorial.title,
+        model: available.model,
         learningState: await readLearningState(
           tutorialId,
-          prepared.model,
+          available.model,
           now,
         ),
       } satisfies ReviewQueueTutorial;

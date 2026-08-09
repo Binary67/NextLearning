@@ -5,8 +5,7 @@ import {
   validateDocumentModel,
 } from "@/lib/document-model";
 import {
-  hasDocumentEmbeddings,
-  readDocumentModel,
+  readPublishedDocumentModel,
 } from "@/lib/document-artifact-storage";
 import {
   listStoredTutorials,
@@ -23,17 +22,25 @@ import {
 import { readLearningState } from "@/lib/learning-state-store";
 import { LruPromiseCache } from "@/lib/lru-promise-cache";
 
-const preparedDocumentModelCache = new LruPromiseCache<
+const availableDocumentModelCache = new LruPromiseCache<
   string,
   DocumentModel
 >(100);
 
-class MissingPreparedDocumentModelError extends Error {}
+class MissingAvailableDocumentModelError extends Error {}
 
-export type PreparedTutorial = {
+export type TutorialAvailability = {
+  batchCount: number;
+  pageCount: number;
+};
+
+export type AvailableTutorial = {
   tutorial: StoredTutorial;
   model: DocumentModel;
+  publishedBatchCount: number;
 };
+
+export type PreparedTutorial = AvailableTutorial;
 
 export type TutorialResponse = {
   id: string;
@@ -43,6 +50,8 @@ export type TutorialResponse = {
   createdAt: string;
   status: TutorialStatus;
   error: string | null;
+  sourcePageCount: number;
+  availability: TutorialAvailability | null;
   map: DocumentMapSummary | null;
   learningSummary: LearningProgressSummary | null;
 };
@@ -51,14 +60,10 @@ export async function listTutorials(now = new Date()) {
   const storedTutorials = await listStoredTutorials();
   const tutorialResults = await Promise.allSettled(
     storedTutorials.map(async (tutorial) => {
-      if (tutorial.status !== "ready") {
+      const available = await readAvailableTutorial(tutorial.id);
+
+      if (!available) {
         return toTutorialResponse(tutorial);
-      }
-
-      const prepared = await readPreparedTutorial(tutorial.id);
-
-      if (!prepared) {
-        throw new Error("The prepared tutorial data is incomplete.");
       }
 
       let learningSummary: LearningProgressSummary | null = null;
@@ -66,11 +71,11 @@ export async function listTutorials(now = new Date()) {
       try {
         const learningState = await readLearningState(
           tutorial.id,
-          prepared.model,
+          available.model,
           now,
         );
         learningSummary = summarizeLearningProgress(
-          prepared.model,
+          available.model,
           learningState,
           now,
         );
@@ -82,8 +87,8 @@ export async function listTutorials(now = new Date()) {
       }
 
       return toTutorialResponse(
-        prepared.tutorial,
-        prepared.model,
+        available.tutorial,
+        available.model,
         learningSummary,
       );
     }),
@@ -108,28 +113,32 @@ export async function listTutorials(now = new Date()) {
   );
 }
 
-export async function readPreparedTutorial(
+export async function readAvailableTutorial(
   tutorialId: string,
-): Promise<PreparedTutorial | null> {
-  const [tutorial, embeddingsAvailable] = await Promise.all([
-    readStoredTutorial(tutorialId),
-    hasDocumentEmbeddings(tutorialId),
-  ]);
+): Promise<AvailableTutorial | null> {
+  const tutorial = await readStoredTutorial(tutorialId);
 
   if (
     !tutorial ||
-    tutorial.status !== "ready" ||
-    !embeddingsAvailable
+    tutorial.status === "queued" ||
+    tutorial.publishedBatchCount === null
   ) {
     return null;
   }
 
-  const model = await readPreparedDocumentModel(
+  const model = await readAvailableDocumentModel(
     tutorialId,
-    tutorial.updatedAt,
+    tutorial.publishedBatchCount,
   );
 
   if (!model) {
+    return null;
+  }
+
+  if (
+    tutorial.status === "ready" &&
+    model.page_count < tutorial.sourcePageCount
+  ) {
     return null;
   }
 
@@ -140,28 +149,34 @@ export async function readPreparedTutorial(
   return {
     tutorial,
     model,
+    publishedBatchCount: tutorial.publishedBatchCount,
   };
 }
 
-async function readPreparedDocumentModel(
+export const readPreparedTutorial = readAvailableTutorial;
+
+async function readAvailableDocumentModel(
   tutorialId: string,
-  updatedAt: string,
+  publishedBatchCount: number,
 ): Promise<DocumentModel | null> {
   try {
-    return await preparedDocumentModelCache.getOrCreate(
-      `${tutorialId}\0${updatedAt}`,
+    return await availableDocumentModelCache.getOrCreate(
+      `${tutorialId}\0${publishedBatchCount}`,
       async () => {
-        const storedModel = await readDocumentModel(tutorialId);
+        const storedModel = await readPublishedDocumentModel(
+          tutorialId,
+          publishedBatchCount,
+        );
 
         if (!storedModel) {
-          throw new MissingPreparedDocumentModelError();
+          throw new MissingAvailableDocumentModelError();
         }
 
         return validateDocumentModel(storedModel, tutorialId);
       },
     );
   } catch (error) {
-    if (error instanceof MissingPreparedDocumentModelError) {
+    if (error instanceof MissingAvailableDocumentModelError) {
       return null;
     }
 
@@ -182,6 +197,14 @@ export function toTutorialResponse(
     createdAt: tutorial.createdAt,
     status: tutorial.status,
     error: tutorial.error,
+    sourcePageCount: tutorial.sourcePageCount,
+    availability:
+      model && typeof tutorial.publishedBatchCount === "number"
+        ? {
+            batchCount: tutorial.publishedBatchCount,
+            pageCount: model.page_count,
+          }
+        : null,
     map: model ? summarizeDocumentModel(model) : null,
     learningSummary: learningSummary ?? null,
   };
