@@ -105,17 +105,39 @@ describe("learning-visual generation", () => {
         content: Array<{ type: string; image_url?: string; text?: string }>;
       }>;
     };
+    const prompt = request.input[0].content[1].text;
     expect(request.store).toBe(false);
     expect(request.input[0].content[0]).toEqual({
       type: "input_image",
       image_url: input.pageImageUrl,
       detail: "high",
     });
-    expect(request.input[0].content[1].text).toContain(
+    expect(prompt).toContain(
       "Exact prepared source: the signal divides into path A and path B.",
     );
-    expect(request.input[0].content[1].text).toContain(
+    expect(prompt).toContain(
       '"definition": "An input branching into distinct paths."',
+    );
+    expect(prompt).toContain(
+      "Identify the underlying teaching difficulty from the learner context, prepared evidence, and attached page image, then choose the matching existing strategy.",
+    );
+    expect(prompt).toContain(
+      "Use progressive disclosure in this order: (1) state the purpose or intuition briefly; (2) show one dominant visual; (3) provide one meaningful learner interaction; (4) reveal optional technical detail after the learner chooses to see it.",
+    );
+    expect(prompt).toContain(
+      "Keep formal detail available without letting it dominate the initial view.",
+    );
+    expect(prompt).toContain(
+      "Choose an interaction suited to the concept: step through a mechanism, predict an outcome, compare cases, manipulate an input, inspect a relationship, or reveal notation.",
+    );
+    expect(prompt).toContain(
+      "Decorative motion alone, autoplay, hover-only effects, and passive animation do not satisfy the interaction requirement.",
+    );
+    expect(prompt).toContain(
+      "Give immediate, concise feedback for prediction or checking interactions so the learner knows what happened and why.",
+    );
+    expect(prompt).toContain(
+      "If you use an analogy, state its limit. Mark uncertainty when the evidence does not support detail. Keep the approachable layer usable for a complete beginner without hiding the accurate technical layer.",
     );
   });
 
