@@ -2,7 +2,6 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 
 import { LruPromiseCache } from "@/lib/lru-promise-cache";
 
-const pdfDocumentPromises = new LruPromiseCache<string, PDFDocumentProxy>(2);
 const pdfPageImagePromises = new LruPromiseCache<
   string,
   RenderedPdfPageImage
@@ -18,18 +17,146 @@ export type RenderedPdfPageImage = {
   height: number;
 };
 
-export async function loadPdfDocument(
+type PdfDocumentResource = {
+  document: PDFDocumentProxy;
+  destroy: () => Promise<void>;
+};
+
+type PdfDocumentCacheEntry = {
+  promise: Promise<PdfDocumentResource>;
+  references: number;
+  evicted: boolean;
+  disposalScheduled: boolean;
+};
+
+export type PdfDocumentLease = {
+  document: PDFDocumentProxy;
+  release: () => void;
+};
+
+export class PdfDocumentCache {
+  private readonly entries = new Map<string, PdfDocumentCacheEntry>();
+
+  constructor(private readonly capacity: number) {
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      throw new RangeError("PDF cache capacity must be a positive integer.");
+    }
+  }
+
+  async acquire(
+    key: string,
+    create: () => Promise<PdfDocumentResource>,
+  ): Promise<PdfDocumentLease> {
+    let entry = this.entries.get(key);
+
+    if (entry) {
+      this.entries.delete(key);
+      this.entries.set(key, entry);
+    } else {
+      entry = {
+        promise: create(),
+        references: 0,
+        evicted: false,
+        disposalScheduled: false,
+      };
+      this.entries.set(key, entry);
+      this.evictLeastRecentlyUsedEntry();
+    }
+
+    entry.references += 1;
+
+    let resource: PdfDocumentResource;
+
+    try {
+      resource = await entry.promise;
+    } catch (error) {
+      this.releaseEntry(key, entry);
+      throw error;
+    }
+
+    let released = false;
+
+    return {
+      document: resource.document,
+      release: () => {
+        if (released) {
+          return;
+        }
+
+        released = true;
+        this.releaseEntry(key, entry);
+      },
+    };
+  }
+
+  private evictLeastRecentlyUsedEntry() {
+    if (this.entries.size <= this.capacity) {
+      return;
+    }
+
+    const leastRecentlyUsedEntry = this.entries.entries().next();
+
+    if (leastRecentlyUsedEntry.done) {
+      return;
+    }
+
+    const [key, entry] = leastRecentlyUsedEntry.value;
+    this.entries.delete(key);
+    entry.evicted = true;
+    this.disposeEntryWhenIdle(entry);
+  }
+
+  private releaseEntry(key: string, entry: PdfDocumentCacheEntry) {
+    entry.references -= 1;
+
+    void entry.promise.catch(() => {
+      if (this.entries.get(key) === entry) {
+        this.entries.delete(key);
+      }
+    });
+    this.disposeEntryWhenIdle(entry);
+  }
+
+  private disposeEntryWhenIdle(entry: PdfDocumentCacheEntry) {
+    if (
+      !entry.evicted ||
+      entry.references !== 0 ||
+      entry.disposalScheduled
+    ) {
+      return;
+    }
+
+    entry.disposalScheduled = true;
+    void entry.promise
+      .then((resource) => resource.destroy())
+      .catch(() => {});
+  }
+}
+
+const pdfDocumentCache = new PdfDocumentCache(2);
+
+export function acquirePdfDocument(
   documentId: string,
   documentUrl: string,
 ) {
-  return pdfDocumentPromises.getOrCreate(documentId, () =>
-    import("pdfjs-dist/webpack.mjs").then(
-      ({ getDocument }) =>
-        getDocument({
-          url: documentUrl,
-          standardFontDataUrl: STANDARD_FONT_DATA_URL,
-        }).promise,
-    ),
+  return pdfDocumentCache.acquire(documentId, () =>
+    import("pdfjs-dist/webpack.mjs").then(async ({ getDocument }) => {
+      const loadingTask = getDocument({
+        url: documentUrl,
+        standardFontDataUrl: STANDARD_FONT_DATA_URL,
+      });
+
+      try {
+        const document = await loadingTask.promise;
+        return {
+          document,
+          destroy: () => loadingTask.destroy(),
+        };
+      } catch (error) {
+        await loadingTask.destroy();
+        throw error;
+      }
+    }),
   );
 }
 
@@ -85,46 +212,50 @@ async function renderPage(
     );
   }
 
-  const pdfDocument = await loadPdfDocument(documentId, documentUrl);
+  const lease = await acquirePdfDocument(documentId, documentUrl);
 
-  if (pageIndex > pdfDocument.numPages) {
-    throw new Error("That PDF page is not available.");
-  }
+  try {
+    if (pageIndex > lease.document.numPages) {
+      throw new Error("That PDF page is not available.");
+    }
 
-  const page = await pdfDocument.getPage(pageIndex);
-  const baseViewport = page.getViewport({ scale: 1 });
+    const page = await lease.document.getPage(pageIndex);
+    const baseViewport = page.getViewport({ scale: 1 });
 
-  for (const targetWidth of TARGET_PAGE_WIDTHS) {
-    const viewport = page.getViewport({
-      scale: targetWidth / baseViewport.width,
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
+    for (const targetWidth of TARGET_PAGE_WIDTHS) {
+      const viewport = page.getViewport({
+        scale: targetWidth / baseViewport.width,
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
 
-    await page.render({
-      canvas,
-      viewport,
-      background: "rgb(255,255,255)",
-    }).promise;
+      await page.render({
+        canvas,
+        viewport,
+        background: "rgb(255,255,255)",
+      }).promise;
 
-    for (const quality of JPEG_QUALITIES) {
-      const imageUrl = canvas.toDataURL("image/jpeg", quality);
+      for (const quality of JPEG_QUALITIES) {
+        const imageUrl = canvas.toDataURL("image/jpeg", quality);
 
-      if (
-        imageUrl.startsWith("data:image/jpeg;base64,") &&
-        imageUrl.length < maximumDataUrlBytes
-      ) {
-        return {
-          imageUrl,
-          width: canvas.width,
-          height: canvas.height,
-        };
+        if (
+          imageUrl.startsWith("data:image/jpeg;base64,") &&
+          imageUrl.length < maximumDataUrlBytes
+        ) {
+          return {
+            imageUrl,
+            width: canvas.width,
+            height: canvas.height,
+          };
+        }
       }
     }
-  }
 
-  throw new Error(
-    "This PDF page cannot be made readable within the Realtime connection's image limit.",
-  );
+    throw new Error(
+      "This PDF page cannot be made readable within the Realtime connection's image limit.",
+    );
+  } finally {
+    lease.release();
+  }
 }

@@ -8,9 +8,9 @@ import {
   buildTextSelectionContext,
   type DocumentChunk,
   type DocumentModel,
+  type DocumentPage,
   type TextSelectionContext,
   getDocumentChunkSourceText,
-  getDocumentChunksForSourcePage,
 } from "@/lib/document-model";
 
 export const DOCUMENT_EMBEDDINGS_SCHEMA_VERSION = 1;
@@ -51,6 +51,36 @@ export type DocumentTopicMatch = {
   summary: string;
   concepts: string[];
 };
+
+type DocumentSearchIndex = {
+  chunks: DocumentChunk[];
+  conceptNames: ReadonlyMap<string, string>;
+  pageByChunkId: ReadonlyMap<string, DocumentPage>;
+  chunksBySourcePage: ReadonlyMap<number, DocumentChunk[]>;
+  searchDataByChunkId: ReadonlyMap<
+    string,
+    {
+      length: number;
+      termCounts: ReadonlyMap<string, number>;
+    }
+  >;
+  documentFrequency: ReadonlyMap<string, number>;
+  averageDocumentLength: number;
+};
+
+type ScoredTopicChunk = {
+  chunk: DocumentChunk;
+  score: number;
+};
+
+const documentSearchIndexes = new WeakMap<
+  DocumentModel,
+  DocumentSearchIndex
+>();
+const embeddingIndexes = new WeakMap<
+  DocumentEmbeddings,
+  ReadonlyMap<string, number[]>
+>();
 
 const EMBEDDING_WEIGHT = 0.7;
 const BM25_WEIGHT = 0.3;
@@ -148,7 +178,8 @@ export async function findTextSelectionContext(
   selectionText: string,
   signal?: AbortSignal,
 ): Promise<TextSelectionContext | null> {
-  const pageChunks = getDocumentChunksForSourcePage(model, pageIndex);
+  const searchIndex = getDocumentSearchIndex(model);
+  const pageChunks = searchIndex.chunksBySourcePage.get(pageIndex) ?? [];
 
   if (pageChunks.length === 0) {
     return null;
@@ -173,21 +204,9 @@ export async function findTextSelectionContext(
     );
   }
 
-  const embeddingsByChunkId = new Map(
-    documentEmbeddings.chunks.map((item) => [
-      item.chunk_id,
-      item.embedding,
-    ]),
-  );
-  const conceptNames = getConceptNames(model);
-  const allChunks = getDocumentChunks(model);
-  const bm25Scores = scoreChunksWithBm25(
-    selectionText,
-    allChunks,
-    pageChunks,
-    conceptNames,
-  );
-  const highestBm25Score = Math.max(0, ...bm25Scores.values());
+  const embeddingsByChunkId = getEmbeddingsByChunkId(documentEmbeddings);
+  const { scores: bm25Scores, highestScore: highestBm25Score } =
+    scoreChunksWithBm25(selectionText, searchIndex, pageChunks);
   const rankedChunks: RankedChunk[] = pageChunks.map((chunk) => ({
     chunk,
     embeddingSimilarity: dotProduct(
@@ -221,8 +240,7 @@ export async function findHybridDocumentTopics(
   query: string,
   signal?: AbortSignal,
 ): Promise<DocumentTopicMatch[]> {
-  const chunks = getDocumentChunks(model);
-  const conceptNames = getConceptNames(model);
+  const searchIndex = getDocumentSearchIndex(model);
   const { deployment, embeddings } = await requestEmbeddings(
     [query],
     signal,
@@ -238,21 +256,13 @@ export async function findHybridDocumentTopics(
   }
 
   const queryEmbedding = embeddings[0];
-  const embeddingsByChunkId = new Map(
-    documentEmbeddings.chunks.map((item) => [
-      item.chunk_id,
-      item.embedding,
-    ]),
-  );
-  const bm25Scores = scoreChunksWithBm25(
-    query,
-    chunks,
-    chunks,
-    conceptNames,
-  );
-  const highestBm25Score = Math.max(0, ...bm25Scores.values());
+  const embeddingsByChunkId = getEmbeddingsByChunkId(documentEmbeddings);
+  const { scores: bm25Scores, highestScore: highestBm25Score } =
+    scoreChunksWithBm25(query, searchIndex, searchIndex.chunks);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const ranked = chunks.map((chunk) => {
+  const bestChunkByPage = new Map<number, ScoredTopicChunk>();
+
+  for (const chunk of searchIndex.chunks) {
     const embedding = embeddingsByChunkId.get(chunk.id);
     const embeddingSimilarity = embedding
       ? dotProduct(queryEmbedding, embedding)
@@ -263,59 +273,66 @@ export async function findHybridDocumentTopics(
         : (bm25Scores.get(chunk.id) ?? 0) / highestBm25Score;
     const exactMatchBoost =
       normalizedQuery &&
-      [chunk.section_title, chunk.title]
-        .some((value) =>
-          value.toLocaleLowerCase().includes(normalizedQuery),
-        )
+      [chunk.section_title, chunk.title].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedQuery),
+      )
         ? 0.15
         : 0;
+    const page = searchIndex.pageByChunkId.get(chunk.id);
 
-    return {
+    if (!page) {
+      continue;
+    }
+
+    const candidate = {
       chunk,
       score:
         EMBEDDING_WEIGHT * embeddingSimilarity +
         BM25_WEIGHT * lexicalScore +
         exactMatchBoost,
     };
-  });
-  ranked.sort(
-    (left, right) =>
-      right.score - left.score ||
-      left.chunk.id.localeCompare(right.chunk.id),
-  );
-  const pageByChunkId = new Map(
-    model.pages.flatMap((page) =>
-      page.chunks.map((chunk) => [chunk.id, page] as const),
-    ),
-  );
-  const matches: DocumentTopicMatch[] = [];
-  const seenPages = new Set<number>();
+    const currentBest = bestChunkByPage.get(page.page_index);
 
-  for (const { chunk } of ranked) {
-    const page = pageByChunkId.get(chunk.id);
+    if (!currentBest || compareScoredTopicChunks(candidate, currentBest) < 0) {
+      bestChunkByPage.set(page.page_index, candidate);
+    }
+  }
 
-    if (!page || seenPages.has(page.page_index)) {
+  const topChunks: ScoredTopicChunk[] = [];
+
+  for (const candidate of bestChunkByPage.values()) {
+    const insertionIndex = topChunks.findIndex(
+      (current) => compareScoredTopicChunks(candidate, current) < 0,
+    );
+
+    if (insertionIndex === -1) {
+      if (topChunks.length < 5) {
+        topChunks.push(candidate);
+      }
       continue;
     }
 
-    seenPages.add(page.page_index);
-    matches.push({
+    topChunks.splice(insertionIndex, 0, candidate);
+
+    if (topChunks.length > 5) {
+      topChunks.pop();
+    }
+  }
+
+  return topChunks.map(({ chunk }) => {
+    const page = searchIndex.pageByChunkId.get(chunk.id)!;
+
+    return {
       page_index: page.page_index,
       page_label: page.page_label,
       title: chunk.title,
       summary: chunk.summary,
       concepts: chunk.concept_ids.flatMap((conceptId) => {
-        const name = conceptNames.get(conceptId);
+        const name = searchIndex.conceptNames.get(conceptId);
         return name ? [name] : [];
       }),
-    });
-
-    if (matches.length === 5) {
-      break;
-    }
-  }
-
-  return matches;
+    };
+  });
 }
 
 export function validateDocumentEmbeddings(
@@ -334,7 +351,7 @@ export function validateDocumentEmbeddings(
   }
 
   const expectedChunkIds = new Set(
-    getDocumentChunks(model).map((chunk) => chunk.id),
+    model.pages.flatMap((page) => page.chunks.map((chunk) => chunk.id)),
   );
 
   if (value.chunks.length !== expectedChunkIds.size) {
@@ -475,62 +492,146 @@ async function requestEmbeddingBatch(
 
 function scoreChunksWithBm25(
   query: string,
-  corpus: DocumentChunk[],
+  searchIndex: DocumentSearchIndex,
   candidates: DocumentChunk[],
-  conceptNames: ReadonlyMap<string, string>,
 ) {
-  const corpusTokens = corpus.map((chunk) =>
-    [chunk.id, tokenize(buildChunkSearchText(chunk, conceptNames))] as const,
-  );
-  const tokensByChunkId = new Map(corpusTokens);
-  const tokenizedDocuments = corpusTokens.map(([, tokens]) => tokens);
-  const averageDocumentLength =
-    tokenizedDocuments.reduce(
-      (sum, tokens) => sum + tokens.length,
-      0,
-    ) / tokenizedDocuments.length;
   const queryTokens = new Set(tokenize(query));
-  const documentFrequency = new Map<string, number>();
+  const scores = new Map<string, number>();
+  let highestScore = 0;
 
-  for (const token of queryTokens) {
-    documentFrequency.set(
-      token,
-      tokenizedDocuments.filter((tokens) => tokens.includes(token)).length,
-    );
-  }
+  for (const chunk of candidates) {
+    const searchData = searchIndex.searchDataByChunkId.get(chunk.id);
+    let score = 0;
 
-  return new Map(
-    candidates.map((chunk) => {
-      const tokens = tokensByChunkId.get(chunk.id) ?? [];
-      const termCounts = countTerms(tokens);
-      let score = 0;
-
+    if (searchData) {
       for (const token of queryTokens) {
-        const termFrequency = termCounts.get(token) ?? 0;
+        const termFrequency = searchData.termCounts.get(token) ?? 0;
 
         if (termFrequency === 0) {
           continue;
         }
 
-        const frequency = documentFrequency.get(token) ?? 0;
+        const frequency = searchIndex.documentFrequency.get(token) ?? 0;
         const inverseDocumentFrequency = Math.log(
-          1 + (corpus.length - frequency + 0.5) / (frequency + 0.5),
+          1 +
+            (searchIndex.chunks.length - frequency + 0.5) /
+              (frequency + 0.5),
         );
         const lengthNormalization =
-          1 -
-          BM25_LENGTH_NORMALIZATION +
-          BM25_LENGTH_NORMALIZATION *
-            (tokens.length / averageDocumentLength);
+          searchIndex.averageDocumentLength === 0
+            ? 1
+            : 1 -
+              BM25_LENGTH_NORMALIZATION +
+              BM25_LENGTH_NORMALIZATION *
+                (searchData.length / searchIndex.averageDocumentLength);
 
         score +=
           inverseDocumentFrequency *
           ((termFrequency * (BM25_K1 + 1)) /
             (termFrequency + BM25_K1 * lengthNormalization));
       }
+    }
 
-      return [chunk.id, score];
-    }),
+    scores.set(chunk.id, score);
+    highestScore = Math.max(highestScore, score);
+  }
+
+  return { scores, highestScore };
+}
+
+function getDocumentSearchIndex(model: DocumentModel) {
+  const cached = documentSearchIndexes.get(model);
+
+  if (cached) {
+    return cached;
+  }
+
+  const conceptNames = getConceptNames(model);
+  const chunks: DocumentChunk[] = [];
+  const pageByChunkId = new Map<string, DocumentPage>();
+  const chunksBySourcePage = new Map<number, DocumentChunk[]>();
+  const searchDataByChunkId = new Map<
+    string,
+    {
+      length: number;
+      termCounts: ReadonlyMap<string, number>;
+    }
+  >();
+  const documentFrequency = new Map<string, number>();
+  let totalDocumentLength = 0;
+
+  for (const page of model.pages) {
+    for (const chunk of page.chunks) {
+      chunks.push(chunk);
+      pageByChunkId.set(chunk.id, page);
+
+      for (const pageIndex of new Set(
+        chunk.sources.map((source) => source.page_index),
+      )) {
+        const sourcePageChunks = chunksBySourcePage.get(pageIndex) ?? [];
+        sourcePageChunks.push(chunk);
+        chunksBySourcePage.set(pageIndex, sourcePageChunks);
+      }
+
+      const tokens = tokenize(buildChunkSearchText(chunk, conceptNames));
+      const termCounts = countTerms(tokens);
+      searchDataByChunkId.set(chunk.id, {
+        length: tokens.length,
+        termCounts,
+      });
+      totalDocumentLength += tokens.length;
+
+      for (const token of termCounts.keys()) {
+        documentFrequency.set(
+          token,
+          (documentFrequency.get(token) ?? 0) + 1,
+        );
+      }
+    }
+  }
+
+  const searchIndex: DocumentSearchIndex = {
+    chunks,
+    conceptNames,
+    pageByChunkId,
+    chunksBySourcePage,
+    searchDataByChunkId,
+    documentFrequency,
+    averageDocumentLength:
+      chunks.length === 0 ? 0 : totalDocumentLength / chunks.length,
+  };
+  documentSearchIndexes.set(model, searchIndex);
+  return searchIndex;
+}
+
+function getEmbeddingsByChunkId(documentEmbeddings: DocumentEmbeddings) {
+  const cached = embeddingIndexes.get(documentEmbeddings);
+
+  if (cached) {
+    return cached;
+  }
+
+  const index = new Map(
+    documentEmbeddings.chunks.map(({ chunk_id, embedding }) => [
+      chunk_id,
+      embedding,
+    ]),
   );
+  embeddingIndexes.set(documentEmbeddings, index);
+  return index;
+}
+
+function compareScoredTopicChunks(
+  left: ScoredTopicChunk,
+  right: ScoredTopicChunk,
+) {
+  const scoreDifference = right.score - left.score;
+
+  if (scoreDifference !== 0) {
+    return scoreDifference;
+  }
+
+  return left.chunk.id.localeCompare(right.chunk.id);
 }
 
 function combinedScore(
@@ -602,9 +703,7 @@ function countTerms(tokens: string[]) {
   return counts;
 }
 
-function getDocumentChunks(model: DocumentModel) {
-  return model.pages.flatMap((page) => page.chunks);
-}
+
 
 function prepareDocumentEmbeddingChunks(model: DocumentModel) {
   const conceptNames = getConceptNames(model);

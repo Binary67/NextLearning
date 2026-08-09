@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import type { DocumentEmbeddings } from "@/lib/document-embeddings";
 import {
   createDocumentPreparation,
+  DOCUMENT_BATCH_SIZE,
   type DocumentPreparation,
   type GeneratedDocumentBatch,
 } from "@/lib/document-batches";
@@ -30,6 +31,8 @@ export type StoredTutorial = {
   error: string | null;
   preparation: DocumentPreparation;
 };
+
+export class InvalidStoredTutorialError extends Error {}
 
 type StoredProgress = {
   guided: unknown | null;
@@ -71,16 +74,33 @@ export async function listStoredTutorialIds() {
 
 export async function listStoredTutorials() {
   const tutorialIds = await listStoredTutorialIds();
-  const tutorials = await Promise.all(
+  const results = await Promise.allSettled(
     tutorialIds.map((tutorialId) => readStoredTutorial(tutorialId)),
   );
+  const tutorials: StoredTutorial[] = [];
 
-  return tutorials
-    .filter((tutorial): tutorial is StoredTutorial => tutorial !== null)
-    .sort(
-      (left, right) =>
-        Date.parse(left.createdAt) - Date.parse(right.createdAt),
-    );
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      if (isInvalidStoredTutorialMetadataError(result.reason)) {
+        console.error(
+          `Stored tutorial ${tutorialIds[index]} could not be loaded:`,
+          result.reason,
+        );
+        continue;
+      }
+
+      throw result.reason;
+    }
+
+    if (result.value) {
+      tutorials.push(result.value);
+    }
+  }
+
+  return tutorials.sort(
+    (left, right) =>
+      Date.parse(left.createdAt) - Date.parse(right.createdAt),
+  );
 }
 
 export async function readStoredTutorial(
@@ -90,9 +110,15 @@ export async function readStoredTutorial(
     return null;
   }
 
-  return readJsonFile<StoredTutorial>(
+  const value = await readJsonFile<unknown>(
     tutorialFilePath(tutorialId, tutorialMetadataFileName),
   );
+
+  if (value === null) {
+    return null;
+  }
+
+  return validateStoredTutorial(value, tutorialId);
 }
 
 export async function readDocumentFile(tutorialId: string) {
@@ -513,6 +539,118 @@ function isMissingFileError(error: unknown) {
   );
 }
 
+function isInvalidStoredTutorialMetadataError(error: unknown) {
+  return (
+    error instanceof SyntaxError || error instanceof InvalidStoredTutorialError
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function validateStoredTutorial(
+  value: unknown,
+  tutorialId: string,
+): StoredTutorial {
+  if (
+    !hasExactKeys(value, [
+      "id",
+      "title",
+      "documentName",
+      "createdAt",
+      "updatedAt",
+      "sourcePageCount",
+      "status",
+      "error",
+      "preparation",
+    ]) ||
+    value.id !== tutorialId ||
+    typeof value.title !== "string" ||
+    typeof value.documentName !== "string" ||
+    !isIsoTimestamp(value.createdAt) ||
+    !isIsoTimestamp(value.updatedAt) ||
+    !isPositiveInteger(value.sourcePageCount) ||
+    !isTutorialStatus(value.status) ||
+    (value.error !== null && typeof value.error !== "string") ||
+    !isDocumentPreparation(value.preparation, value.sourcePageCount)
+  ) {
+    throw new InvalidStoredTutorialError(
+      `Stored tutorial ${tutorialId} has invalid metadata.`,
+    );
+  }
+
+  return value as StoredTutorial;
+}
+
+function isDocumentPreparation(
+  value: unknown,
+  pageCount: number,
+): value is DocumentPreparation {
+  if (
+    !hasExactKeys(value, ["phase", "batches"]) ||
+    !["analyzing", "consolidating", "embedding", "complete"].includes(
+      value.phase as string,
+    ) ||
+    !Array.isArray(value.batches)
+  ) {
+    return false;
+  }
+
+  const expectedBatchCount = Math.ceil(pageCount / DOCUMENT_BATCH_SIZE);
+
+  if (value.batches.length !== expectedBatchCount) {
+    return false;
+  }
+
+  return value.batches.every((batch, index) => {
+    const startPage = index * DOCUMENT_BATCH_SIZE + 1;
+
+    return (
+      hasExactKeys(batch, [
+        "batch_index",
+        "start_page",
+        "end_page",
+        "status",
+      ]) &&
+      batch.batch_index === index + 1 &&
+      batch.start_page === startPage &&
+      batch.end_page ===
+        Math.min(pageCount, startPage + DOCUMENT_BATCH_SIZE - 1) &&
+      ["pending", "processing", "complete"].includes(batch.status as string)
+    );
+  });
+}
+
+function hasExactKeys<Key extends string>(
+  value: unknown,
+  keys: readonly Key[],
+): value is Record<Key, unknown> {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => key in value)
+  );
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isTutorialStatus(value: unknown): value is TutorialStatus {
+  return (
+    value === "queued" ||
+    value === "processing" ||
+    value === "ready" ||
+    value === "failed"
+  );
 }

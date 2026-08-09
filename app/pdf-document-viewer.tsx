@@ -11,7 +11,8 @@ import type {
   DocumentSelection,
   SelectionBounds,
 } from "@/lib/document-selection";
-import { loadPdfDocument } from "@/lib/pdf-page-renderer";
+import { acquirePdfDocument } from "@/lib/pdf-page-renderer";
+import type { PdfDocumentLease } from "@/lib/pdf-page-renderer";
 import {
   createPdfTextRegion,
   type PdfTextRegion,
@@ -112,6 +113,7 @@ export function PdfDocumentViewer({
     const canvasElement = canvas;
     let active = true;
     let renderTask: PdfRenderTask | null = null;
+    let documentLease: PdfDocumentLease | null = null;
 
     async function renderPage() {
       setError("");
@@ -144,8 +146,8 @@ export function PdfDocumentViewer({
           return;
         }
 
-        const pdfDocument = await loadPdfDocument(documentId, documentUrl);
-        const page = await pdfDocument.getPage(pageIndex);
+        documentLease = await acquirePdfDocument(documentId, documentUrl);
+        const page = await documentLease.document.getPage(pageIndex);
 
         if (!active) {
           return;
@@ -248,6 +250,8 @@ export function PdfDocumentViewer({
               : "The PDF page could not be rendered.",
           );
         }
+      } finally {
+        documentLease?.release();
       }
     }
 
