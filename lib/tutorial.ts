@@ -40,8 +40,6 @@ export type AvailableTutorial = {
   publishedBatchCount: number;
 };
 
-export type PreparedTutorial = AvailableTutorial;
-
 export type TutorialResponse = {
   id: string;
   title: string;
@@ -152,8 +150,6 @@ export async function readAvailableTutorial(
     publishedBatchCount: tutorial.publishedBatchCount,
   };
 }
-
-export const readPreparedTutorial = readAvailableTutorial;
 
 async function readAvailableDocumentModel(
   tutorialId: string,

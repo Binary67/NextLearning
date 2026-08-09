@@ -115,7 +115,12 @@ export function renderGuidedContinueAction(
   busy: boolean,
   hasNextPage: boolean,
   onContinue: () => void,
+  preparationBlocked = false,
 ): ReactNode {
+  if (progress.pageComplete && !hasNextPage && preparationBlocked) {
+    return null;
+  }
+
   if (progress.pageComplete && !hasNextPage) {
     return (
       <strong className="guided-progress-complete">Lesson complete</strong>

@@ -12,8 +12,8 @@ import type {
 } from "@/lib/learning-state";
 import { readLearningState } from "@/lib/learning-state-store";
 import {
-  type PreparedTutorial,
-  readPreparedTutorial,
+  type AvailableTutorial,
+  readAvailableTutorial,
 } from "@/lib/tutorial";
 
 import styles from "./progress.module.css";
@@ -21,7 +21,7 @@ import { ProgressDetails } from "./progress-details";
 import { ResetGuidedProgressButton } from "./reset-guided-progress-button";
 
 type ConceptProgressRow = {
-  concept: PreparedTutorial["model"]["concepts"][number];
+  concept: AvailableTutorial["model"]["concepts"][number];
   state: ConceptLearningState | null;
 };
 
@@ -32,17 +32,17 @@ export default async function TutorialProgressPage({
 }) {
   const { tutorialId } = await params;
   let error = "";
-  let prepared: PreparedTutorial | null = null;
+  let available: AvailableTutorial | null = null;
   let learningState: LearningState | null = null;
 
   if (isTutorialId(tutorialId)) {
     try {
-      prepared = await readPreparedTutorial(tutorialId);
+      available = await readAvailableTutorial(tutorialId);
 
-      if (prepared) {
+      if (available) {
         learningState = await readLearningState(
           tutorialId,
-          prepared.model,
+          available.model,
         );
       }
     } catch (loadError) {
@@ -51,7 +51,7 @@ export default async function TutorialProgressPage({
     }
   }
 
-  if (!prepared || !learningState) {
+  if (!available || !learningState) {
     return (
       <main className={styles.main}>
         <section className={styles.content}>
@@ -67,7 +67,7 @@ export default async function TutorialProgressPage({
   }
 
   const now = new Date();
-  const model = prepared.model;
+  const model = available.model;
   const conceptStates = learningState.concepts;
   const sessions = learningState.sessions;
   const resume = learningState.resume;
@@ -115,7 +115,7 @@ export default async function TutorialProgressPage({
       >
         <header className={styles.heading}>
           <p className={styles.documentTitle}>
-            {prepared.tutorial.title}
+            {available.tutorial.title}
           </p>
           <h1 id="progress-title">Progress</h1>
           <p>

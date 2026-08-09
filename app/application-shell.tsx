@@ -14,7 +14,13 @@ import {
 
 import { AppHeader } from "@/app/app-header";
 import { LearningSettingsDialog } from "@/app/learning-settings";
-import type { TutorialResponse } from "@/lib/tutorial";
+import {
+  haveTutorialAvailabilityChanged,
+  isProgressiveTutorialResponse,
+  isTutorialOpenable,
+  type ProgressiveTutorialResponse,
+  type TutorialStatusItem,
+} from "@/app/tutorial-progressive";
 import {
   getTutorialTransitionMessage,
   haveTutorialStatusesChanged,
@@ -30,10 +36,10 @@ type SettingsRegistration = {
 };
 
 type ApplicationShellContextValue = {
-  tutorials: TutorialResponse[];
+  tutorials: ProgressiveTutorialResponse[];
   tutorialRevision: number;
-  addTutorial: (tutorial: TutorialResponse) => void;
-  updateTutorial: (tutorial: TutorialResponse) => void;
+  addTutorial: (tutorial: ProgressiveTutorialResponse) => void;
+  updateTutorial: (tutorial: ProgressiveTutorialResponse) => void;
   removeTutorial: (tutorialId: string) => void;
   refreshTutorials: () => Promise<boolean>;
   registerSettings: (
@@ -49,7 +55,7 @@ export function ApplicationShell({
   initialTutorials,
   children,
 }: {
-  initialTutorials: TutorialResponse[];
+  initialTutorials: ProgressiveTutorialResponse[];
   children: React.ReactNode;
 }) {
   const [tutorials, setTutorials] = useState(initialTutorials);
@@ -69,6 +75,14 @@ export function ApplicationShell({
       ]),
     ),
   );
+  const previousAvailabilityRef = useRef(
+    new Map(
+      initialTutorials.map((tutorial) => [
+        tutorial.id,
+        tutorial.availability,
+      ]),
+    ),
+  );
   const toastTimeoutRef = useRef<number | undefined>(undefined);
   const shouldPoll = hasActiveTutorials(tutorials);
 
@@ -82,7 +96,7 @@ export function ApplicationShell({
   }, []);
 
   const replaceTutorials = useCallback(
-    (nextTutorials: TutorialResponse[]) => {
+    (nextTutorials: ProgressiveTutorialResponse[]) => {
       const message = getTutorialTransitionMessage(
         previousStatusesRef.current,
         nextTutorials,
@@ -91,6 +105,12 @@ export function ApplicationShell({
         nextTutorials.map((tutorial) => [
           tutorial.id,
           tutorial.status,
+        ]),
+      );
+      previousAvailabilityRef.current = new Map(
+        nextTutorials.map((tutorial) => [
+          tutorial.id,
+          tutorial.availability,
         ]),
       );
       setTutorials(nextTutorials);
@@ -171,6 +191,10 @@ export function ApplicationShell({
         haveTutorialStatusesChanged(
           previousStatusesRef.current,
           data.tutorials,
+        ) ||
+        haveTutorialAvailabilityChanged(
+          previousAvailabilityRef.current,
+          data.tutorials as unknown as TutorialStatusItem[],
         )
       ) {
         await refreshTutorials();
@@ -229,8 +253,12 @@ export function ApplicationShell({
     };
   }, [pollTutorialStatuses, shouldPoll]);
 
-  const addTutorial = useCallback((tutorial: TutorialResponse) => {
+  const addTutorial = useCallback((tutorial: ProgressiveTutorialResponse) => {
     previousStatusesRef.current.set(tutorial.id, tutorial.status);
+    previousAvailabilityRef.current.set(
+      tutorial.id,
+      tutorial.availability,
+    );
     setTutorials((currentTutorials) => [
       tutorial,
       ...currentTutorials.filter(
@@ -240,8 +268,12 @@ export function ApplicationShell({
     setTutorialRevision((revision) => revision + 1);
   }, []);
 
-  const updateTutorial = useCallback((tutorial: TutorialResponse) => {
+  const updateTutorial = useCallback((tutorial: ProgressiveTutorialResponse) => {
     previousStatusesRef.current.set(tutorial.id, tutorial.status);
+    previousAvailabilityRef.current.set(
+      tutorial.id,
+      tutorial.availability,
+    );
     setTutorials((currentTutorials) =>
       currentTutorials.map((currentTutorial) =>
         currentTutorial.id === tutorial.id
@@ -254,6 +286,7 @@ export function ApplicationShell({
 
   const removeTutorial = useCallback((tutorialId: string) => {
     previousStatusesRef.current.delete(tutorialId);
+    previousAvailabilityRef.current.delete(tutorialId);
     setTutorials((currentTutorials) =>
       currentTutorials.filter(
         (tutorial) => tutorial.id !== tutorialId,
@@ -357,7 +390,7 @@ function ApplicationHeader({
   onOpenSettings,
   onShowMessage,
 }: {
-  tutorials: TutorialResponse[];
+  tutorials: ProgressiveTutorialResponse[];
   settingsOpen: boolean;
   onOpenSettings: () => void;
   onShowMessage: (message: string) => void;
@@ -393,30 +426,31 @@ function ApplicationHeader({
   );
 }
 
-function getLatestTutorialHref(tutorials: TutorialResponse[]) {
-  const latestReadyTutorial = tutorials.find(
-    (tutorial) => tutorial.status === "ready",
+function getLatestTutorialHref(tutorials: ProgressiveTutorialResponse[]) {
+  const latestOpenableTutorial = tutorials.find(
+    (tutorial) => isTutorialOpenable(tutorial),
   );
 
-  return latestReadyTutorial
-    ? `/tutorials/${latestReadyTutorial.id}`
+  return latestOpenableTutorial
+    ? `/tutorials/${latestOpenableTutorial.id}`
     : null;
 }
 
 function isTutorialResponseList(
   value: unknown,
-): value is TutorialResponse[] {
+): value is ProgressiveTutorialResponse[] {
   return (
     Array.isArray(value) &&
     value.every(
       (tutorial) =>
-        typeof tutorial === "object" &&
-        tutorial !== null &&
+        isProgressiveTutorialResponse(tutorial) &&
         typeof tutorial.id === "string" &&
         typeof tutorial.title === "string" &&
         typeof tutorial.documentName === "string" &&
         typeof tutorial.url === "string" &&
         typeof tutorial.createdAt === "string" &&
+        Number.isInteger(tutorial.sourcePageCount) &&
+        tutorial.sourcePageCount >= 0 &&
         ["queued", "processing", "ready", "failed"].includes(
           String(tutorial.status),
         ) &&

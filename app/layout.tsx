@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 import { ApplicationShell } from "@/app/application-shell";
+import type { ProgressiveTutorialResponse } from "@/app/tutorial-progressive";
 import { readTutorialsForLayout } from "@/app/server-data";
-import type { TutorialResponse } from "@/lib/tutorial";
 
 import "./globals.css";
 
@@ -17,10 +17,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  let initialTutorials: TutorialResponse[] = [];
+  let initialTutorials: ProgressiveTutorialResponse[] = [];
 
   try {
-    initialTutorials = await readTutorialsForLayout();
+    initialTutorials = (await readTutorialsForLayout()) as ProgressiveTutorialResponse[];
   } catch (error) {
     console.error("Initial tutorial status could not be loaded:", error);
   }

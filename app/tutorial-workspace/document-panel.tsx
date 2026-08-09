@@ -8,12 +8,12 @@ import {
 import { useId } from "react";
 
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
+import type { ProgressiveTutorialResponse } from "@/app/tutorial-progressive";
 import type { DocumentModel } from "@/lib/document-model";
 import type {
   DocumentSelection,
   SelectionBounds,
 } from "@/lib/document-selection";
-import type { TutorialResponse } from "@/lib/tutorial";
 import type { LearningVisualState } from "@/lib/use-realtime-tutor";
 
 import { DocumentState } from "./document-states";
@@ -40,6 +40,7 @@ export function DocumentPanel({
   reviewMode,
   guidedSessionActive,
   pageNavigationDisabled,
+  availabilityNotice,
   learningVisualState,
   visualCreationEnabled,
   visualSessionStarting,
@@ -57,7 +58,7 @@ export function DocumentPanel({
   onDelete,
   onWorkspaceViewChange,
 }: {
-  tutorial: TutorialResponse | null;
+  tutorial: ProgressiveTutorialResponse | null;
   documentModel: DocumentModel | null;
   documentError: string;
   currentPage: number;
@@ -70,6 +71,7 @@ export function DocumentPanel({
   reviewMode: boolean;
   guidedSessionActive: boolean;
   pageNavigationDisabled: boolean;
+  availabilityNotice: string | null;
   learningVisualState: LearningVisualState;
   visualCreationEnabled: boolean;
   visualSessionStarting: boolean;
@@ -82,7 +84,7 @@ export function DocumentPanel({
   onStartTutor: () => void;
   onSelectionChange: (selection: DocumentSelection | null) => void;
   onDownload: () => void;
-  onTutorialQueued: (tutorial: TutorialResponse) => void;
+  onTutorialQueued: (tutorial: ProgressiveTutorialResponse) => void;
   onEndSession: () => void;
   onDelete: () => void;
   onWorkspaceViewChange: (view: WorkspaceView) => void;
@@ -138,6 +140,15 @@ export function DocumentPanel({
             onWorkspaceViewChange={onWorkspaceViewChange}
           />
         )}
+        {availabilityNotice ? (
+          <p
+            className="tutorial-availability-notice"
+            role="status"
+            aria-live="polite"
+          >
+            {availabilityNotice}
+          </p>
+        ) : null}
       </div>
 
       <div className="lesson-panel-stack">

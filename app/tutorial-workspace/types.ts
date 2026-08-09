@@ -1,4 +1,4 @@
-import type { TutorialResponse } from "@/lib/tutorial";
+import type { ProgressiveTutorialResponse } from "@/app/tutorial-progressive";
 import type { DocumentModel } from "@/lib/document-model";
 import type { GuidedReadingProgress } from "@/lib/guided-progress";
 
@@ -31,7 +31,7 @@ export type WorkspaceView = "document" | "visual";
 export type TutorialWorkspaceProps = {
   tutorialId: string;
   reviewConcept?: string;
-  initialTutorial: TutorialResponse | null;
+  initialTutorial: ProgressiveTutorialResponse | null;
   initialModel: DocumentModel | null;
   initialLearningState: InitialLearningState | null;
   initialGuidedProgress: GuidedReadingProgress | null;

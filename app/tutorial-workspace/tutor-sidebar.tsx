@@ -50,6 +50,8 @@ export function TutorSidebar({
   guidedProgress,
   currentPage,
   hasNextPage,
+  preparingMore,
+  preparationFailed,
   learnerCanAsk,
   learnerTurnPrompt,
   pdfInstruction,
@@ -92,6 +94,8 @@ export function TutorSidebar({
   guidedProgress: GuidedSegmentProgress | null;
   currentPage: number;
   hasNextPage: boolean;
+  preparingMore: boolean;
+  preparationFailed: boolean;
   learnerCanAsk: boolean;
   learnerTurnPrompt: string;
   pdfInstruction: string;
@@ -147,6 +151,7 @@ export function TutorSidebar({
     onStartTutor,
     onEndSession,
   });
+  const preparationBlocked = preparingMore || preparationFailed;
   const guidedContinueAction =
     guidedSessionActive && guidedProgress
       ? renderGuidedContinueAction(
@@ -154,6 +159,7 @@ export function TutorSidebar({
           guidedTurnBusy,
           hasNextPage,
           onContinueGuided,
+          preparationBlocked,
         )
       : null;
   const guidedSessionStatus = guidedSessionActive ? (
@@ -273,6 +279,8 @@ export function TutorSidebar({
           connected={status === "connected"}
           busy={guidedTurnBusy}
           hasNextPage={hasNextPage}
+          preparingMore={preparingMore}
+          preparationFailed={preparationFailed}
           review={reviewMode}
           guidedTutorMode={guidedTutorMode}
           onContinue={onContinueGuided}

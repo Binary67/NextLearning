@@ -32,6 +32,7 @@ export function useWorkspaceActions({
   setResumePageIndex,
   setResumeChunkId,
   setModal,
+  onReachAvailableBoundary,
   onRemoveTutorial,
   onShowToast,
 }: {
@@ -52,6 +53,7 @@ export function useWorkspaceActions({
   setResumePageIndex: (pageIndex: number) => void;
   setResumeChunkId: (chunkId: string | null) => void;
   setModal: (modal: Modal) => void;
+  onReachAvailableBoundary: () => void;
   onRemoveTutorial: (tutorialId: string) => void;
   onShowToast: (message: string) => void;
 }) {
@@ -122,17 +124,27 @@ export function useWorkspaceActions({
       return;
     }
 
-    setCurrentPage(resumePageIndex);
+    const pageIndex = Math.min(resumePageIndex, pageCount);
+
+    if (pageIndex < 1) {
+      return;
+    }
+
+    setCurrentPage(pageIndex);
     setSelection(null);
     void realtimeTutor.startGuided(
-      resumePageIndex,
-      resumeChunkId,
+      pageIndex,
+      pageIndex === resumePageIndex ? resumeChunkId : null,
       guidedTutorMode,
     );
   }
 
   function continueGuided() {
-    if (!guidedProgress) {
+    if (
+      !guidedProgress ||
+      guidedProgress.pageIndex < 1 ||
+      guidedProgress.pageIndex > pageCount
+    ) {
       return;
     }
 
@@ -144,6 +156,8 @@ export function useWorkspaceActions({
         void realtimeTutor.explainPage(
           guidedProgress.pageIndex + 1,
         );
+      } else {
+        onReachAvailableBoundary();
       }
       return;
     }
@@ -156,6 +170,14 @@ export function useWorkspaceActions({
     if (guidedMode && guidedProgress?.chunkId) {
       setResumePageIndex(guidedProgress.pageIndex);
       setResumeChunkId(guidedProgress.chunkId);
+    }
+
+    if (
+      guidedMode &&
+      guidedProgress?.pageComplete &&
+      guidedProgress.pageIndex >= pageCount
+    ) {
+      onReachAvailableBoundary();
     }
 
     setModal(null);

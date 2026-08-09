@@ -1,3 +1,4 @@
+import type { ProgressiveTutorialResponse } from "@/app/tutorial-progressive";
 import { TutorialWorkspace } from "@/app/tutorial-workspace/tutorial-workspace";
 import { isTutorialId } from "@/lib/tutorial-storage";
 import type { LearningState } from "@/lib/learning-state";
@@ -5,8 +6,8 @@ import { readLearningState } from "@/lib/learning-state-store";
 import { readStoredGuidedProgressIfAvailable } from "@/lib/guided-progress-store";
 import type { GuidedReadingProgress } from "@/lib/guided-progress";
 import {
-  type PreparedTutorial,
-  readPreparedTutorial,
+  type AvailableTutorial,
+  readAvailableTutorial,
   toTutorialResponse,
 } from "@/lib/tutorial";
 
@@ -29,21 +30,21 @@ export default async function TutorialPage({
       : query.reviewConcept?.[0];
   let initialDocumentError = "";
   let initialLearningStateError = "";
-  let prepared: PreparedTutorial | null = null;
+  let available: AvailableTutorial | null = null;
   let learningState: LearningState | null = null;
   let guidedProgress: GuidedReadingProgress | null = null;
 
   if (isTutorialId(tutorialId)) {
     try {
-      prepared = await readPreparedTutorial(tutorialId);
+      available = await readAvailableTutorial(tutorialId);
 
-      if (prepared) {
+      if (available) {
         try {
           [learningState, guidedProgress] = await Promise.all([
-            readLearningState(tutorialId, prepared.model),
+            readLearningState(tutorialId, available.model),
             readStoredGuidedProgressIfAvailable(
               tutorialId,
-              prepared.model,
+              available.model,
             ),
           ]);
         } catch (error) {
@@ -58,7 +59,7 @@ export default async function TutorialPage({
     }
   }
 
-  if (!prepared && !initialDocumentError) {
+  if (!available && !initialDocumentError) {
     initialDocumentError = "That document is not available.";
   }
 
@@ -68,11 +69,14 @@ export default async function TutorialPage({
       tutorialId={tutorialId}
       reviewConcept={reviewConcept}
       initialTutorial={
-        prepared
-          ? toTutorialResponse(prepared.tutorial, prepared.model)
+        available
+          ? (toTutorialResponse(
+              available.tutorial,
+              available.model,
+            ) as ProgressiveTutorialResponse)
           : null
       }
-      initialModel={prepared?.model ?? null}
+      initialModel={available?.model ?? null}
       initialLearningState={
         learningState
           ? {

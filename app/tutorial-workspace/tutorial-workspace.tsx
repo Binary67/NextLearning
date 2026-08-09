@@ -1,9 +1,21 @@
 "use client";
 
 import { LogOut, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useApplicationShell } from "@/app/application-shell";
+import {
+  getTutorialAvailabilityMessage,
+  hasNewerTutorialAvailability,
+  isTutorialSnapshotResponse,
+  type ProgressiveTutorialResponse,
+  type TutorialSnapshot,
+} from "@/app/tutorial-progressive";
 import {
   LearningSettingsDialog,
   useLearningSettings,
@@ -54,20 +66,41 @@ export function TutorialWorkspace({
     removeTutorial,
     registerSettings,
     showToast,
+    tutorials: sharedTutorials,
   } = useApplicationShell();
-  const initialGuidedResume = initialModel
+  const [currentTutorial, setCurrentTutorial] =
+    useState<ProgressiveTutorialResponse | null>(initialTutorial);
+  const [currentModel, setCurrentModel] = useState(initialModel);
+  const [pendingSnapshot, setPendingSnapshot] =
+    useState<TutorialSnapshot | null>(null);
+  const [documentError, setDocumentError] =
+    useState(initialDocumentError);
+  const reachedAvailableBoundaryRef = useRef(false);
+  const availablePageCount = Math.min(
+    currentModel?.page_count ?? 0,
+    currentTutorial?.availability?.pageCount ?? 0,
+  );
+  const guidedResume = currentModel
     ? getValidResume(
-        initialModel,
+        currentModel,
         initialGuidedProgress?.cursor ?? null,
       )
     : null;
-  const initialReviewTarget =
-    reviewConcept && initialModel && initialLearningState
+  const initialGuidedResume =
+    guidedResume && guidedResume.pageIndex <= availablePageCount
+      ? guidedResume
+      : null;
+  const reviewTarget =
+    reviewConcept && currentModel && initialLearningState
       ? findInitialReviewTarget(
-          initialModel,
+          currentModel,
           initialLearningState,
           reviewConcept,
         )
+      : null;
+  const initialReviewTarget =
+    reviewTarget && reviewTarget.pageIndex <= availablePageCount
+      ? reviewTarget
       : null;
   const [modal, setModal] = useState<Modal>(null);
   const tutorMode: TutorMode = reviewConcept ? "review" : "guided";
@@ -94,7 +127,7 @@ export function TutorialWorkspace({
   });
   const { textSelectionContext, relatedPagesStatus } = useRelatedPages(
     tutorialId,
-    initialModel,
+    currentModel,
     navigationState.selection,
   );
   const relatedPagesLoading = relatedPagesStatus === "loading";
@@ -107,8 +140,8 @@ export function TutorialWorkspace({
     initialLearningStateError,
   );
   const realtimeTutor = useRealtimeTutor({
-    documentId: initialTutorial?.id ?? null,
-    documentModel: initialModel,
+    documentId: currentTutorial?.id ?? null,
+    documentModel: currentModel,
     selection: navigationState.selection,
     textSelectionContext,
     relatedPagesLoading,
@@ -118,7 +151,7 @@ export function TutorialWorkspace({
   });
   const workspaceNavigation = getWorkspaceNavigation({
     ...navigationState,
-    initialModel,
+    initialModel: currentModel,
     reviewMode,
     guidedMode,
     realtimeTutorStatus: realtimeTutor.status,
@@ -178,6 +211,125 @@ export function TutorialWorkspace({
     realtimeTutor.isUserTurn ||
     realtimeTutor.isSubmittingUserTurn ||
     realtimeTutor.isReplayingTutorAudio;
+  const sharedTutorial = sharedTutorials.find(
+    (tutorial) => tutorial.id === tutorialId,
+  );
+  const observedTutorial = sharedTutorial ?? currentTutorial;
+  const observedBatchCount =
+    observedTutorial?.availability?.batchCount ?? -1;
+  const currentBatchCount =
+    currentTutorial?.availability?.batchCount ?? -1;
+  const pendingBatchCount =
+    pendingSnapshot?.tutorial.availability?.batchCount ?? -1;
+  const sourcePageCount = observedTutorial?.sourcePageCount ?? 0;
+  const hasMoreSourcePages = Boolean(
+    observedTutorial?.availability &&
+      observedTutorial.availability.pageCount < sourcePageCount,
+  );
+  const preparationFailed =
+    observedTutorial?.status === "failed" && hasMoreSourcePages;
+  const preparingMore =
+    hasMoreSourcePages &&
+    observedTutorial?.status !== "failed" &&
+    (observedTutorial?.status === "queued" ||
+      observedTutorial?.status === "processing" ||
+      pendingSnapshot !== null);
+  const availabilityNotice = observedTutorial
+    ? getTutorialAvailabilityMessage({
+        tutorial: observedTutorial,
+        currentPage,
+        currentPageCount: pageCount,
+        pendingSnapshotReady: pendingSnapshot !== null,
+      })
+    : null;
+
+  useEffect(() => {
+    if (
+      !observedTutorial?.availability ||
+      observedBatchCount <= Math.max(currentBatchCount, pendingBatchCount)
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadNewerSnapshot() {
+      try {
+        const response = await fetch(`/api/tutorials/${tutorialId}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data: unknown = await response.json();
+
+        if (!isTutorialSnapshotResponse(data)) {
+          return;
+        }
+
+        if (
+          currentModel &&
+          !hasNewerTutorialAvailability(currentTutorial, data.tutorial)
+        ) {
+          return;
+        }
+
+        setPendingSnapshot(data);
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          console.error("The newer tutorial snapshot could not be loaded:", error);
+        }
+      }
+    }
+
+    void loadNewerSnapshot();
+
+    return () => controller.abort();
+  }, [
+    currentBatchCount,
+    currentModel,
+    currentTutorial,
+    observedBatchCount,
+    pendingBatchCount,
+    observedTutorial,
+    tutorialId,
+  ]);
+
+  useEffect(() => {
+    if (sessionActive || !pendingSnapshot) {
+      return;
+    }
+
+    const shouldResumeAtNextPage =
+      reachedAvailableBoundaryRef.current &&
+      pendingSnapshot.model.page_count > pageCount;
+    const nextPage = pageCount + 1;
+
+    startTransition(() => {
+      setCurrentTutorial(pendingSnapshot.tutorial);
+      setCurrentModel(pendingSnapshot.model);
+      setPendingSnapshot(null);
+      setDocumentError("");
+      reachedAvailableBoundaryRef.current = false;
+
+      if (shouldResumeAtNextPage) {
+        setCurrentPage(nextPage);
+        setResumePageIndex(nextPage);
+        setResumeChunkId(null);
+      }
+    });
+  }, [
+    pageCount,
+    pendingSnapshot,
+    sessionActive,
+    setCurrentPage,
+    setResumeChunkId,
+    setResumePageIndex,
+  ]);
+
   const guidedProgress = realtimeTutor.guidedSegmentProgress;
   const learnerCanAsk = !(reviewMode && guidedProgress?.segmentComplete);
   let learnerTurnPrompt = reviewMode
@@ -222,7 +374,7 @@ export function TutorialWorkspace({
 
   useLearningResumePersistence({
     tutorialId,
-    documentModel: initialModel,
+    documentModel: currentModel,
     currentPage: currentResumePageIndex,
     chunkId: currentResumeChunkId,
     reviewMode,
@@ -240,7 +392,7 @@ export function TutorialWorkspace({
     toggleUserTurn,
   } = useWorkspaceActions({
     tutorialId,
-    tutorial: initialTutorial,
+    tutorial: currentTutorial,
     reviewMode,
     guidedMode,
     initialReviewTarget,
@@ -256,6 +408,9 @@ export function TutorialWorkspace({
     setResumePageIndex,
     setResumeChunkId,
     setModal,
+    onReachAvailableBoundary: () => {
+      reachedAvailableBoundaryRef.current = true;
+    },
     onRemoveTutorial: removeTutorial,
     onShowToast: showToast,
   });
@@ -275,9 +430,9 @@ export function TutorialWorkspace({
     <>
       <main className="dashboard-layout">
         <DocumentPanel
-          tutorial={initialTutorial}
-          documentModel={initialModel}
-          documentError={initialDocumentError}
+          tutorial={currentTutorial}
+          documentModel={currentModel}
+          documentError={documentError}
           currentPage={currentPage}
           pageCount={pageCount}
           selection={selection}
@@ -290,6 +445,7 @@ export function TutorialWorkspace({
           pageNavigationDisabled={
             realtimeTutor.status === "connecting"
           }
+          availabilityNotice={availabilityNotice}
           learningVisualState={realtimeTutor.learningVisualState}
           visualCreationEnabled={
             realtimeTutor.status === "connected"
@@ -335,18 +491,20 @@ export function TutorialWorkspace({
           reviewError={reviewError}
           learningStateError={learningStateError}
           persistenceError={realtimeTutor.persistenceError}
-          hasDocument={Boolean(initialModel)}
+          hasDocument={Boolean(currentModel)}
           hasReviewTarget={Boolean(initialReviewTarget)}
           selection={selection}
           textSelectionContext={textSelectionContext}
           relatedPagesStatus={relatedPagesStatus}
-          documentModel={initialModel}
+          documentModel={currentModel}
           guidedProgress={guidedProgress}
           currentPage={currentPage}
           hasNextPage={
             (guidedProgress?.pageIndex ?? resumePageIndex) <
             pageCount
           }
+          preparingMore={preparingMore}
+          preparationFailed={preparationFailed}
           learnerCanAsk={learnerCanAsk}
           learnerTurnPrompt={learnerTurnPrompt}
           pdfInstruction={pdfInstruction}

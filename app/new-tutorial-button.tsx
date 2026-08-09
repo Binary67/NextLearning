@@ -8,11 +8,11 @@ import {
   useState,
 } from "react";
 
-import type { TutorialResponse } from "@/lib/tutorial";
+import type { ProgressiveTutorialResponse } from "@/app/tutorial-progressive";
 
 type NewTutorialButtonProps = {
   variant?: "primary" | "icon";
-  onQueued: (tutorial: TutorialResponse) => void;
+  onQueued: (tutorial: ProgressiveTutorialResponse) => void;
 };
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
@@ -78,7 +78,7 @@ export function NewTutorialButton({
       });
 
       const data = (await response.json()) as {
-        tutorial?: TutorialResponse;
+        tutorial?: ProgressiveTutorialResponse;
         message?: string;
       };
 

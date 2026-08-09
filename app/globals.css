@@ -447,6 +447,16 @@ summary:focus-visible {
     0 0 0 1px rgba(0, 102, 214, 0.08);
 }
 
+.tutorial-availability-notice {
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: #fafafd;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .lesson-panel-stack,
 .workspace-panel {
   min-width: 0;

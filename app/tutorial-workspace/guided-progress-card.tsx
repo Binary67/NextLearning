@@ -11,6 +11,8 @@ export function GuidedProgressCard({
   connected,
   busy,
   hasNextPage,
+  preparingMore,
+  preparationFailed,
   review,
   guidedTutorMode,
   onContinue,
@@ -19,6 +21,8 @@ export function GuidedProgressCard({
   connected: boolean;
   busy: boolean;
   hasNextPage: boolean;
+  preparingMore: boolean;
+  preparationFailed: boolean;
   review: boolean;
   guidedTutorMode: GuidedTutorMode;
   onContinue: () => void;
@@ -83,7 +87,9 @@ export function GuidedProgressCard({
           </Link>
         </div>
       ) : progress?.pageComplete && !hasNextPage ? (
-        <strong className="guided-progress-complete">Lesson complete</strong>
+        <strong className="guided-progress-complete">
+          {getGuidedPageCompletionLabel(preparingMore, preparationFailed)}
+        </strong>
       ) : connected && progress && !progress.learningPhase && !review ? (
         <button
           className="primary-button guided-continue-button"
@@ -91,7 +97,12 @@ export function GuidedProgressCard({
           onClick={onContinue}
           disabled={busy}
         >
-          {getGuidedContinueButtonLabel(progress, busy, hasNextPage)}
+          {getGuidedContinueButtonLabel(
+            progress,
+            busy,
+            hasNextPage,
+            preparingMore,
+          )}
           {progress.pageComplete && hasNextPage ? (
             <ChevronRight size={17} aria-hidden="true" />
           ) : null}
@@ -105,9 +116,18 @@ export function getGuidedContinueButtonLabel(
   progress: GuidedSegmentProgress,
   busy: boolean,
   hasNextPage: boolean,
+  preparingMore = false,
 ) {
   if (progress.pageComplete) {
-    return hasNextPage ? "Next page" : "Document complete";
+    if (hasNextPage) {
+      return "Next page";
+    }
+
+    if (preparingMore) {
+      return "Preparing the next section…";
+    }
+
+    return "Document complete";
   }
 
   if (busy) {
@@ -115,6 +135,21 @@ export function getGuidedContinueButtonLabel(
   }
 
   return progress.segmentComplete ? "Continue" : "Resume explanation";
+}
+
+function getGuidedPageCompletionLabel(
+  preparingMore: boolean,
+  preparationFailed: boolean,
+) {
+  if (preparingMore) {
+    return "Preparing the next section…";
+  }
+
+  if (preparationFailed) {
+    return "More pages could not be prepared.";
+  }
+
+  return "Lesson complete";
 }
 
 function getLearningCheckpointLabel(

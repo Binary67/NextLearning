@@ -15,7 +15,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { useApplicationShell } from "@/app/application-shell";
 import { NewTutorialButton } from "@/app/new-tutorial-button";
-import type { TutorialResponse } from "@/lib/tutorial";
+import {
+  getTutorialAvailabilityLabel,
+  isTutorialOpenable,
+  type ProgressiveTutorialResponse,
+} from "@/app/tutorial-progressive";
 
 const BOUNDARY_REFRESH_RETRY_MS = 60_000;
 
@@ -30,7 +34,7 @@ export function LibraryClient({
   initialTutorials,
   initialError,
 }: {
-  initialTutorials: TutorialResponse[];
+  initialTutorials: ProgressiveTutorialResponse[];
   initialError: string;
 }) {
   const {
@@ -48,7 +52,7 @@ export function LibraryClient({
   );
   const error = tutorialRevision === 0 ? initialError : "";
   const [tutorialToDelete, setTutorialToDelete] =
-    useState<TutorialResponse | null>(null);
+    useState<ProgressiveTutorialResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
   const refreshedBoundaryRef = useRef<string | null>(null);
   const nextReviewAt = getNextReviewAt(tutorials);
@@ -97,18 +101,18 @@ export function LibraryClient({
     };
   }, [nextReviewAt, refreshTutorials]);
 
-  function addQueuedTutorial(tutorial: TutorialResponse) {
+  function addQueuedTutorial(tutorial: ProgressiveTutorialResponse) {
     addTutorial(tutorial);
     showToast("Document added to the preparation queue.");
   }
 
-  async function retryTutorial(tutorial: TutorialResponse) {
+  async function retryTutorial(tutorial: ProgressiveTutorialResponse) {
     try {
       const response = await fetch(`/api/tutorials/${tutorial.id}`, {
         method: "PATCH",
       });
       const data = (await response.json()) as {
-        tutorial?: TutorialResponse;
+        tutorial?: ProgressiveTutorialResponse;
         message?: string;
       };
 
@@ -262,13 +266,14 @@ function TutorialCard({
   onDelete,
   onRetry,
 }: {
-  tutorial: TutorialResponse;
+  tutorial: ProgressiveTutorialResponse;
   onDelete: () => void;
   onRetry: () => void;
 }) {
-  const map = tutorial.status === "ready" ? tutorial.map : null;
-  const ready = map !== null;
-  const canDelete = ready || tutorial.status === "failed";
+  const map = tutorial.map;
+  const openable = isTutorialOpenable(tutorial);
+  const availabilityLabel = getTutorialAvailabilityLabel(tutorial);
+  const canDelete = openable || tutorial.status === "failed";
   const content = (
     <>
       <div className="tutorial-card-heading">
@@ -278,26 +283,30 @@ function TutorialCard({
         <span
           className={`tutorial-card-status ${tutorial.status}`}
         >
-          {getTutorialStatusLabel(tutorial.status)}
+          {getTutorialStatusLabel(tutorial)}
         </span>
       </div>
       <h2>{tutorial.title}</h2>
       <p className="tutorial-document-name">{tutorial.documentName}</p>
-      {ready ? (
+      {openable ? (
         <>
           <dl className="tutorial-metrics">
             <div>
-              <dt>Pages</dt>
-              <dd>{map.page_count}</dd>
+              <dt>Pages available</dt>
+              <dd>{availabilityLabel}</dd>
             </div>
-            <div>
-              <dt>Concepts</dt>
-              <dd>{map.concept_count}</dd>
-            </div>
-            <div>
-              <dt>Connections</dt>
-              <dd>{map.connection_count}</dd>
-            </div>
+            {map ? (
+              <>
+                <div>
+                  <dt>Concepts</dt>
+                  <dd>{map.concept_count}</dd>
+                </div>
+                <div>
+                  <dt>Connections</dt>
+                  <dd>{map.connection_count}</dd>
+                </div>
+              </>
+            ) : null}
           </dl>
           {tutorial.learningSummary && (
             <dl className="tutorial-learning-metrics">
@@ -326,7 +335,7 @@ function TutorialCard({
       )}
       <div className="tutorial-card-footer">
         <span>{formatUpdatedAt(tutorial.createdAt)}</span>
-        {ready && (
+        {openable && (
           <div className="tutorial-card-actions">
             <Link
               className="tutorial-card-action tutorial-progress-link"
@@ -377,27 +386,41 @@ function TutorialCard({
   );
 }
 
-function getTutorialStatusLabel(status: TutorialResponse["status"]) {
+function getTutorialStatusLabel(
+  tutorial: Pick<ProgressiveTutorialResponse, "status" | "availability">,
+) {
+  const { status } = tutorial;
+
   switch (status) {
     case "queued":
-      return "Queued";
+      return tutorial.availability ? "Preparing more" : "Queued";
     case "processing":
-      return "Preparing";
+      return tutorial.availability ? "Preparing more" : "Preparing";
     case "ready":
       return "Ready to read";
     case "failed":
-      return "Failed";
+      return tutorial.availability ? "Available · failed" : "Failed";
   }
 }
 
-function getTutorialStatusMessage(tutorial: TutorialResponse) {
+function getTutorialStatusMessage(tutorial: ProgressiveTutorialResponse) {
+  const availabilityLabel = getTutorialAvailabilityLabel(tutorial);
+
   switch (tutorial.status) {
     case "queued":
-      return "Waiting for earlier documents to finish.";
+      return availabilityLabel
+        ? `Preparing more. ${availabilityLabel}.`
+        : "Waiting for earlier documents to finish.";
     case "processing":
-      return "Mapping concepts and preparing reading context.";
+      return availabilityLabel
+        ? `Preparing more. ${availabilityLabel}.`
+        : "Mapping concepts and preparing reading context.";
     case "failed":
-      return tutorial.error ?? "The document could not be prepared.";
+      return availabilityLabel
+        ? `${availabilityLabel}. Earlier pages remain available. ${
+            tutorial.error ?? "More pages could not be prepared."
+          }`
+        : tutorial.error ?? "The document could not be prepared.";
     case "ready":
       return "";
   }
@@ -408,8 +431,8 @@ function formatUpdatedAt(updatedAt: string) {
 }
 
 function mergeTutorialData(
-  initialTutorials: TutorialResponse[],
-  sharedTutorials: TutorialResponse[],
+  initialTutorials: ProgressiveTutorialResponse[],
+  sharedTutorials: ProgressiveTutorialResponse[],
 ) {
   const initialById = new Map(
     initialTutorials.map((tutorial) => [tutorial.id, tutorial]),
@@ -420,10 +443,17 @@ function mergeTutorialData(
   const tutorials = sharedTutorials.map((tutorial) => {
     const initialTutorial = initialById.get(tutorial.id);
 
-    return tutorial.status === "ready" &&
+    return isTutorialOpenable(tutorial) &&
       (tutorial.map === null || tutorial.learningSummary === null) &&
-      initialTutorial?.status === "ready"
-      ? initialTutorial
+      initialTutorial &&
+      isTutorialOpenable(initialTutorial)
+      ? {
+          ...initialTutorial,
+          ...tutorial,
+          map: tutorial.map ?? initialTutorial.map,
+          learningSummary:
+            tutorial.learningSummary ?? initialTutorial.learningSummary,
+        }
       : tutorial;
   });
 
@@ -439,7 +469,7 @@ function mergeTutorialData(
   );
 }
 
-function getNextReviewAt(tutorials: TutorialResponse[]) {
+function getNextReviewAt(tutorials: ProgressiveTutorialResponse[]) {
   let nextReviewTimestamp = Number.POSITIVE_INFINITY;
   let nextReviewAt: string | null = null;
 
