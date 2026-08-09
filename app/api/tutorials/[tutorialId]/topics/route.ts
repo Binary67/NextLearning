@@ -1,12 +1,8 @@
 import { MissingAzureOpenAIConfigurationError } from "@/lib/azure-openai-generation-retry";
-import {
-  findHybridDocumentTopics,
-  validateDocumentEmbeddings,
-} from "@/lib/document-embeddings";
-import {
-  isTutorialId,
-  readDocumentEmbeddings,
-} from "@/lib/document-storage";
+import { findHybridDocumentTopics } from "@/lib/document-search";
+import { validateDocumentEmbeddings } from "@/lib/document-embedding-validation";
+import { readDocumentEmbeddings } from "@/lib/document-artifact-storage";
+import { isTutorialId } from "@/lib/tutorial-storage";
 import {
   readRequestTextWithLimit,
   RequestBodyTooLargeError,

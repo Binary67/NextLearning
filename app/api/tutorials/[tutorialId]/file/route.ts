@@ -1,9 +1,11 @@
 import {
   isTutorialId,
   readStoredTutorial,
+} from "@/lib/tutorial-storage";
+import {
   statDocumentFile,
   streamDocumentFile,
-} from "@/lib/document-storage";
+} from "@/lib/document-artifact-storage";
 
 export const runtime = "nodejs";
 

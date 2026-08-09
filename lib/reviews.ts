@@ -1,5 +1,5 @@
 import type { DocumentModel } from "@/lib/document-model";
-import { listStoredTutorialIds } from "@/lib/document-storage";
+import { listStoredTutorialIds } from "@/lib/tutorial-storage";
 import type {
   LearningAttemptResult,
   LearningState,

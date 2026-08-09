@@ -2,7 +2,7 @@ import type { DocumentModel } from "@/lib/document-model";
 import {
   readStoredLearningState,
   updateStoredLearningState,
-} from "@/lib/document-storage";
+} from "@/lib/stored-progress";
 import {
   createEmptyLearningState,
   type LearningState,

@@ -2,7 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 
-import { listStoredTutorials } from "@/lib/document-storage";
+import { listStoredTutorials } from "@/lib/tutorial-storage";
 import {
   listTutorials,
   toTutorialResponse,

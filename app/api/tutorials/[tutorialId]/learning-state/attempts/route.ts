@@ -1,4 +1,4 @@
-import { isTutorialId } from "@/lib/document-storage";
+import { isTutorialId } from "@/lib/tutorial-storage";
 import {
   LearningStateConflictError,
   LearningStateInputError,

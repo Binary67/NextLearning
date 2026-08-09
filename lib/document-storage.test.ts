@@ -5,14 +5,16 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  InvalidStoredTutorialError,
-  listStoredTutorials,
   readStoredGuidedProgress,
   readStoredLearningState,
-  readStoredTutorial,
   updateStoredGuidedProgress,
   updateStoredLearningState,
-} from "@/lib/document-storage";
+} from "@/lib/stored-progress";
+import {
+  listStoredTutorials,
+  readStoredTutorial,
+} from "@/lib/tutorial-storage";
+import { InvalidStoredTutorialError } from "@/lib/document-storage-validation";
 
 const createdTutorialIds: string[] = [];
 

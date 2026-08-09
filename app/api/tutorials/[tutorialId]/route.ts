@@ -5,7 +5,7 @@ import {
   isTutorialId,
   readStoredTutorial,
   updateStoredTutorial,
-} from "@/lib/document-storage";
+} from "@/lib/tutorial-storage";
 import {
   readPreparedTutorial,
   toTutorialResponse,

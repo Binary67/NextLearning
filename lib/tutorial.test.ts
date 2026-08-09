@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentModel } from "@/lib/document-model";
-import type { StoredTutorial } from "@/lib/document-storage";
+import type { StoredTutorial } from "@/lib/document-storage-types";
 import type { LearningState } from "@/lib/learning-state";
 
 const mocks = vi.hoisted(() => ({
@@ -24,12 +24,18 @@ vi.mock("@/lib/document-model", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/document-storage", () => ({
+vi.mock("@/lib/document-artifact-storage", () => ({
   hasDocumentEmbeddings: mocks.hasDocumentEmbeddings,
-  listStoredTutorials: mocks.listStoredTutorials,
   readDocumentModel: mocks.readDocumentModel,
-  readStoredLearningState: mocks.readStoredLearningState,
+}));
+
+vi.mock("@/lib/tutorial-storage", () => ({
+  listStoredTutorials: mocks.listStoredTutorials,
   readStoredTutorial: mocks.readStoredTutorial,
+}));
+
+vi.mock("@/lib/stored-progress", () => ({
+  readStoredLearningState: mocks.readStoredLearningState,
   updateStoredLearningState: mocks.updateStoredLearningState,
 }));
 

@@ -6,12 +6,16 @@ import {
 } from "@/lib/document-model";
 import {
   hasDocumentEmbeddings,
-  listStoredTutorials,
   readDocumentModel,
+} from "@/lib/document-artifact-storage";
+import {
+  listStoredTutorials,
   readStoredTutorial,
-  type StoredTutorial,
-  type TutorialStatus,
-} from "@/lib/document-storage";
+} from "@/lib/tutorial-storage";
+import type {
+  StoredTutorial,
+  TutorialStatus,
+} from "@/lib/document-storage-types";
 import {
   type LearningProgressSummary,
   summarizeLearningProgress,

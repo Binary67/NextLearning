@@ -6,10 +6,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { after } from "next/server";
 
-import {
-  createQueuedTutorial,
-  MAX_DOCUMENT_SIZE,
-} from "@/lib/document-storage";
+import { MAX_DOCUMENT_SIZE } from "@/lib/document-artifact-storage";
 import { readPdfPageCount } from "@/lib/pdf-document-metadata";
 import {
   isContentLengthOverLimit,
@@ -20,6 +17,7 @@ import {
 } from "@/lib/tutorial";
 import { hasActiveTutorials } from "@/lib/tutorial-status";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
+import { createQueuedTutorial } from "@/lib/tutorial-storage";
 
 export const runtime = "nodejs";
 

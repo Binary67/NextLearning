@@ -6,9 +6,12 @@ const mocks = vi.hoisted(() => ({
   streamDocumentFile: vi.fn(),
 }));
 
-vi.mock("@/lib/document-storage", () => ({
+vi.mock("@/lib/tutorial-storage", () => ({
   isTutorialId: () => true,
   readStoredTutorial: mocks.readStoredTutorial,
+}));
+
+vi.mock("@/lib/document-artifact-storage", () => ({
   statDocumentFile: mocks.statDocumentFile,
   streamDocumentFile: mocks.streamDocumentFile,
 }));

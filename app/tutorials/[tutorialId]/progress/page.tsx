@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { isTutorialId } from "@/lib/document-storage";
+import { isTutorialId } from "@/lib/tutorial-storage";
 import {
   summarizeGuidedProgress,
 } from "@/lib/guided-progress";

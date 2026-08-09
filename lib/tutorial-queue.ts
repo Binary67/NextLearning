@@ -2,21 +2,23 @@ import {
   MissingAzureOpenAIConfigurationError,
   retryAzureOpenAIRateLimits,
 } from "@/lib/azure-openai-generation-retry";
-import { generateDocumentEmbeddingBatches } from "@/lib/document-embeddings";
+import { generateDocumentEmbeddingBatches } from "@/lib/document-embedding-generation";
 import type { DocumentPreparation } from "@/lib/document-batches";
 import { consolidateDocumentBatches } from "@/lib/document-consolidation";
 import {
   documentFilePath,
-  listStoredTutorials,
-  markTutorialPrepared,
   readDocumentFile,
   readGeneratedDocumentBatch,
-  type StoredTutorial,
-  updateStoredTutorial,
   writeDocumentEmbeddingBatch,
   writeDocumentModel,
   writeGeneratedDocumentBatch,
-} from "@/lib/document-storage";
+} from "@/lib/document-artifact-storage";
+import {
+  listStoredTutorials,
+  markTutorialPrepared,
+  updateStoredTutorial,
+} from "@/lib/tutorial-storage";
+import type { StoredTutorial } from "@/lib/document-storage-types";
 import { openPdfBatchReader } from "@/lib/pdf-document-batches";
 import { generateDocumentBatch } from "@/lib/tutorial-generation";
 

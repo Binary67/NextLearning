@@ -1,4 +1,4 @@
-import type { DocumentTopicMatch } from "@/lib/document-embeddings";
+import type { DocumentTopicMatch } from "@/lib/document-embedding-types";
 
 export const FIND_DOCUMENT_TOPICS_TOOL_NAME = "find_document_topics";
 

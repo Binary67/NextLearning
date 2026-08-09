@@ -6,7 +6,7 @@ import {
   recordGuidedProgressEvent,
   resetGuidedProgress,
 } from "@/lib/guided-progress-store";
-import { isTutorialId } from "@/lib/document-storage";
+import { isTutorialId } from "@/lib/tutorial-storage";
 import {
   readRequestTextWithLimit,
   RequestBodyTooLargeError,

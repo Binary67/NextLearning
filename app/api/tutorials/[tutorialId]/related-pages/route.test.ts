@@ -7,13 +7,19 @@ const mocks = vi.hoisted(() => ({
   validateDocumentEmbeddings: vi.fn(),
 }));
 
-vi.mock("@/lib/document-embeddings", () => ({
+vi.mock("@/lib/document-search", () => ({
   findTextSelectionContext: mocks.findTextSelectionContext,
+}));
+
+vi.mock("@/lib/document-embedding-validation", () => ({
   validateDocumentEmbeddings: mocks.validateDocumentEmbeddings,
 }));
 
-vi.mock("@/lib/document-storage", () => ({
+vi.mock("@/lib/tutorial-storage", () => ({
   isTutorialId: () => true,
+}));
+
+vi.mock("@/lib/document-artifact-storage", () => ({
   readDocumentEmbeddings: mocks.readDocumentEmbeddings,
 }));
 

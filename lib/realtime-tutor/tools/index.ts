@@ -2,7 +2,7 @@ import type {
   DocumentModel,
   TextSelectionContext,
 } from "@/lib/document-model";
-import type { DocumentTopicMatch } from "@/lib/document-embeddings";
+import type { DocumentTopicMatch } from "@/lib/document-embedding-types";
 import type { DocumentSelection } from "@/lib/document-selection";
 import {
   CREATE_LEARNING_VISUAL_TOOL_NAME,

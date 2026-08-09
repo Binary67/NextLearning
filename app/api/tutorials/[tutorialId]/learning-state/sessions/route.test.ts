@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   readPreparedTutorial: vi.fn(),
 }));
 
-vi.mock("@/lib/document-storage", () => ({
+vi.mock("@/lib/tutorial-storage", () => ({
   isTutorialId: () => true,
 }));
 

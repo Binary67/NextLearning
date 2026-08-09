@@ -1,6 +1,6 @@
 import { after } from "next/server";
 
-import { listStoredTutorials } from "@/lib/document-storage";
+import { listStoredTutorials } from "@/lib/tutorial-storage";
 import { hasActiveTutorials } from "@/lib/tutorial-status";
 import { runTutorialQueue } from "@/lib/tutorial-queue";
 

@@ -1,5 +1,5 @@
 import { TutorialWorkspace } from "@/app/tutorial-workspace";
-import { isTutorialId } from "@/lib/document-storage";
+import { isTutorialId } from "@/lib/tutorial-storage";
 import type { LearningState } from "@/lib/learning-state";
 import { readLearningState } from "@/lib/learning-state-store";
 import { readStoredGuidedProgressIfAvailable } from "@/lib/guided-progress-store";
