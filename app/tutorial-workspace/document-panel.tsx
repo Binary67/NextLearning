@@ -1,20 +1,12 @@
 import {
   ChevronLeft,
   ChevronRight,
-  Download,
-  Ellipsis,
   FileText,
-  LogOut,
   ScanText,
-  Sparkles,
-  Trash2,
   X,
 } from "lucide-react";
-import Link from "next/link";
-import type { KeyboardEvent, ReactNode } from "react";
 import { useId } from "react";
 
-import { NewTutorialButton } from "@/app/new-tutorial-button";
 import { PdfDocumentViewer } from "@/app/pdf-document-viewer";
 import type { DocumentModel } from "@/lib/document-model";
 import type {
@@ -24,13 +16,15 @@ import type {
 import type { TutorialResponse } from "@/lib/tutorial";
 import type { LearningVisualState } from "@/lib/use-realtime-tutor";
 
-import { LearningVisualFrame } from "./learning-visual-frame";
+import { DocumentState } from "./document-states";
+import { DocumentToolbar } from "./document-toolbar";
 import {
   formatHighlightedSourcePages,
   getAdjacentHighlightedPage,
 } from "./highlighted-pages";
-
-export type WorkspaceView = "document" | "visual";
+import { LearningVisualWorkspace } from "./learning-visual-workspace";
+import type { WorkspaceView } from "./types";
+import { WorkspaceTabs } from "./workspace-tabs";
 
 export function DocumentPanel({
   tutorial,
@@ -123,121 +117,26 @@ export function DocumentPanel({
   return (
     <section className="lesson-card">
       <div className="lesson-header">
-        <header className="lesson-toolbar">
-          <div>
-            <FileText size={20} aria-hidden="true" />
-            <h2>{tutorial?.title ?? "Document reader"}</h2>
-          </div>
-          <div className="lesson-toolbar-controls">
-            {guidedSessionActive ? (
-              <div
-                className="active-tutor-session"
-                role="group"
-                aria-label={`${modeLabel} session active`}
-              >
-                <span className="active-tutor-session-status">
-                  <span
-                    className="active-tutor-session-dot"
-                    aria-hidden="true"
-                  />
-                  <strong>{modeLabel}</strong>
-                  <small>Live</small>
-                </span>
-                <button
-                  className="secondary-button active-tutor-session-end"
-                  type="button"
-                  onClick={onEndSession}
-                  aria-label={`End ${modeLabel.toLowerCase()} session`}
-                  title="End session"
-                >
-                  <LogOut size={16} aria-hidden="true" />
-                  <span>End session</span>
-                </button>
-              </div>
-            ) : reviewMode ? (
-              <div
-                className="tutor-mode-selector"
-                role="group"
-                aria-label="Tutor mode"
-              >
-                <button
-                  className="active"
-                  type="button"
-                  disabled
-                  aria-pressed="true"
-                >
-                  Review
-                </button>
-              </div>
-            ) : null}
-            <div className="lesson-actions">
-              <button
-                className="icon-button small"
-                type="button"
-                onClick={onDownload}
-                disabled={!tutorial}
-                aria-label="Download PDF"
-              >
-                <Download size={18} />
-              </button>
-              <NewTutorialButton
-                variant="icon"
-                onQueued={onTutorialQueued}
-              />
-              <details className="document-actions-menu">
-                <summary
-                  className="icon-button small"
-                  aria-label="More document actions"
-                >
-                  <Ellipsis size={19} />
-                </summary>
-                <div className="document-actions-popover">
-                  <button
-                    type="button"
-                    onClick={onDelete}
-                    disabled={!tutorial}
-                  >
-                    <Trash2 size={17} />
-                    Delete document
-                  </button>
-                </div>
-              </details>
-            </div>
-          </div>
-        </header>
+        <DocumentToolbar
+          tutorial={tutorial}
+          modeLabel={modeLabel}
+          reviewMode={reviewMode}
+          guidedSessionActive={guidedSessionActive}
+          onDownload={onDownload}
+          onTutorialQueued={onTutorialQueued}
+          onEndSession={onEndSession}
+          onDelete={onDelete}
+        />
 
         {showWorkspaceTabs && (
-          <div
-            className="workspace-tabs"
-            role="tablist"
-            aria-label="Lesson workspace views"
-            onKeyDown={handleTabKeyDown}
-          >
-            <button
-              id={documentTabId}
-              className="workspace-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeWorkspaceView === "document"}
-              aria-controls={documentPanelId}
-              tabIndex={activeWorkspaceView === "document" ? 0 : -1}
-              onClick={() => onWorkspaceViewChange("document")}
-            >
-              Document
-            </button>
-            <button
-              id={visualTabId}
-              className="workspace-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeWorkspaceView === "visual"}
-              aria-controls={visualPanelId}
-              tabIndex={activeWorkspaceView === "visual" ? 0 : -1}
-              onClick={() => onWorkspaceViewChange("visual")}
-            >
-              Visual
-            </button>
-          </div>
+          <WorkspaceTabs
+            activeWorkspaceView={activeWorkspaceView}
+            documentPanelId={documentPanelId}
+            documentTabId={documentTabId}
+            visualPanelId={visualPanelId}
+            visualTabId={visualTabId}
+            onWorkspaceViewChange={onWorkspaceViewChange}
+          />
         )}
       </div>
 
@@ -396,7 +295,7 @@ export function DocumentPanel({
             hidden={activeWorkspaceView !== "visual"}
           >
             <div className="visual-workspace">
-              <VisualWorkspaceContent
+              <LearningVisualWorkspace
                 state={learningVisualState}
                 hasSelection={selection !== null}
                 creationEnabled={visualCreationEnabled}
@@ -410,173 +309,5 @@ export function DocumentPanel({
         )}
       </div>
     </section>
-  );
-}
-
-function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-  const tabs = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      '[role="tab"]',
-    ),
-  );
-  const currentIndex = tabs.indexOf(
-    event.target as HTMLButtonElement,
-  );
-  let nextIndex: number;
-
-  switch (event.key) {
-    case "ArrowLeft":
-      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-      break;
-    case "ArrowRight":
-      nextIndex = (currentIndex + 1) % tabs.length;
-      break;
-    case "Home":
-      nextIndex = 0;
-      break;
-    case "End":
-      nextIndex = tabs.length - 1;
-      break;
-    default:
-      return;
-  }
-
-  event.preventDefault();
-  tabs[nextIndex]?.click();
-  tabs[nextIndex]?.focus();
-}
-
-function VisualWorkspaceContent({
-  state,
-  hasSelection,
-  creationEnabled,
-  sessionStarting,
-  sessionStartEnabled,
-  onCreate,
-  onStartTutor,
-}: {
-  state: LearningVisualState;
-  hasSelection: boolean;
-  creationEnabled: boolean;
-  sessionStarting: boolean;
-  sessionStartEnabled: boolean;
-  onCreate: () => void;
-  onStartTutor: () => void;
-}) {
-  if (state.status === "generating") {
-    return (
-      <div className="visual-workspace-state" role="status">
-        <span className="visual-loading-indicator" aria-hidden="true" />
-        <p>Learning visual</p>
-        <h3>Building your visual…</h3>
-      </div>
-    );
-  }
-
-  if (state.status === "error") {
-    return (
-      <div
-        className="visual-workspace-state visual-workspace-error"
-        role="alert"
-      >
-        <p>Learning visual unavailable</p>
-        <h3>The visual could not be shown</h3>
-        <span>{state.message}</span>
-        <CreateVisualButton
-          label="Try again"
-          enabled={creationEnabled}
-          onCreate={onCreate}
-        />
-      </div>
-    );
-  }
-
-  if (state.status === "ready") {
-    return (
-      <LearningVisualFrame
-        title={state.visual.title}
-        altText={state.visual.altText}
-        htmlFragment={state.visual.htmlFragment}
-      />
-    );
-  }
-
-  let actionLabel = "Start tutor session";
-  let actionEnabled = sessionStartEnabled;
-  let onAction = onStartTutor;
-
-  if (creationEnabled) {
-    actionLabel = hasSelection
-      ? "Create visual from selection"
-      : "Create visual";
-    actionEnabled = true;
-    onAction = onCreate;
-  } else if (sessionStarting) {
-    actionLabel = "Starting tutor…";
-  }
-
-  return (
-    <div className="visual-workspace-state visual-workspace-empty">
-      <span className="visual-empty-icon" aria-hidden="true">
-        <Sparkles size={22} />
-      </span>
-      <h3>Visualize this page</h3>
-      <span>
-        Create an interactive explanation from the current page or
-        selected text.
-      </span>
-      <CreateVisualButton
-        label={actionLabel}
-        enabled={actionEnabled}
-        onCreate={onAction}
-      />
-    </div>
-  );
-}
-
-function CreateVisualButton({
-  label,
-  enabled,
-  onCreate,
-}: {
-  label: string;
-  enabled: boolean;
-  onCreate: () => void;
-}) {
-  return (
-    <button
-      className="primary-button visual-create-button"
-      type="button"
-      onClick={onCreate}
-      disabled={!enabled}
-    >
-      {label}
-    </button>
-  );
-}
-
-function DocumentState({
-  icon,
-  eyebrow,
-  title,
-  message,
-  error = false,
-}: {
-  icon: ReactNode;
-  eyebrow: string;
-  title: string;
-  message: string;
-  error?: boolean;
-}) {
-  return (
-    <div className="document-state">
-      <span className="document-state-icon">{icon}</span>
-      <p className="document-state-eyebrow">{eyebrow}</p>
-      <h1>{title}</h1>
-      <p className={error ? "document-error" : undefined}>{message}</p>
-      <Link className="secondary-button upload-button" href="/library">
-        Back to library
-      </Link>
-    </div>
   );
 }

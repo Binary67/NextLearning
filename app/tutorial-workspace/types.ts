@@ -26,6 +26,8 @@ export type InitialLearningState = {
 
 export type TutorMode = "guided" | "review";
 
+export type WorkspaceView = "document" | "visual";
+
 export type TutorialWorkspaceProps = {
   tutorialId: string;
   reviewConcept?: string;

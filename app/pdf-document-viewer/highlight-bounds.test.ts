@@ -5,7 +5,7 @@ import type { SelectionBounds } from "@/lib/document-selection";
 import {
   createHighlightBoundsSignature,
   findFirstVisualHighlight,
-} from "./pdf-document-viewer-helpers";
+} from "./highlight-bounds";
 
 describe("createHighlightBoundsSignature", () => {
   const bounds: SelectionBounds[] = [

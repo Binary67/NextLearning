@@ -1,4 +1,4 @@
-import { TutorialWorkspace } from "@/app/tutorial-workspace";
+import { TutorialWorkspace } from "@/app/tutorial-workspace/tutorial-workspace";
 import { isTutorialId } from "@/lib/tutorial-storage";
 import type { LearningState } from "@/lib/learning-state";
 import { readLearningState } from "@/lib/learning-state-store";

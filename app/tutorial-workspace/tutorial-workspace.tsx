@@ -1,19 +1,13 @@
 "use client";
 
 import { LogOut, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useApplicationShell } from "@/app/application-shell";
 import {
   LearningSettingsDialog,
   useLearningSettings,
 } from "@/app/learning-settings";
-import type { DocumentSelection } from "@/lib/document-selection";
-import {
-  getDocumentChunkHighlightBounds,
-  type DocumentChunk,
-} from "@/lib/document-model";
 import {
   type GuidedTutorMode,
   useRealtimeTutor,
@@ -22,25 +16,28 @@ import {
 import {
   ConfirmationDialog,
   TranscriptDialog,
-} from "./tutorial-workspace/dialogs";
-import {
-  DocumentPanel,
-  type WorkspaceView,
-} from "./tutorial-workspace/document-panel";
-import { getHighlightedSourcePages } from "./tutorial-workspace/highlighted-pages";
+} from "./dialogs";
+import { DocumentPanel } from "./document-panel";
 import {
   findInitialReviewTarget,
   getInitialReviewError,
   getValidResume,
   useLearningResumePersistence,
-} from "./tutorial-workspace/learning-resume";
-import { TutorSidebar } from "./tutorial-workspace/tutor-sidebar";
+} from "./learning-resume";
+import { TutorSidebar } from "./tutor-sidebar";
 import type {
   Modal,
   TutorialWorkspaceProps,
   TutorMode,
-} from "./tutorial-workspace/types";
-import { useRelatedPages } from "./tutorial-workspace/use-related-pages";
+  WorkspaceView,
+} from "./types";
+import { useRelatedPages } from "./use-related-pages";
+import { useWorkspaceActions } from "./use-workspace-actions";
+import {
+  getWorkspaceNavigation,
+  useWorkspaceNavigationState,
+} from "./use-workspace-navigation";
+import { useWorkspaceShortcuts } from "./use-workspace-shortcuts";
 
 export function TutorialWorkspace({
   tutorialId,
@@ -52,7 +49,6 @@ export function TutorialWorkspace({
   initialDocumentError,
   initialLearningStateError,
 }: TutorialWorkspaceProps) {
-  const router = useRouter();
   const {
     addTutorial,
     removeTutorial,
@@ -74,28 +70,11 @@ export function TutorialWorkspace({
         )
       : null;
   const [modal, setModal] = useState<Modal>(null);
-  const [deletingTutorial, setDeletingTutorial] = useState(false);
   const tutorMode: TutorMode = reviewConcept ? "review" : "guided";
   const [guidedTutorMode, setGuidedTutorMode] =
     useState<GuidedTutorMode>("learning");
-  const [currentPage, setCurrentPage] = useState(
-    initialReviewTarget?.pageIndex ??
-      initialGuidedResume?.pageIndex ??
-      1,
-  );
-  const [openedHighlightedChunkId, setOpenedHighlightedChunkId] =
-    useState<string | null>(null);
-  const [resumePageIndex, setResumePageIndex] = useState(
-    initialGuidedResume?.pageIndex ?? 1,
-  );
-  const [resumeChunkId, setResumeChunkId] = useState<string | null>(
-    initialGuidedResume?.chunkId ?? null,
-  );
   const [learningStateError, setLearningStateError] = useState(
     initialLearningStateError,
-  );
-  const [selection, setSelection] = useState<DocumentSelection | null>(
-    null,
   );
   const {
     raiseHandShortcut,
@@ -104,14 +83,21 @@ export function TutorialWorkspace({
     audioInputDeviceId,
     audioOutputDeviceId,
   } = useLearningSettings();
+  const guidedMode = tutorMode === "guided";
+  const reviewMode = tutorMode === "review";
+  const navigationState = useWorkspaceNavigationState({
+    initialPageIndex:
+      initialReviewTarget?.pageIndex ??
+      initialGuidedResume?.pageIndex ??
+      1,
+    initialResume: initialGuidedResume,
+  });
   const { textSelectionContext, relatedPagesStatus } = useRelatedPages(
     tutorialId,
     initialModel,
-    selection,
+    navigationState.selection,
   );
   const relatedPagesLoading = relatedPagesStatus === "loading";
-  const guidedMode = tutorMode === "guided";
-  const reviewMode = tutorMode === "review";
   const activeLearningMode =
     guidedMode && guidedTutorMode === "learning";
   const reviewError = getInitialReviewError(
@@ -123,13 +109,39 @@ export function TutorialWorkspace({
   const realtimeTutor = useRealtimeTutor({
     documentId: initialTutorial?.id ?? null,
     documentModel: initialModel,
-    selection,
+    selection: navigationState.selection,
     textSelectionContext,
     relatedPagesLoading,
     explanationStyle,
     audioInputDeviceId,
     audioOutputDeviceId,
   });
+  const workspaceNavigation = getWorkspaceNavigation({
+    ...navigationState,
+    initialModel,
+    reviewMode,
+    guidedMode,
+    realtimeTutorStatus: realtimeTutor.status,
+    guidedProgress: realtimeTutor.guidedSegmentProgress,
+  });
+  const {
+    currentPage,
+    currentResumeChunkId,
+    currentResumePageIndex,
+    highlightedSourcePages,
+    pageCount,
+    resumeChunkId,
+    resumePageIndex,
+    selection,
+    setCurrentPage,
+    setResumeChunkId,
+    setResumePageIndex,
+    setSelection,
+    tutorHighlightBounds,
+    changePage,
+    changeHighlightedPage,
+    returnToHighlight,
+  } = workspaceNavigation;
   const learningVisualStatus =
     realtimeTutor.learningVisualState.status;
   const [workspaceSelection, setWorkspaceSelection] = useState(() => ({
@@ -166,37 +178,7 @@ export function TutorialWorkspace({
     realtimeTutor.isUserTurn ||
     realtimeTutor.isSubmittingUserTurn ||
     realtimeTutor.isReplayingTutorAudio;
-  const pageCount = initialModel?.page_count ?? 0;
   const guidedProgress = realtimeTutor.guidedSegmentProgress;
-  const activeTeachingChunkId = guidedProgress?.chunkId ?? null;
-  const activeTeachingChunk: DocumentChunk | null =
-    activeTeachingChunkId && guidedProgress && initialModel
-      ? (initialModel.pages[
-          guidedProgress.pageIndex - 1
-        ].chunks.find(
-          (chunk) => chunk.id === activeTeachingChunkId,
-        ) ?? null)
-      : null;
-  const highlightedSourcePages = getHighlightedSourcePages(activeTeachingChunk);
-  const earliestHighlightedPage = highlightedSourcePages[0] ?? null;
-
-  if (activeTeachingChunkId !== openedHighlightedChunkId) {
-    setOpenedHighlightedChunkId(activeTeachingChunkId);
-
-    if (activeTeachingChunkId && earliestHighlightedPage !== null) {
-      setCurrentPage(earliestHighlightedPage);
-      setSelection(null);
-    }
-  }
-
-  const currentResumePageIndex =
-    guidedMode && guidedProgress
-      ? guidedProgress.pageIndex
-      : resumePageIndex;
-  const currentResumeChunkId =
-    guidedMode && guidedProgress?.chunkId
-      ? guidedProgress.chunkId
-      : resumeChunkId;
   const learnerCanAsk = !(reviewMode && guidedProgress?.segmentComplete);
   let learnerTurnPrompt = reviewMode
     ? `Press ${raiseHandShortcutLabel} to answer the review question`
@@ -209,13 +191,6 @@ export function TutorialWorkspace({
   } else if (selection && !reviewMode && !guidedProgress?.learningPhase) {
     learnerTurnPrompt = `Press ${raiseHandShortcutLabel} to ask about the selection`;
   }
-  const tutorHighlightBounds =
-    realtimeTutor.status === "connected" && activeTeachingChunk
-      ? getDocumentChunkHighlightBounds(
-          activeTeachingChunk,
-          currentPage,
-        )
-      : [];
   const guidedTurnBusy =
     realtimeTutor.isTutorResponding ||
     realtimeTutor.isTutorSpeaking ||
@@ -235,6 +210,7 @@ export function TutorialWorkspace({
   if (realtimeTutor.isUserTurn) {
     askButtonLabel = "Finish response";
   }
+
   useEffect(() => {
     registerSettings({
       isOpen: modal === "settings",
@@ -254,196 +230,46 @@ export function TutorialWorkspace({
     onError: setLearningStateError,
   });
 
-  const toggleUserTurn = useCallback(async () => {
-    const wasListening = realtimeTutor.isUserTurn;
-    const actionSucceeded = await realtimeTutor.toggleUserTurn();
+  const {
+    continueGuided,
+    deleteTutorial,
+    deletingTutorial,
+    downloadDocument,
+    endSession,
+    startTutor,
+    toggleUserTurn,
+  } = useWorkspaceActions({
+    tutorialId,
+    tutorial: initialTutorial,
+    reviewMode,
+    guidedMode,
+    initialReviewTarget,
+    guidedTutorMode,
+    resumePageIndex,
+    resumeChunkId,
+    guidedProgress,
+    pageCount,
+    realtimeTutor,
+    raiseHandShortcutLabel,
+    setCurrentPage,
+    setSelection,
+    setResumePageIndex,
+    setResumeChunkId,
+    setModal,
+    onRemoveTutorial: removeTutorial,
+    onShowToast: showToast,
+  });
 
-    if (!actionSucceeded) {
-      return;
-    }
-
-    showToast(
-      wasListening
-        ? "Response sent. Waiting for the tutor."
-        : `Listening. Press ${raiseHandShortcutLabel} or tap the check when you finish.`,
-    );
-  }, [raiseHandShortcutLabel, realtimeTutor, showToast]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      const target = event.target;
-      const isInteractiveTarget =
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          ["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(
-            target.tagName,
-          ));
-
-      if (
-        event.repeat ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey ||
-        isInteractiveTarget
-      ) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-
-      if (key === "escape") {
-        setModal(null);
-      } else if (
-        key === "t" &&
-        realtimeTutor.tutorTranscripts.length > 0
-      ) {
-        setModal("transcript");
-      } else if (key === "e" && sessionActive) {
-        setModal("end-session");
-      } else if (
-        key === raiseHandShortcut &&
-        realtimeTutor.status === "connected" &&
-        modal === null &&
-        learnerCanAsk
-      ) {
-        event.preventDefault();
-        void toggleUserTurn();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
+  useWorkspaceShortcuts({
     learnerCanAsk,
     modal,
     raiseHandShortcut,
-    realtimeTutor.status,
-    realtimeTutor.tutorTranscripts.length,
+    realtimeTutorStatus: realtimeTutor.status,
     sessionActive,
+    transcriptCount: realtimeTutor.tutorTranscripts.length,
+    setModal,
     toggleUserTurn,
-  ]);
-
-  function changePage(pageIndex: number) {
-    if (
-      pageIndex < 1 ||
-      pageIndex > pageCount ||
-      reviewMode ||
-      realtimeTutor.status === "connecting"
-    ) {
-      return;
-    }
-
-    setCurrentPage(pageIndex);
-    setSelection(null);
-  }
-
-  function changeHighlightedPage(pageIndex: number) {
-    if (
-      !highlightedSourcePages.includes(pageIndex) ||
-      realtimeTutor.status === "connecting"
-    ) {
-      return;
-    }
-
-    setCurrentPage(pageIndex);
-    setSelection(null);
-  }
-
-  function returnToHighlight() {
-    if (earliestHighlightedPage === null) {
-      return;
-    }
-
-    setCurrentPage(earliestHighlightedPage);
-    setSelection(null);
-  }
-
-  function downloadDocument() {
-    if (!initialTutorial) {
-      return;
-    }
-
-    const link = document.createElement("a");
-    link.href = `${initialTutorial.url}?download=1`;
-    link.click();
-    showToast("Document download started.");
-  }
-
-  async function deleteTutorial() {
-    setDeletingTutorial(true);
-
-    try {
-      const response = await fetch(`/api/tutorials/${tutorialId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("The document could not be deleted.");
-      }
-
-      realtimeTutor.reset();
-      removeTutorial(tutorialId);
-      router.replace("/library");
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "The document could not be deleted.",
-      );
-    } finally {
-      setDeletingTutorial(false);
-    }
-  }
-
-  function startTutor() {
-    if (reviewMode) {
-      if (initialReviewTarget) {
-        void realtimeTutor.startReview(initialReviewTarget);
-      }
-      return;
-    }
-
-    setCurrentPage(resumePageIndex);
-    setSelection(null);
-    void realtimeTutor.startGuided(
-      resumePageIndex,
-      resumeChunkId,
-      guidedTutorMode,
-    );
-  }
-
-  function continueGuided() {
-    if (!guidedProgress) {
-      return;
-    }
-
-    setSelection(null);
-
-    if (guidedProgress.pageComplete) {
-      if (guidedProgress.pageIndex < pageCount) {
-        setCurrentPage(guidedProgress.pageIndex + 1);
-        void realtimeTutor.explainPage(
-          guidedProgress.pageIndex + 1,
-        );
-      }
-      return;
-    }
-
-    setCurrentPage(guidedProgress.pageIndex);
-    void realtimeTutor.continueGuided();
-  }
-
-  function endSession() {
-    if (guidedMode && guidedProgress?.chunkId) {
-      setResumePageIndex(guidedProgress.pageIndex);
-      setResumeChunkId(guidedProgress.chunkId);
-    }
-
-    setModal(null);
-    showToast("Session ended.");
-    void realtimeTutor.end();
-  }
+  });
 
   return (
     <>
