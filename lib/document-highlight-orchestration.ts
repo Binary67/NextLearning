@@ -11,9 +11,11 @@ export async function addDocumentHighlightBounds(
   fileData: Buffer,
   model: GeneratedDocumentModel,
   inputStartPage = 1,
+  textRegionsByPage?: PdfTextRegion[][],
 ): Promise<DocumentModel> {
-  const textRegionsByPage = await extractPdfTextRegions(fileData);
-  const searchablePages = textRegionsByPage.map((regions, pageOffset) =>
+  const extractedRegions =
+    textRegionsByPage ?? (await extractPdfTextRegions(fileData));
+  const searchablePages = extractedRegions.map((regions, pageOffset) =>
     createSearchablePage(regions, inputStartPage + pageOffset),
   );
 

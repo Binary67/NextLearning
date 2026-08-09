@@ -11,6 +11,15 @@ const TOKEN_PATTERN =
 const DASH_PATTERN = /[\p{Pd}\u2212]/u;
 const WORD_CHARACTER_PATTERN = /[\p{L}\p{M}\p{N}]/u;
 
+export function buildPageText(
+  textRegions: readonly PdfTextRegion[],
+): string {
+  return textRegions
+    .map((region) => region.text.replace(/\s+/g, " ").trim())
+    .filter((text) => text.length > 0)
+    .join(" ");
+}
+
 export function createSearchablePage(
   textRegions: PdfTextRegion[],
   pageIndex: number,

@@ -1,3 +1,7 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
 import type { SelectionBounds } from "@/lib/document-selection";
 import type {
   GroundingTextRegion,
@@ -9,6 +13,49 @@ import {
   type PdfTextRegion,
   type PdfTextRegionInput,
 } from "@/lib/pdf-text-regions";
+
+// Resolve from the project root rather than require.resolve: bundlers rewrite
+// require.resolve("pdfjs-dist/...") in shared library code into virtual
+// paths that do not exist on disk.
+const standardFontDataUrl = pathToFileURL(
+  path.join(
+    process.cwd(),
+    "node_modules",
+    "pdfjs-dist",
+    "standard_fonts",
+  ) + path.sep,
+).href;
+
+// pdf.js's Node factory reads font URLs with fs.readFile, which rejects
+// file:// strings; read from the resolved directory with plain paths instead.
+class LocalBinaryDataFactory {
+  private readonly standardFontsDirectory: string;
+
+  constructor({
+    standardFontDataUrl: url,
+  }: {
+    cMapUrl?: string | null;
+    standardFontDataUrl?: string | null;
+    wasmUrl?: string | null;
+  }) {
+    if (!url) {
+      throw new Error("The standardFontDataUrl API parameter is required.");
+    }
+
+    this.standardFontsDirectory = fileURLToPath(url);
+  }
+
+  async fetch({ kind, filename }: { kind: string; filename: string }) {
+    if (kind !== "standardFontDataUrl") {
+      throw new Error(`Ensure that the \`${kind}\` API parameter is provided.`);
+    }
+
+    const data = await fs.readFile(
+      path.join(this.standardFontsDirectory, filename),
+    );
+    return new Uint8Array(data);
+  }
+}
 
 export function createHighlightBounds(
   regions: GroundingTextRegion[],
@@ -69,6 +116,8 @@ export async function extractPdfTextRegions(fileData: Buffer) {
   const pdfModule = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const loadingTask = pdfModule.getDocument({
     data: new Uint8Array(fileData),
+    standardFontDataUrl,
+    BinaryDataFactory: LocalBinaryDataFactory,
   });
 
   try {

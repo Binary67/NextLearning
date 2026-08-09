@@ -15,6 +15,9 @@ import {
 } from "@/lib/document-model";
 import type { GeneratedDocumentBatch } from "@/lib/document-batches";
 import { addDocumentHighlightBounds } from "@/lib/document-highlight-orchestration";
+import { extractPdfTextRegions } from "@/lib/document-highlight-geometry";
+import { buildPageText } from "@/lib/document-highlight-tokens";
+import type { PdfTextRegion } from "@/lib/pdf-text-regions";
 
 const DOCUMENT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -30,6 +33,7 @@ export async function generateDocumentBatch(
   inputEndPage: number,
 ): Promise<GeneratedDocumentBatch> {
   const encodedFile = fileData.toString("base64");
+  const textRegionsByPage = await extractPdfTextRegions(fileData);
 
   return retryAzureOpenAIGeneration(async () => {
     const outputText = await requestStructuredGeneration([
@@ -48,6 +52,7 @@ export async function generateDocumentBatch(
           endPage,
           inputStartPage,
           inputEndPage,
+          buildDocumentPageText(textRegionsByPage, inputStartPage),
         ),
       },
     ]);
@@ -68,6 +73,7 @@ export async function generateDocumentBatch(
           pages: generatedBatch.pages,
         },
         inputStartPage,
+        textRegionsByPage,
       );
 
       return generatedBatch;
@@ -79,6 +85,18 @@ export async function generateDocumentBatch(
       );
     }
   });
+}
+
+export function buildDocumentPageText(
+  textRegionsByPage: PdfTextRegion[][],
+  inputStartPage: number,
+) {
+  return textRegionsByPage
+    .map((regions, pageOffset) => {
+      const pageIndex = inputStartPage + pageOffset;
+      return `Page ${pageIndex}:\n${buildPageText(regions)}`;
+    })
+    .join("\n\n");
 }
 
 async function requestStructuredGeneration(content: object[]) {
@@ -131,13 +149,14 @@ async function requestStructuredGeneration(content: object[]) {
   );
 }
 
-function buildDocumentBatchPrompt(
+export function buildDocumentBatchPrompt(
   documentId: string,
   sourcePageCount: number,
   startPage: number,
   endPage: number,
   inputStartPage: number,
   inputEndPage: number,
+  pageText: string,
 ) {
   return `Create one page batch for an interactive reading tutor.
 
@@ -154,7 +173,7 @@ Document rules:
 - Normally give each substantive page one chunk that teaches its important points together. Use two or three chunks only when the page contains clearly separate headings or unrelated ideas. Use an empty chunks array only when a page contains no instructional content.
 - A chunk is a coherent page lesson, not a paragraph. Combine consecutive paragraphs, examples, figures, tables, and equations when they develop the same idea. Preserve detail by covering every important claim, term, reasoning step, and supporting example in the chunk title and summary.
 - Give each chunk the exact section heading in section_title. Use "Abstract" for an abstract and the nearest enclosing heading when a section continues across pages.
-- Put the chunk's exact source wording in one to four ordered sources. Every source must contain page_index and source_text copied from one PDF page. Do not summarize, rewrite, complete, or combine non-consecutive source text. Use separate sources for distinct non-consecutive spans and keep each source_text at or below 8000 characters.
+- Put the chunk's exact source wording in one to four ordered sources. Every source must contain page_index and source_text copied verbatim from the extracted text at the end of this prompt for one PDF page. Do not summarize, rewrite, complete, or combine non-consecutive source text. Use separate sources for distinct non-consecutive spans and keep each source_text at or below 8000 characters.
 - Every chunk must have at least one source for its owning page. Multiple sources may use the same page when a coherent lesson needs distinct passages, captions, or equations from that page.
 - A chunk may also have sources from the immediately previous page only when a paragraph starts there and continues on the owning page. Put all previous-page sources before all owning-page sources.
 - Do not teach an unfinished paragraph on the page where it begins. Assign the complete paragraph to the next page's chunk using the previous-page fragment followed by the owning-page fragment.
@@ -181,5 +200,10 @@ Connection rules:
 - Use reason to state briefly why the connection helps explain the document.
 - Keep every occurrence and connection confidence between 0 and 1 inclusive.
 
-Do not create learner prompts, assessments, progress, timing, or realtime behavior.`;
+Do not create learner prompts, assessments, progress, timing, or realtime behavior.
+
+Extracted text:
+The text below is the extracted text of attached PDF pages ${inputStartPage} through ${inputEndPage}, in reading order. Every source_text must be copied VERBATIM from this text: copy words, spacing, and punctuation exactly, and do not add, remove, or reorder words. Do not quote the "Page N:" markers or any text outside this extract.
+
+${pageText}`;
 }

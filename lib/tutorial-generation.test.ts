@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateDocumentBatch } from "@/lib/tutorial-generation";
+import {
+  buildDocumentBatchPrompt,
+  buildDocumentPageText,
+  generateDocumentBatch,
+} from "@/lib/tutorial-generation";
 
 const { getDocument } = vi.hoisted(() => ({
   getDocument: vi.fn(),
@@ -10,6 +14,7 @@ vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({ getDocument }));
 
 describe("generateDocumentBatch", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubEnv("AZURE_OPENAI_ENDPOINT", "https://azure.example");
     vi.stubEnv("AZURE_OPENAI_API_KEY", "api-key");
     vi.stubEnv("AZURE_OPENAI_FLAGSHIP_DEPLOYMENT", "flagship");
@@ -41,6 +46,7 @@ describe("generateDocumentBatch", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
+    mockPdfPages(["Page one extracted text."]);
     const request = generateDocumentBatch(
       Buffer.from("pdf"),
       "document.pdf",
@@ -115,7 +121,7 @@ describe("generateDocumentBatch", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(getDocument).toHaveBeenCalledTimes(1);
     expect(result.pages[0].chunks[0].sources[0]).toEqual({
       page_index: 3,
       source_text: "Grounded source text",
@@ -247,3 +253,61 @@ function streamedOutput(output: object) {
     headers: { "Content-Type": "text/event-stream" },
   });
 }
+
+describe("buildDocumentPageText", () => {
+  it("marks each page and joins its text regions", () => {
+    const text = buildDocumentPageText(
+      [
+        [
+          {
+            text: "First  page ",
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 0.1,
+          },
+        ],
+        [
+          {
+            text: "Second",
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 0.1,
+          },
+          {
+            text: " page",
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 0.1,
+          },
+        ],
+      ],
+      3,
+    );
+
+    expect(text).toBe("Page 3:\nFirst page\n\nPage 4:\nSecond page");
+  });
+});
+
+describe("buildDocumentBatchPrompt", () => {
+  it("includes the extracted page text for verbatim quoting", () => {
+    const prompt = buildDocumentBatchPrompt(
+      "document-id",
+      10,
+      1,
+      2,
+      1,
+      2,
+      "Page 1:\nHello world",
+    );
+
+    expect(prompt).toContain(
+      "source_text copied verbatim from the extracted text",
+    );
+    expect(prompt).toContain("Extracted text:");
+    expect(prompt).toContain("Page 1:\nHello world");
+    expect(prompt).toContain("attached PDF pages 1 through 2");
+  });
+});

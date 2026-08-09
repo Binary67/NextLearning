@@ -4,6 +4,7 @@ import {
   addDocumentHighlightBounds,
   findDocumentHighlightBounds,
 } from "@/lib/document-highlight-orchestration";
+import { buildPageText } from "@/lib/document-highlight-tokens";
 import type { GeneratedDocumentModel } from "@/lib/document-model";
 import {
   createPdfTextRegion,
@@ -70,7 +71,7 @@ describe("addDocumentHighlightBounds", () => {
     expect(result.pages[0].chunks[0].sources).toHaveLength(2);
   });
 
-  it("reports the chunk, source, page, and missing-token failure", async () => {
+  it("tolerates a small number of unmatched source tokens", async () => {
     mockPdfPages([
       [pdfTextItem("Only the grounded words exist.", 10, 70)],
     ]);
@@ -84,11 +85,64 @@ describe("addDocumentHighlightBounds", () => {
       1,
     );
 
+    const result = await addDocumentHighlightBounds(
+      Buffer.from("pdf"),
+      model,
+    );
+
+    expect(
+      result.pages[0].chunks[0].sources[0].highlight_bounds,
+    ).toHaveLength(2);
+  });
+
+  it("rejects sources with too many unmatched tokens", async () => {
+    mockPdfPages([
+      [pdfTextItem("Only the grounded words exist.", 10, 70)],
+    ]);
+    const model = createModel(
+      [
+        {
+          page_index: 1,
+          source_text: "Only quite invented opening completely words exist.",
+        },
+      ],
+      1,
+    );
+
     await expect(
       addDocumentHighlightBounds(Buffer.from("pdf"), model),
     ).rejects.toThrow(
-      'Chunk chunk:p1-grounding, source 1, PDF page 1: source token "invented" is missing from the PDF page.',
+      'Chunk chunk:p1-grounding, source 1, PDF page 1: source token "quite" is missing from the PDF page.',
     );
+  });
+
+  it("applies the skip budget per source", async () => {
+    mockPdfPages([
+      [pdfTextItem("Only the grounded words exist here.", 10, 70)],
+    ]);
+    const model = createModel(
+      [
+        {
+          page_index: 1,
+          source_text: "Only invented words exist",
+        },
+        {
+          page_index: 1,
+          source_text: "Grounded opening words exist here.",
+        },
+      ],
+      1,
+    );
+
+    const result = await addDocumentHighlightBounds(
+      Buffer.from("pdf"),
+      model,
+    );
+    const sources = result.pages[0].chunks[0].sources;
+
+    expect(sources).toHaveLength(2);
+    expect(sources[0].highlight_bounds.length).toBeGreaterThan(0);
+    expect(sources[1].highlight_bounds.length).toBeGreaterThan(0);
   });
 
   it("crops a boundary text item along its rotated baseline", async () => {
@@ -253,6 +307,18 @@ describe("findDocumentHighlightBounds", () => {
     expect(
       findDocumentHighlightBounds(regions, repeatedText),
     ).toBeNull();
+  });
+});
+
+describe("buildPageText", () => {
+  it("joins trimmed region text with single spaces", () => {
+    expect(
+      buildPageText([
+        region("First  page ", 0.1, 0.2, 0.3),
+        region("", 0.1, 0.3, 0.1),
+        region("second page", 0.1, 0.4, 0.3),
+      ]),
+    ).toBe("First page second page");
   });
 });
 

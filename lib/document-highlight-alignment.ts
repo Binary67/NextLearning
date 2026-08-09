@@ -7,6 +7,8 @@ import type {
   SourceToken,
 } from "@/lib/document-highlight-types";
 
+const MAX_SKIPPED_SOURCE_TOKENS_PER_SOURCE = 3;
+
 export function findSourceBounds(
   searchablePages: SearchablePage[],
   chunkId: string,
@@ -52,7 +54,10 @@ export function findSourceBounds(
     .flatMap((page) => page.tokens);
   const match = findBestAlignment(pdfTokens, sourceTokens);
 
-  if (!match) {
+  if (
+    !match ||
+    hasSourceWithoutMatchedTokens(match.alignment, sourceTokens)
+  ) {
     throw createMissingAlignmentError(chunkId, pdfTokens, sourceTokens);
   }
 
@@ -72,9 +77,12 @@ export function findSourceBounds(
   }
 
   return sources.map((source, sourceIndex) => {
-    const matchingPdfTokenIndexes = match.alignment.filter(
-      (_, sourceTokenIndex) =>
-        sourceTokens[sourceTokenIndex].sourceIndex === sourceIndex,
+    const matchingPdfTokenIndexes = match.alignment.flatMap(
+      (pdfTokenIndex, sourceTokenIndex) =>
+        pdfTokenIndex !== null &&
+        sourceTokens[sourceTokenIndex].sourceIndex === sourceIndex
+          ? [pdfTokenIndex]
+          : [],
     );
     const page = pagesByIndex.get(source.page_index)!;
     return createHighlightBounds(
@@ -85,12 +93,18 @@ export function findSourceBounds(
   });
 }
 
+type AlignmentResult = {
+  alignment: Array<number | null>;
+  alternative: Array<number | null> | null;
+};
+
 function findBestAlignment(
   pdfTokens: PdfToken[],
   sourceTokens: SourceToken[],
-) {
-  let bestAlignment: number[] | null = null;
-  let alternative: number[] | null = null;
+): AlignmentResult | null {
+  let bestAlignment: Array<number | null> | null = null;
+  let alternative: Array<number | null> | null = null;
+  let bestSkippedCount = Number.POSITIVE_INFINITY;
   let bestSpanLength = Number.POSITIVE_INFINITY;
 
   for (let start = 0; start < pdfTokens.length; start += 1) {
@@ -98,47 +112,122 @@ function findBestAlignment(
       continue;
     }
 
-    const alignment = [start];
-    let pdfTokenIndex = start + 1;
+    const result = findTolerantAlignment(pdfTokens, sourceTokens, start);
 
-    for (
-      let sourceTokenIndex = 1;
-      sourceTokenIndex < sourceTokens.length;
-      sourceTokenIndex += 1
-    ) {
-      while (
-        pdfTokenIndex < pdfTokens.length &&
-        !tokensMatch(pdfTokens[pdfTokenIndex], sourceTokens[sourceTokenIndex])
-      ) {
-        pdfTokenIndex += 1;
-      }
-
-      if (pdfTokenIndex === pdfTokens.length) {
-        break;
-      }
-
-      alignment.push(pdfTokenIndex);
-      pdfTokenIndex += 1;
-    }
-
-    if (alignment.length !== sourceTokens.length) {
+    if (!result) {
       continue;
     }
 
-    const spanLength = alignment.at(-1)! - start + 1;
+    const spanLength =
+      lastMatchedPdfTokenIndex(result.alignment) - start + 1;
 
-    if (spanLength < bestSpanLength) {
-      bestAlignment = alignment;
+    if (
+      result.skippedCount < bestSkippedCount ||
+      (result.skippedCount === bestSkippedCount &&
+        spanLength < bestSpanLength)
+    ) {
+      bestAlignment = result.alignment;
       alternative = null;
+      bestSkippedCount = result.skippedCount;
       bestSpanLength = spanLength;
-    } else if (spanLength === bestSpanLength) {
-      alternative = alignment;
+    } else if (
+      result.skippedCount === bestSkippedCount &&
+      spanLength === bestSpanLength
+    ) {
+      alternative = result.alignment;
     }
   }
 
   return bestAlignment
     ? { alignment: bestAlignment, alternative }
     : null;
+}
+
+function findTolerantAlignment(
+  pdfTokens: PdfToken[],
+  sourceTokens: SourceToken[],
+  start: number,
+): { alignment: Array<number | null>; skippedCount: number } | null {
+  const alignment: Array<number | null> = new Array(sourceTokens.length).fill(
+    null,
+  );
+  const skippedBySource = new Map<number, number>();
+
+  function walk(sourceIndex: number, pdfIndex: number): boolean {
+    if (sourceIndex === sourceTokens.length) {
+      return true;
+    }
+
+    const sourceToken = sourceTokens[sourceIndex];
+    let matchedPdfIndex = pdfIndex;
+
+    while (
+      matchedPdfIndex < pdfTokens.length &&
+      !tokensMatch(pdfTokens[matchedPdfIndex], sourceToken)
+    ) {
+      matchedPdfIndex += 1;
+    }
+
+    if (matchedPdfIndex < pdfTokens.length) {
+      alignment[sourceIndex] = matchedPdfIndex;
+
+      if (walk(sourceIndex + 1, matchedPdfIndex + 1)) {
+        return true;
+      }
+
+      alignment[sourceIndex] = null;
+    }
+
+    const skippedCount = skippedBySource.get(sourceToken.sourceIndex) ?? 0;
+
+    if (skippedCount < MAX_SKIPPED_SOURCE_TOKENS_PER_SOURCE) {
+      skippedBySource.set(sourceToken.sourceIndex, skippedCount + 1);
+
+      if (walk(sourceIndex + 1, pdfIndex)) {
+        return true;
+      }
+
+      skippedBySource.set(sourceToken.sourceIndex, skippedCount);
+    }
+
+    return false;
+  }
+
+  if (!walk(0, start)) {
+    return null;
+  }
+
+  return {
+    alignment,
+    skippedCount: alignment.filter((value) => value === null).length,
+  };
+}
+
+function lastMatchedPdfTokenIndex(alignment: Array<number | null>) {
+  for (let index = alignment.length - 1; index >= 0; index -= 1) {
+    const pdfTokenIndex = alignment[index];
+
+    if (pdfTokenIndex !== null && pdfTokenIndex !== undefined) {
+      return pdfTokenIndex;
+    }
+  }
+
+  return -1;
+}
+
+function hasSourceWithoutMatchedTokens(
+  alignment: Array<number | null>,
+  sourceTokens: SourceToken[],
+) {
+  return sourceTokens.some(
+    (sourceToken, index) =>
+      alignment[index] === null &&
+      !alignment.some(
+        (pdfTokenIndex, otherIndex) =>
+          pdfTokenIndex !== null &&
+          sourceTokens[otherIndex].sourceIndex === sourceToken.sourceIndex,
+      ),
+  );
 }
 
 function createMissingAlignmentError(
