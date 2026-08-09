@@ -18,6 +18,13 @@ export async function sendToolOutputs(
     selection,
     textSelectionContext,
   } = runtime.optionsRef.current;
+  const responseKind =
+    runtime.responseStateRef.current.logical?.kind ??
+    runtime.responseStateRef.current.continuation?.kind;
+  const learningCheckpoint =
+    responseKind === "technical_lesson_action"
+      ? null
+      : runtime.activeLearningCheckpointRef.current;
 
   for (const functionCall of functionCalls) {
     let output: unknown;
@@ -26,9 +33,6 @@ export async function sendToolOutputs(
       if (!documentModel) {
         throw new Error("The active document is unavailable.");
       }
-
-      const learningCheckpoint =
-        runtime.activeLearningCheckpointRef.current;
 
       output = await executeRealtimeTutorTool(
         functionCall.name,

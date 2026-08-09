@@ -23,6 +23,18 @@ export type RealtimeTutorStatus =
 export type ExplanationStyle = "plain" | "technical";
 export type GuidedTutorMode = "reading" | "learning";
 
+export const technicalLessonActionValues = [
+  "example",
+  "visualize",
+  "prerequisite",
+  "walkthrough",
+  "formal",
+  "check",
+] as const;
+
+export type TechnicalLessonAction =
+  (typeof technicalLessonActionValues)[number];
+
 export type LearningVisualState =
   | { status: "idle" }
   | { status: "generating" }
